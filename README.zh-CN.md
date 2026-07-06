@@ -1,30 +1,25 @@
 # validator
 
-`validator` is a Rust 2024 validation library for code-level data validation,
-built around Rust-friendly derive macros, typed value dispatch, and an
-extensible rule registry.
+`validator` 是一个面向 Rust 2024 的数据校验库，当前重点是代码层声明式校验。它基于 derive 宏、字段类型分派和可扩展规则注册表实现，让结构体校验、默认规则、自定义规则和错误结果保持统一。
 
-[中文文档](README.zh-CN.md)
+[English](README.md)
 
-The current implementation focuses on code-level validation:
+当前已实现的能力：
 
-- `#[derive(Validate)]` for struct validation.
-- `Validator::new().validate(&value)?` as the default entry point.
-- Chainable runtime configuration with `Validator::new().alias(...)? .rule(...)?`.
-- Built-in rules for required values, size checks, comparisons, strings, formats,
-  choices, colors, and URLs.
-- Consistent error reporting through `Errors`, `FieldError`, `Namespace`, and
-  `Args`.
+- 使用 `#[derive(Validate)]` 为结构体生成校验逻辑。
+- 默认入口是 `Validator::new().validate(&value)?`。
+- 支持 `Validator::new().alias(...)? .rule(...)?` 这种链式运行时配置。
+- 内置必填、长度/范围、比较、字符串、格式、颜色、URL、枚举选择等常用规则。
+- 通过 `Errors`、`FieldError`、`Namespace`、`Args` 提供稳定的错误结果。
 
-Runtime schema validation, nested struct traversal, collection `dive(...)`, and
-i18n are planned separately and are not part of this first cut.
+运行时 Schema 校验、嵌套结构体递归、集合 `dive(...)` 和 i18n 会单独设计推进，不属于当前第一版代码能力。
 
-## Requirements
+## 环境要求
 
 - Rust edition: `2024`
-- Minimum supported rustc: `1.96`
+- 最低 rustc: `1.96`
 
-## Usage
+## 基本用法
 
 ```rust
 use validator::prelude::*;
@@ -53,9 +48,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Alias Rules
+## Alias 规则
 
-Aliases let you name reusable rule expressions.
+Alias 用来给一组规则起名字，适合复用常见校验组合。
 
 ```rust
 use validator::prelude::*;
@@ -81,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-The default alias `iscolor` is available out of the box:
+默认内置 alias `iscolor` 可直接使用：
 
 ```rust
 #[derive(Debug, Validate)]
@@ -91,10 +86,9 @@ struct Theme {
 }
 ```
 
-## Custom Rules
+## 自定义规则
 
-Custom rules implement the `Rule` trait and are registered directly on
-`Validator`.
+自定义规则实现 `Rule` trait，然后注册到 `Validator` 上。
 
 ```rust
 use validator::prelude::*;
@@ -135,31 +129,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Built-In Rules
+## 内置规则
 
-Current built-in rules:
+当前内置规则：
 
 - Presence: `required`, `omitempty`
 - Size: `length`, `min`, `max`, `range`
 - Compare: `gt`, `gte`, `lt`, `lte`
 - Choice: `oneof`
-- String: `contains`, `startswith`, `endswith`, `alpha`, `alphanum`,
-  `numeric`, `number`, `lowercase`, `uppercase`, `boolean`
+- String: `contains`, `startswith`, `endswith`, `alpha`, `alphanum`, `numeric`, `number`, `lowercase`, `uppercase`, `boolean`
 - Format: `email`, `regex`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`, `cmyk`
 - Network: `url`
 - Alias: `iscolor`
 
-Comparison and size rules dispatch by field type:
+比较和尺寸类规则会根据字段类型分派：
 
-- Strings use character count.
-- Vectors, arrays, slices, and maps use item count.
-- Signed integers, unsigned integers, and floats use their own numeric families.
-- `Option::None` skips non-`required` rules and fails `required`.
+- 字符串按字符数量比较。
+- `Vec`、数组、切片、Map 按元素数量比较。
+- 有符号整数、无符号整数、浮点数分别按自己的数值族处理。
+- `Option::None` 会跳过非 `required` 规则，但会让 `required` 失败。
 
-## Errors
+## 错误结果
 
-Validation failures return `Errors`, which contains one `FieldError` per failed
-field rule.
+校验失败会返回 `Errors`，其中包含每个字段规则失败对应的 `FieldError`。
 
 ```rust
 let errors = Validator::new().validate(&value).unwrap_err();
@@ -173,7 +165,7 @@ for error in errors.iter() {
 }
 ```
 
-Each `FieldError` exposes:
+每个 `FieldError` 暴露：
 
 - `namespace`
 - `struct_namespace`
@@ -183,7 +175,7 @@ Each `FieldError` exposes:
 - `actual_rule`
 - `args`
 
-## Development
+## 开发命令
 
 ```sh
 cargo fmt --check
