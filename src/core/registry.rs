@@ -27,6 +27,10 @@ impl Rules {
     pub(crate) fn get(&self, name: &str) -> Option<Arc<dyn Rule>> {
         self.values.get(name).cloned()
     }
+
+    pub(crate) fn contains(&self, name: &str) -> bool {
+        self.values.contains_key(name)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -53,6 +57,10 @@ impl Aliases {
 
     pub(crate) fn get(&self, name: &str) -> Option<&[RuleGroup]> {
         self.values.get(name).map(Vec::as_slice)
+    }
+
+    pub(crate) fn contains(&self, name: &str) -> bool {
+        self.values.contains_key(name)
     }
 }
 

@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Args {
+pub struct Params {
     values: BTreeMap<String, String>,
 }
 
-impl Args {
+impl Params {
     pub fn new() -> Self {
         Self::default()
     }

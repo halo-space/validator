@@ -1,10 +1,10 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct OneOf;
+pub struct Eq;
 
-impl Rule for OneOf {
+impl Rule for Eq {
     fn check(&self, field: &Field<'_>) -> bool {
-        super::contains(field).unwrap_or(false)
+        super::equals(field)
     }
 }

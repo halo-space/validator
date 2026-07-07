@@ -2,7 +2,7 @@ use std::fmt;
 
 use thiserror::Error as ThisError;
 
-use super::{Args, Namespace};
+use super::{Kind, Namespace, Params};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FieldError {
@@ -10,29 +10,34 @@ pub struct FieldError {
     struct_namespace: Namespace,
     field: String,
     struct_field: String,
+    kind: Kind,
     rule: String,
-    actual_rule: String,
-    args: Args,
+    reason: String,
+    params: Params,
+}
+
+pub(crate) struct FieldErrorParts {
+    pub(crate) namespace: Namespace,
+    pub(crate) struct_namespace: Namespace,
+    pub(crate) field: String,
+    pub(crate) struct_field: String,
+    pub(crate) kind: Kind,
+    pub(crate) rule: String,
+    pub(crate) reason: String,
+    pub(crate) params: Params,
 }
 
 impl FieldError {
-    pub fn new(
-        namespace: Namespace,
-        struct_namespace: Namespace,
-        field: impl Into<String>,
-        struct_field: impl Into<String>,
-        rule: impl Into<String>,
-        actual_rule: impl Into<String>,
-        args: Args,
-    ) -> Self {
+    pub(crate) fn new(parts: FieldErrorParts) -> Self {
         Self {
-            namespace,
-            struct_namespace,
-            field: field.into(),
-            struct_field: struct_field.into(),
-            rule: rule.into(),
-            actual_rule: actual_rule.into(),
-            args,
+            namespace: parts.namespace,
+            struct_namespace: parts.struct_namespace,
+            field: parts.field,
+            struct_field: parts.struct_field,
+            kind: parts.kind,
+            rule: parts.rule,
+            reason: parts.reason,
+            params: parts.params,
         }
     }
 
@@ -52,16 +57,20 @@ impl FieldError {
         &self.struct_field
     }
 
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
     pub fn rule(&self) -> &str {
         &self.rule
     }
 
-    pub fn actual_rule(&self) -> &str {
-        &self.actual_rule
+    pub fn reason(&self) -> &str {
+        &self.reason
     }
 
-    pub fn args(&self) -> &Args {
-        &self.args
+    pub fn params(&self) -> &Params {
+        &self.params
     }
 }
 
@@ -75,61 +84,46 @@ impl fmt::Display for FieldError {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Errors {
-    fields: Vec<FieldError>,
-}
-
-impl Errors {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn push(&mut self, error: FieldError) {
-        self.fields.push(error);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.fields.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.fields.len()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &FieldError> {
-        self.fields.iter()
-    }
-
-    pub fn into_vec(self) -> Vec<FieldError> {
-        self.fields
-    }
-}
-
-impl fmt::Display for Errors {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (index, error) in self.fields.iter().enumerate() {
-            if index > 0 {
-                writeln!(f)?;
-            }
-            write!(f, "{error}")?;
-        }
-        Ok(())
-    }
-}
-
-impl std::error::Error for Errors {}
-
 #[derive(Debug, ThisError)]
 pub enum Error {
     #[error("invalid rule name '{name}'")]
     InvalidRuleName { name: String },
     #[error("invalid alias name '{name}'")]
     InvalidAliasName { name: String },
-    #[error("invalid alias '{name}': {reason}")]
-    InvalidAlias { name: String, reason: String },
+    #[error("invalid rule expression '{expression}': {reason}")]
+    InvalidRuleExpression { expression: String, reason: String },
     #[error("unknown rule '{name}'")]
     UnknownRule { name: String },
     #[error("unknown alias '{name}'")]
     UnknownAlias { name: String },
+    #[error("invalid schema: {reason}")]
+    InvalidSchema { reason: String },
+    #[error("schema is required for validate_map")]
+    MissingSchema,
+    #[error("validation failed")]
+    Failed(Vec<FieldError>),
+}
+
+impl Error {
+    pub fn failed(fields: Vec<FieldError>) -> Self {
+        Self::Failed(fields)
+    }
+
+    pub fn is_failed(&self) -> bool {
+        matches!(self, Self::Failed(_))
+    }
+
+    pub fn fields(&self) -> Option<&[FieldError]> {
+        match self {
+            Self::Failed(fields) => Some(fields),
+            _ => None,
+        }
+    }
+
+    pub fn into_fields(self) -> Option<Vec<FieldError>> {
+        match self {
+            Self::Failed(fields) => Some(fields),
+            _ => None,
+        }
+    }
 }

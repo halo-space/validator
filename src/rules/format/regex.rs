@@ -7,7 +7,7 @@ pub struct RegexRule;
 
 impl Rule for RegexRule {
     fn check(&self, field: &Field<'_>) -> bool {
-        let Some(pattern) = field.args().get("pattern") else {
+        let Some(pattern) = field.params().get("pattern") else {
             return false;
         };
         let Some(value) = field.value().string() else {

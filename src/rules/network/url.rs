@@ -12,7 +12,7 @@ impl Rule for UrlRule {
     }
 }
 
-fn has_scheme_and_host(value: &str) -> bool {
+pub(super) fn has_scheme_and_host(value: &str) -> bool {
     let Some((scheme, rest)) = value.split_once("://") else {
         return false;
     };
@@ -23,4 +23,8 @@ fn has_scheme_and_host(value: &str) -> bool {
             .next()
             .unwrap_or_default()
             .is_empty()
+}
+
+pub(super) fn scheme(value: &str) -> Option<&str> {
+    value.split_once("://").map(|(scheme, _)| scheme)
 }

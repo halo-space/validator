@@ -1,11 +1,11 @@
-use super::{Args, Namespace, Value};
+use super::{Namespace, Params, Value};
 
 pub struct Field<'a> {
     namespace: &'a Namespace,
     struct_namespace: &'a Namespace,
     field: &'a str,
     struct_field: &'a str,
-    args: &'a Args,
+    params: &'a Params,
     value: &'a dyn Value,
 }
 
@@ -15,7 +15,7 @@ impl<'a> Field<'a> {
         struct_namespace: &'a Namespace,
         field: &'a str,
         struct_field: &'a str,
-        args: &'a Args,
+        params: &'a Params,
         value: &'a dyn Value,
     ) -> Self {
         Self {
@@ -23,7 +23,7 @@ impl<'a> Field<'a> {
             struct_namespace,
             field,
             struct_field,
-            args,
+            params,
             value,
         }
     }
@@ -44,8 +44,8 @@ impl<'a> Field<'a> {
         self.struct_field
     }
 
-    pub fn args(&self) -> &Args {
-        self.args
+    pub fn params(&self) -> &Params {
+        self.params
     }
 
     pub fn value(&self) -> &dyn Value {

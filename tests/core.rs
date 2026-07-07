@@ -1,4 +1,13 @@
+use std::collections::{BTreeMap, HashMap};
+
+use serde_json::json;
 use validator::prelude::*;
+
+fn fields(error: validator::Error) -> Vec<validator::FieldError> {
+    error
+        .into_fields()
+        .unwrap_or_else(|| panic!("expected validation errors"))
+}
 
 #[derive(Debug, Validate)]
 struct User {
@@ -16,34 +25,47 @@ fn valid_struct_passes() {
 }
 
 #[test]
+fn derive_exposes_validated_field_access() {
+    let user = User {
+        name: "alice".to_owned(),
+    };
+
+    let field = validator::__private::Access::field(&user, "name").unwrap();
+
+    assert_eq!(field.name(), "name");
+    assert_eq!(field.value().string().as_deref(), Some("alice"));
+    assert!(validator::__private::Access::field(&user, "missing").is_none());
+}
+
+#[test]
 fn required_reports_field_error() {
     let user = User {
         name: String::new(),
     };
 
     let errors = Validator::new().validate(&user).unwrap_err();
-    let fields = errors.into_vec();
+    let fields = errors.into_fields().unwrap();
 
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0].namespace().as_str(), "User.name");
     assert_eq!(fields[0].field(), "name");
     assert_eq!(fields[0].rule(), "required");
-    assert_eq!(fields[0].actual_rule(), "required");
+    assert_eq!(fields[0].reason(), "required");
 }
 
 #[test]
-fn length_reports_args() {
+fn length_reports_params() {
     let user = User {
         name: "al".to_owned(),
     };
 
     let errors = Validator::new().validate(&user).unwrap_err();
-    let fields = errors.into_vec();
+    let fields = errors.into_fields().unwrap();
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "length");
-    assert_eq!(fields[0].args().get("min"), Some("3"));
-    assert_eq!(fields[0].args().get("max"), Some("20"));
+    assert_eq!(fields[0].params().get("min"), Some("3"));
+    assert_eq!(fields[0].params().get("max"), Some("20"));
 }
 
 #[derive(Debug, Validate)]
@@ -73,11 +95,555 @@ fn option_none_fails_required() {
     };
 
     let errors = Validator::new().validate(&user).unwrap_err();
-    let fields = errors.into_vec();
+    let fields = errors.into_fields().unwrap();
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].namespace().as_str(), "OptionalUser.email");
     assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct Profile {
+    #[validate(required)]
+    display_name: String,
+}
+
+#[derive(Debug, Validate)]
+struct UserWithProfile {
+    #[validate(nested)]
+    profile: Profile,
+}
+
+#[test]
+fn nested_struct_remaps_namespace() {
+    let user = UserWithProfile {
+        profile: Profile {
+            display_name: String::new(),
+        },
+    };
+
+    let fields = Validator::new()
+        .validate(&user)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "UserWithProfile.profile.display_name"
+    );
+    assert_eq!(fields[0].field(), "display_name");
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct OptionalProfileUser {
+    #[validate(nested)]
+    profile: Option<Profile>,
+}
+
+#[test]
+fn optional_nested_none_skips_validation() {
+    let user = OptionalProfileUser { profile: None };
+
+    Validator::new().validate(&user).unwrap();
+}
+
+#[test]
+fn optional_nested_some_validates_child() {
+    let user = OptionalProfileUser {
+        profile: Some(Profile {
+            display_name: String::new(),
+        }),
+    };
+
+    let fields = Validator::new()
+        .validate(&user)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "OptionalProfileUser.profile.display_name"
+    );
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[test]
+fn pure_nested_field_is_not_exposed_as_value_access() {
+    let user = UserWithProfile {
+        profile: Profile {
+            display_name: "alice".to_owned(),
+        },
+    };
+
+    assert!(validator::__private::Access::field(&user, "profile").is_none());
+}
+
+#[derive(Debug, Validate)]
+struct RequiredOptionalProfileUser {
+    #[validate(required, nested)]
+    profile: Option<Profile>,
+}
+
+#[test]
+fn required_optional_nested_none_fails_required() {
+    let user = RequiredOptionalProfileUser { profile: None };
+
+    let fields = Validator::new()
+        .validate(&user)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "RequiredOptionalProfileUser.profile"
+    );
+    assert_eq!(fields[0].field(), "profile");
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct TagForm {
+    #[validate(required, gt = 0, dive(required))]
+    tags: Vec<String>,
+}
+
+#[test]
+fn dive_validates_vec_elements_and_reports_index_namespace() {
+    let form = TagForm {
+        tags: vec!["rust".to_owned(), String::new()],
+    };
+
+    let fields = Validator::new()
+        .validate(&form)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "TagForm.tags[1]");
+    assert_eq!(fields[0].field(), "tags[1]");
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct CodeArray {
+    #[validate(dive(required))]
+    codes: [String; 2],
+}
+
+#[test]
+fn dive_validates_array_elements() {
+    let value = CodeArray {
+        codes: ["ok".to_owned(), String::new()],
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "CodeArray.codes[1]");
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct SliceForm {
+    #[validate(dive(required))]
+    codes: &'static [&'static str],
+}
+
+#[test]
+fn dive_validates_slice_reference_elements() {
+    static CODES: [&str; 2] = ["ok", ""];
+    let value = SliceForm { codes: &CODES };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "SliceForm.codes[1]");
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct AddressBook {
+    #[validate(dive(nested))]
+    addresses: Vec<Profile>,
+}
+
+#[test]
+fn dive_validates_nested_elements() {
+    let value = AddressBook {
+        addresses: vec![Profile {
+            display_name: String::new(),
+        }],
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "AddressBook.addresses[0].display_name"
+    );
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct LabelMap {
+    #[validate(dive(keys(max = 4), values(required)))]
+    labels: HashMap<String, String>,
+}
+
+#[test]
+fn map_dive_validates_hash_map_keys() {
+    let value = LabelMap {
+        labels: HashMap::from([("toolong".to_owned(), "ok".to_owned())]),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "LabelMap.labels[\"toolong\"]"
+    );
+    assert_eq!(fields[0].rule(), "max");
+}
+
+#[test]
+fn map_dive_validates_hash_map_values() {
+    let value = LabelMap {
+        labels: HashMap::from([("ok".to_owned(), String::new())]),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "LabelMap.labels[\"ok\"]");
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+struct OrderedLabels {
+    #[validate(dive(keys(max = 4), values(required)))]
+    labels: BTreeMap<String, String>,
+}
+
+#[test]
+fn map_dive_validates_btree_map_keys() {
+    let value = OrderedLabels {
+        labels: BTreeMap::from([("toolong".to_owned(), "ok".to_owned())]),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "OrderedLabels.labels[\"toolong\"]"
+    );
+    assert_eq!(fields[0].rule(), "max");
+}
+
+#[derive(Debug, Validate)]
+struct Inventory {
+    #[validate(dive(keys(required), values(nested)))]
+    items: HashMap<String, Profile>,
+}
+
+#[test]
+fn map_dive_validates_nested_values() {
+    let value = Inventory {
+        items: HashMap::from([(
+            "main".to_owned(),
+            Profile {
+                display_name: String::new(),
+            },
+        )]),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "Inventory.items[\"main\"].display_name"
+    );
+    assert_eq!(fields[0].rule(), "required");
+}
+
+#[derive(Debug, Validate)]
+#[validate(check = "validate_event")]
+struct Event {
+    start_at: i64,
+    end_at: i64,
+}
+
+fn validate_event(event: &Event, valid: &mut validator::valid::Valid<'_>) {
+    if event.end_at <= event.start_at {
+        valid
+            .field("end_at")
+            .rule("gt_field")
+            .compare("start_at")
+            .push();
+    }
+}
+
+#[test]
+fn struct_level_check_reports_compare_param() {
+    let event = Event {
+        start_at: 10,
+        end_at: 5,
+    };
+
+    let fields = Validator::new()
+        .validate(&event)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "Event.end_at");
+    assert_eq!(fields[0].field(), "end_at");
+    assert_eq!(fields[0].rule(), "gt_field");
+    assert_eq!(fields[0].reason(), "gt_field");
+    assert_eq!(fields[0].params().get("compare"), Some("start_at"));
+}
+
+#[derive(Debug, Validate)]
+struct Signup {
+    password: String,
+
+    #[validate(eq_field = "password")]
+    confirm_password: String,
+}
+
+#[test]
+fn eq_field_passes_when_sibling_matches() {
+    let signup = Signup {
+        password: "secret".to_owned(),
+        confirm_password: "secret".to_owned(),
+    };
+
+    Validator::new().validate(&signup).unwrap();
+}
+
+#[test]
+fn eq_field_reports_current_field_error() {
+    let signup = Signup {
+        password: "secret".to_owned(),
+        confirm_password: "different".to_owned(),
+    };
+
+    let fields = Validator::new()
+        .validate(&signup)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "Signup.confirm_password");
+    assert_eq!(fields[0].field(), "confirm_password");
+    assert_eq!(fields[0].rule(), "eq_field");
+    assert_eq!(fields[0].reason(), "eq_field");
+    assert_eq!(fields[0].params().get("compare"), Some("password"));
+}
+
+#[derive(Debug, Validate)]
+struct EventWindow {
+    start_at: i64,
+
+    #[validate(gt_field = "start_at")]
+    end_at: i64,
+}
+
+#[test]
+fn gt_field_compares_sibling_values() {
+    Validator::new()
+        .validate(&EventWindow {
+            start_at: 10,
+            end_at: 11,
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&EventWindow {
+            start_at: 10,
+            end_at: 10,
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "EventWindow.end_at");
+    assert_eq!(fields[0].rule(), "gt_field");
+    assert_eq!(fields[0].params().get("compare"), Some("start_at"));
+}
+
+#[derive(Debug, Validate)]
+struct OptionalCompare {
+    expected: Option<String>,
+
+    #[validate(eq_field = "expected")]
+    value: Option<String>,
+}
+
+#[test]
+fn cross_field_current_none_is_skipped() {
+    let value = OptionalCompare {
+        expected: Some("secret".to_owned()),
+        value: None,
+    };
+
+    Validator::new().validate(&value).unwrap();
+}
+
+#[test]
+fn cross_field_target_none_fails() {
+    let value = OptionalCompare {
+        expected: None,
+        value: Some("secret".to_owned()),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "OptionalCompare.value");
+    assert_eq!(fields[0].rule(), "eq_field");
+}
+
+#[derive(Debug, Validate)]
+struct StrictIntegerKinds {
+    left: i32,
+
+    #[validate(eq_field = "left")]
+    right: i64,
+}
+
+#[test]
+fn cross_field_requires_same_concrete_integer_kind() {
+    let value = StrictIntegerKinds { left: 7, right: 7 };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "eq_field");
+}
+
+#[derive(Debug, Validate)]
+struct StringLengths {
+    title: String,
+
+    #[validate(gte_field = "title")]
+    summary: String,
+}
+
+#[test]
+fn ordered_string_cross_field_rules_compare_length() {
+    Validator::new()
+        .validate(&StringLengths {
+            title: "rust".to_owned(),
+            summary: "rustacean".to_owned(),
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&StringLengths {
+            title: "rustacean".to_owned(),
+            summary: "rust".to_owned(),
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "gte_field");
+}
+
+#[derive(Debug, Validate)]
+#[validate(check = "validate_name_or_title")]
+struct Draft {
+    name: String,
+    title: String,
+}
+
+fn validate_name_or_title(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
+    if draft.name.is_empty() && draft.title.is_empty() {
+        valid
+            .field("name")
+            .rule("required_without")
+            .param("field", "title")
+            .push();
+        valid
+            .field("title")
+            .rule("required_without")
+            .param("field", "name")
+            .push();
+    }
+}
+
+#[test]
+fn struct_level_check_pushes_multiple_param_errors() {
+    let draft = Draft {
+        name: String::new(),
+        title: String::new(),
+    };
+
+    let fields = Validator::new()
+        .validate(&draft)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].namespace().as_str(), "Draft.name");
+    assert_eq!(fields[0].rule(), "required_without");
+    assert_eq!(fields[0].params().get("field"), Some("title"));
+    assert_eq!(fields[1].namespace().as_str(), "Draft.title");
+    assert_eq!(fields[1].rule(), "required_without");
+    assert_eq!(fields[1].params().get("field"), Some("name"));
 }
 
 #[derive(Debug, Validate)]
@@ -96,12 +662,12 @@ fn alias_expands_to_rules() -> Result<(), Box<dyn std::error::Error>> {
         .alias("username", "required,length(min=3,max=20)")?
         .validate(&user)
         .unwrap_err();
-    let fields = errors.into_vec();
+    let fields = errors.into_fields().unwrap();
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "username");
-    assert_eq!(fields[0].actual_rule(), "length");
-    assert_eq!(fields[0].args().get("min"), Some("3"));
+    assert_eq!(fields[0].reason(), "length");
+    assert_eq!(fields[0].params().get("min"), Some("3"));
 
     Ok(())
 }
@@ -139,11 +705,535 @@ fn custom_rule_chain_works() -> Result<(), Box<dyn std::error::Error>> {
         .rule("slug", Slug)?
         .validate(&post)
         .unwrap_err();
-    let fields = errors.into_vec();
+    let fields = errors.into_fields().unwrap();
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "slug_alias");
-    assert_eq!(fields[0].actual_rule(), "slug");
+    assert_eq!(fields[0].reason(), "slug");
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_passes() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new().value(&"team@example.com", "required,email")?;
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_reports_value_namespace() {
+    let fields = fields(
+        Validator::new()
+            .value(&"not-email", "required,email")
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "$value");
+    assert_eq!(fields[0].field(), "$value");
+    assert_eq!(fields[0].rule(), "email");
+}
+
+#[test]
+fn direct_value_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new().value(&String::new(), "omitempty,email")?;
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_reuses_alias_and_custom_rule() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new()
+        .alias("slug_alias", "slug")?
+        .rule("slug", Slug)?
+        .value(&"hello-rust", "slug_alias")?;
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_invalid_expression_returns_error() {
+    let error = Validator::new().value(&"abc", "length(min=3").unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidRuleExpression { .. }
+    ));
+}
+
+#[test]
+fn direct_value_unknown_rule_returns_error() {
+    let error = Validator::new().value(&"abc", "missing_rule").unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::UnknownRule { name } if name == "missing_rule"
+    ));
+}
+
+#[test]
+fn direct_value_alias_with_unknown_rule_returns_error() -> Result<(), Box<dyn std::error::Error>> {
+    let error = Validator::new()
+        .alias("broken_alias", "missing_rule")?
+        .value(&"abc", "broken_alias")
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::UnknownRule { name } if name == "missing_rule"
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn schema_yaml_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  email:
+    type: string
+    rules:
+      - required
+      - email
+  title:
+    type: string
+    rules:
+      - required
+      - length:
+          min: 3
+          max: 20
+"#,
+    )?;
+    let data = json!({
+        "email": "team@example.com",
+        "title": "Validator"
+    });
+
+    Validator::with_schema(schema).validate_map(&data)?;
+
+    Ok(())
+}
+
+#[test]
+fn schema_json_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_json(
+        r#"
+{
+  "fields": {
+    "age": {
+      "type": "integer",
+      "rules": [
+        "required",
+        { "gte": 0 },
+        { "lte": 130 }
+      ]
+    }
+  }
+}
+"#,
+    )?;
+    let data = json!({ "age": 42 });
+
+    Validator::with_schema(schema).validate_map(&data)?;
+
+    Ok(())
+}
+
+#[test]
+fn schema_missing_required_field_reports_required() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  email:
+    type: string
+    rules:
+      - required
+      - email
+"#,
+    )?;
+    let data = json!({});
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&data)
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "email");
+    assert_eq!(fields[0].rule(), "required");
+
+    Ok(())
+}
+
+#[test]
+fn schema_missing_optional_field_is_skipped() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  email:
+    type: string
+    rules:
+      - email
+"#,
+    )?;
+    let data = json!({});
+
+    Validator::with_schema(schema).validate_map(&data)?;
+
+    Ok(())
+}
+
+#[test]
+fn schema_nested_object_reports_dotted_namespace() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  profile:
+    type: object
+    fields:
+      display_name:
+        type: string
+        rules:
+          - required
+"#,
+    )?;
+    let data = json!({
+        "profile": {}
+    });
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&data)
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "profile.display_name");
+    assert_eq!(fields[0].field(), "display_name");
+    assert_eq!(fields[0].rule(), "required");
+
+    Ok(())
+}
+
+#[test]
+fn schema_type_mismatch_reports_type_rule() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    rules:
+      - required
+"#,
+    )?;
+    let data = json!({
+        "title": 123
+    });
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&data)
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "title");
+    assert_eq!(fields[0].rule(), "type");
+    assert_eq!(fields[0].reason(), "type");
+    assert_eq!(fields[0].params().get("expected"), Some("string"));
+
+    Ok(())
+}
+
+#[test]
+fn schema_unknown_rule_returns_config_error() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    rules:
+      - missing_rule
+"#,
+    )?;
+    let error = Validator::with_schema(schema)
+        .validate_map(&json!({ "title": "Rust" }))
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::UnknownRule { name } if name == "missing_rule"
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn schema_does_not_accept_types_alias() -> Result<(), Box<dyn std::error::Error>> {
+    let error = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    types: string
+    rules:
+      - required
+"#,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidSchema { reason }
+            if reason.contains("unsupported key 'types'")
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn validate_map_without_schema_returns_error() {
+    let error = Validator::new()
+        .validate_map(&json!({ "title": "Rust" }))
+        .unwrap_err();
+
+    assert!(matches!(error, validator::Error::MissingSchema));
+}
+
+#[test]
+fn direct_value_uses_new_common_rules() {
+    Validator::new()
+        .value(&"https://example.com", "required,http_url,https_url")
+        .unwrap();
+    Validator::new().value(&"127.0.0.1", "ip,ipv4").unwrap();
+    Validator::new()
+        .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid")
+        .unwrap();
+    Validator::new()
+        .value(&42_u32, "eq(value=42),ne(value=0)")
+        .unwrap();
+    Validator::new()
+        .value(
+            &"hello!",
+            r#"ascii,containsany(value="!@#?"),noneof("root","admin")"#,
+        )
+        .unwrap();
+    Validator::new().value(&2_u8, "oneof(1,2,3)").unwrap();
+    Validator::new().value(&4_i32, "noneof(1,2,3)").unwrap();
+}
+
+#[test]
+fn direct_value_reports_new_string_choice_rules() {
+    let fields = fields(
+        Validator::new()
+            .value(
+                &"root",
+                r#"containsany(value="!@#?"),noneof("root","admin")"#,
+            )
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].rule(), "containsany");
+    assert_eq!(fields[0].params().get("value"), Some("!@#?"));
+    assert_eq!(fields[1].rule(), "noneof");
+    assert_eq!(fields[1].params().get("values"), Some("root,admin"));
+}
+
+#[test]
+fn schema_uses_new_common_rules() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  state:
+    type: string
+    rules:
+      - eq:
+          value: published
+  source_url:
+    type: string
+    rules:
+      - https_url
+  request_ip:
+    type: string
+    rules:
+      - ip
+  id:
+    type: string
+    rules:
+      - uuid
+  code:
+    type: string
+    rules:
+      - ascii
+      - containsany:
+          value: "-"
+  username:
+    type: string
+    rules:
+      - noneof(root,admin)
+  priority:
+    type: uint
+    rules:
+      - oneof(1,2,3)
+"#,
+    )?;
+    let data = json!({
+        "state": "draft",
+        "source_url": "http://example.com",
+        "request_ip": "not-ip",
+        "id": "A987FBC9-4BED-3078-CF07-9141BA07C9F3",
+        "code": "你好",
+        "username": "root",
+        "priority": 4
+    });
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&data)
+            .unwrap_err(),
+    );
+    let failures = fields
+        .iter()
+        .map(|field| (field.namespace().as_str(), field.rule()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        failures,
+        vec![
+            ("code", "ascii"),
+            ("code", "containsany"),
+            ("id", "uuid"),
+            ("priority", "oneof"),
+            ("request_ip", "ip"),
+            ("source_url", "https_url"),
+            ("state", "eq"),
+            ("username", "noneof"),
+        ]
+    );
+    assert_eq!(fields[1].params().get("value"), Some("-"));
+    assert_eq!(fields[3].params().get("values"), Some("1,2,3"));
+    assert_eq!(fields[6].params().get("value"), Some("published"));
+    assert_eq!(fields[7].params().get("values"), Some("root,admin"));
+
+    Ok(())
+}
+
+#[test]
+fn schema_cross_field_rules_compare_sibling_fields() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  password:
+    type: string
+  confirm_password:
+    type: string
+    rules:
+      - eq_field: password
+  start_at:
+    type: integer
+  end_at:
+    type: integer
+    rules:
+      - gt_field: start_at
+"#,
+    )?;
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({
+                "password": "secret",
+                "confirm_password": "different",
+                "start_at": 10,
+                "end_at": 10
+            }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].namespace().as_str(), "confirm_password");
+    assert_eq!(fields[0].rule(), "eq_field");
+    assert_eq!(fields[0].params().get("compare"), Some("password"));
+    assert_eq!(fields[1].namespace().as_str(), "end_at");
+    assert_eq!(fields[1].rule(), "gt_field");
+    assert_eq!(fields[1].params().get("compare"), Some("start_at"));
+
+    Ok(())
+}
+
+#[test]
+fn schema_cross_field_rule_passes() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  start_at:
+    type: integer
+  end_at:
+    type: integer
+    rules:
+      - gt_field: start_at
+"#,
+    )?;
+    let data = json!({
+        "start_at": 10,
+        "end_at": 11
+    });
+
+    Validator::with_schema(schema).validate_map(&data)?;
+
+    Ok(())
+}
+
+#[test]
+fn schema_cross_field_undeclared_target_returns_config_error()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  confirm_password:
+    type: string
+    rules:
+      - eq_field: password
+"#,
+    )?;
+    let error = Validator::with_schema(schema)
+        .validate_map(&json!({
+            "confirm_password": "secret"
+        }))
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidSchema { reason }
+            if reason.contains("references undeclared field 'password'")
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn schema_cross_field_missing_target_value_fails_validation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  password:
+    type: string
+  confirm_password:
+    type: string
+    rules:
+      - eq_field: password
+"#,
+    )?;
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({
+                "confirm_password": "secret"
+            }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "confirm_password");
+    assert_eq!(fields[0].rule(), "eq_field");
+    assert_eq!(fields[0].params().get("compare"), Some("password"));
 
     Ok(())
 }

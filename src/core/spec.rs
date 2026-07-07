@@ -1,21 +1,21 @@
-use super::{Args, Error};
+use super::{Error, Params};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct RuleSpec {
     name: String,
-    args: Args,
+    params: Params,
 }
 
 impl RuleSpec {
     pub(crate) fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            args: Args::new(),
+            params: Params::new(),
         }
     }
 
-    pub(crate) fn arg(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
-        self.args.insert(name, value);
+    pub(crate) fn param(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.params.insert(name, value);
         self
     }
 
@@ -23,8 +23,8 @@ impl RuleSpec {
         &self.name
     }
 
-    pub(crate) fn args(&self) -> &Args {
-        &self.args
+    pub(crate) fn params(&self) -> &Params {
+        &self.params
     }
 }
 
@@ -84,29 +84,32 @@ pub(crate) fn parse_rule_expression(expr: &str) -> Result<Vec<RuleGroup>, Error>
 fn parse_rule(item: &str) -> Result<RuleSpec, Error> {
     if let Some((name, rest)) = item.split_once('(') {
         let name = name.trim();
-        let args = rest
+        let params = rest
             .strip_suffix(')')
-            .ok_or_else(|| invalid_alias(item, "missing closing ')'"))?;
+            .ok_or_else(|| invalid_rule_expression(item, "missing closing ')'"))?;
         let mut spec = RuleSpec::new(name);
         let mut positional = Vec::new();
 
-        for pair in split_top_level(args, ',') {
+        for pair in split_top_level(params, ',') {
             let pair = pair.trim();
             if pair.is_empty() {
                 continue;
             }
             if let Some((key, value)) = pair.split_once('=') {
-                spec = spec.arg(key.trim(), trim_quotes(value.trim()));
+                spec = spec.param(key.trim(), trim_quotes(value.trim()));
             } else {
                 positional.push(trim_quotes(pair).to_owned());
             }
         }
 
         if !positional.is_empty() {
-            if name != "oneof" {
-                return Err(invalid_alias(item, "expected key=value argument"));
+            if !matches!(name, "oneof" | "noneof") {
+                return Err(invalid_rule_expression(
+                    item,
+                    "expected key=value parameter",
+                ));
             }
-            spec = spec.arg("values", positional.join(","));
+            spec = spec.param("values", positional.join(","));
         }
 
         return Ok(spec);
@@ -114,14 +117,14 @@ fn parse_rule(item: &str) -> Result<RuleSpec, Error> {
 
     if let Some((name, value)) = item.split_once('=') {
         let name = name.trim();
-        let arg = match name {
+        let param = match name {
             "min" => "min",
             "max" => "max",
             "regex" => "pattern",
-            "oneof" => "values",
+            "oneof" | "noneof" => "values",
             _ => "value",
         };
-        return Ok(RuleSpec::new(name).arg(arg, trim_quotes(value.trim())));
+        return Ok(RuleSpec::new(name).param(param, trim_quotes(value.trim())));
     }
 
     Ok(RuleSpec::new(item.trim()))
@@ -176,9 +179,9 @@ fn trim_quotes(value: &str) -> &str {
         .unwrap_or(value)
 }
 
-fn invalid_alias(item: &str, reason: &str) -> Error {
-    Error::InvalidAlias {
-        name: item.to_owned(),
+fn invalid_rule_expression(item: &str, reason: &str) -> Error {
+    Error::InvalidRuleExpression {
+        expression: item.to_owned(),
         reason: reason.to_owned(),
     }
 }
@@ -197,8 +200,8 @@ mod tests {
 
         assert_eq!(required.name(), "required");
         assert_eq!(length.name(), "length");
-        assert_eq!(length.args().get("min"), Some("3"));
-        assert_eq!(length.args().get("max"), Some("20"));
+        assert_eq!(length.params().get("min"), Some("3"));
+        assert_eq!(length.params().get("max"), Some("20"));
     }
 
     #[test]
@@ -208,7 +211,7 @@ mod tests {
 
         assert_eq!(groups.len(), 1);
         assert_eq!(spec.name(), "oneof");
-        assert_eq!(spec.args().get("values"), Some("draft,published"));
+        assert_eq!(spec.params().get("values"), Some("draft,published"));
     }
 
     #[test]

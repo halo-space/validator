@@ -1,16 +1,20 @@
+mod eq;
 mod gt;
 mod gte;
 mod lt;
 mod lte;
+mod ne;
 
 use std::cmp::Ordering;
 
 use crate::{Field, FloatKind, Kind};
 
+pub(super) use eq::Eq;
 pub(super) use gt::Gt;
 pub(super) use gte::Gte;
 pub(super) use lt::Lt;
 pub(super) use lte::Lte;
+pub(super) use ne::Ne;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Relation {
@@ -23,10 +27,56 @@ pub(super) enum Relation {
 
 pub(super) fn satisfies(field: &Field<'_>, limit_name: &str, relation: Relation) -> bool {
     field
-        .args()
+        .params()
         .get(limit_name)
-        .or_else(|| field.args().get("value"))
+        .or_else(|| field.params().get("value"))
         .is_some_and(|limit| value_satisfies(field, limit, relation))
+}
+
+pub(super) fn equals(field: &Field<'_>) -> bool {
+    equality(field).unwrap_or(false)
+}
+
+pub(super) fn not_equals(field: &Field<'_>) -> bool {
+    equality(field).is_some_and(|equal| !equal)
+}
+
+fn equality(field: &Field<'_>) -> Option<bool> {
+    field
+        .params()
+        .get("value")
+        .and_then(|value| value_equals(field, value))
+}
+
+fn value_equals(field: &Field<'_>, limit: &str) -> Option<bool> {
+    match field.value().kind() {
+        Kind::String => field.value().string().map(|value| value == limit),
+        Kind::Bool => limit
+            .parse::<bool>()
+            .ok()
+            .and_then(|limit| field.value().boolean().map(|value| value == limit)),
+        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => {
+            let limit = signed_limit(limit)?;
+            field.value().len().map(|length| length as i128 == limit)
+        }
+        Kind::Int(_) => {
+            let limit = signed_limit(limit)?;
+            field.value().int().map(|value| value == limit)
+        }
+        Kind::Uint(_) => {
+            let limit = unsigned_limit(limit)?;
+            field.value().uint().map(|value| value == limit)
+        }
+        Kind::Float(FloatKind::F32) => {
+            let limit = f32_limit(limit)?;
+            field.value().float().map(|value| value == limit)
+        }
+        Kind::Float(FloatKind::F64) => {
+            let limit = f64_limit(limit)?;
+            field.value().float().map(|value| value == limit)
+        }
+        Kind::Option | Kind::Time | Kind::Other => None,
+    }
 }
 
 fn value_satisfies(field: &Field<'_>, limit: &str, relation: Relation) -> bool {
