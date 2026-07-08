@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, HashMap};
+
 use validator::prelude::*;
 
 #[derive(Debug, Validate)]
@@ -165,6 +167,9 @@ struct NetworkFormats {
     #[validate(hostname)]
     hostname: String,
 
+    #[validate(hostname_rfc1123)]
+    hostname_rfc1123: String,
+
     #[validate(fqdn)]
     fqdn: String,
 
@@ -179,6 +184,9 @@ struct NetworkFormats {
 
     #[validate(uuid5)]
     uuid5: String,
+
+    #[validate(ulid)]
+    ulid: String,
 }
 
 #[test]
@@ -188,11 +196,13 @@ fn expanded_network_rules_pass() {
         cidrv4: "10.0.0.0/8".to_owned(),
         cidrv6: "2001:db8::/32".to_owned(),
         hostname: "api".to_owned(),
+        hostname_rfc1123: "1.foo.com".to_owned(),
         fqdn: "api.example.com".to_owned(),
         port: "443".to_owned(),
         uuid3: "a987fbc9-4bed-3078-cf07-9141ba07c9f3".to_owned(),
         uuid4: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
         uuid5: "987fbc97-4bed-5078-af07-9141ba07c9f3".to_owned(),
+        ulid: "01BX5ZZKBKACTAV9WEVGEMMVRZ".to_owned(),
     };
 
     Validator::new().validate(&value).unwrap();
@@ -205,11 +215,13 @@ fn expanded_network_rules_fail() {
         cidrv4: "2001:db8::/32".to_owned(),
         cidrv6: "10.0.0.0/8".to_owned(),
         hostname: "-api".to_owned(),
+        hostname_rfc1123: "foo_bar.example.com".to_owned(),
         fqdn: "api".to_owned(),
         port: "0".to_owned(),
         uuid3: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
         uuid4: "a987fbc9-4bed-3078-cf07-9141ba07c9f3".to_owned(),
         uuid5: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+        ulid: "O1BX5ZZKBKACTAV9WEVGEMMVRZ".to_owned(),
     };
 
     let fields = Validator::new()
@@ -222,9 +234,183 @@ fn expanded_network_rules_fail() {
     assert_eq!(
         rules,
         vec![
-            "cidr", "cidrv4", "cidrv6", "hostname", "fqdn", "port", "uuid3", "uuid4", "uuid5",
+            "cidr",
+            "cidrv4",
+            "cidrv6",
+            "hostname",
+            "hostname_rfc1123",
+            "fqdn",
+            "port",
+            "uuid3",
+            "uuid4",
+            "uuid5",
+            "ulid",
         ]
     );
+}
+
+#[test]
+fn hostname_rfc1123_accepts_digit_prefix_and_rejects_invalid_boundaries() {
+    let validator = Validator::new();
+
+    validator.value(&"1.foo.com", "hostname_rfc1123").unwrap();
+    validator.value(&"192.168.0.1", "hostname_rfc1123").unwrap();
+
+    for value in [
+        "test_example",
+        "example.",
+        "example..com",
+        "-example.com",
+        "example-.com",
+        "foo.bar:80",
+        "this-is-a-deliberately-overlong-subdomain-used-for-boundary-test.example.com",
+    ] {
+        let fields = validator
+            .value(&value, "hostname_rfc1123")
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), "hostname_rfc1123");
+    }
+}
+
+#[test]
+fn ulid_rejects_ambiguous_characters_and_wrong_length() {
+    let validator = Validator::new();
+
+    for value in [
+        "0IBX5ZZKBKACTAV9WEVGEMMVRZ",
+        "01BX5ZZKBKACTAVLWEVGEMMVRZ",
+        "O1BX5ZZKBKACTAV9WEVGEMMVRZ",
+        "01BX5ZZKBKACTAV9WEVGEMMVRU",
+        "01BX5ZZKBKACTAV9WEVGEMMVRZABC",
+    ] {
+        let fields = validator
+            .value(&value, "ulid")
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), "ulid");
+    }
+}
+
+#[derive(Debug, Validate)]
+struct UniqueCollections<'a> {
+    #[validate(unique)]
+    tags: Vec<String>,
+
+    #[validate(unique)]
+    scores: [u8; 3],
+
+    #[validate(unique)]
+    aliases: &'a [&'a str],
+
+    #[validate(unique)]
+    labels: HashMap<String, String>,
+
+    #[validate(unique)]
+    metadata: BTreeMap<String, u8>,
+}
+
+#[test]
+fn unique_collections_pass() {
+    let aliases = ["validator", "rules"];
+    let value = UniqueCollections {
+        tags: vec!["rust".to_owned(), "validator".to_owned()],
+        scores: [1, 2, 3],
+        aliases: &aliases,
+        labels: HashMap::from([
+            ("a".to_owned(), "rust".to_owned()),
+            ("b".to_owned(), "rules".to_owned()),
+        ]),
+        metadata: BTreeMap::from([("a".to_owned(), 1), ("b".to_owned(), 2)]),
+    };
+
+    Validator::new().validate(&value).unwrap();
+}
+
+#[test]
+fn unique_collections_fail_on_field_namespace() {
+    let aliases = ["validator", "validator"];
+    let value = UniqueCollections {
+        tags: vec!["rust".to_owned(), "rust".to_owned()],
+        scores: [1, 2, 1],
+        aliases: &aliases,
+        labels: HashMap::from([
+            ("a".to_owned(), "rust".to_owned()),
+            ("b".to_owned(), "rust".to_owned()),
+        ]),
+        metadata: BTreeMap::from([("a".to_owned(), 1), ("b".to_owned(), 1)]),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let failures = fields
+        .iter()
+        .map(|field| (field.namespace().as_str(), field.rule()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        failures,
+        vec![
+            ("UniqueCollections.tags", "unique"),
+            ("UniqueCollections.scores", "unique"),
+            ("UniqueCollections.aliases", "unique"),
+            ("UniqueCollections.labels", "unique"),
+            ("UniqueCollections.metadata", "unique"),
+        ]
+    );
+}
+
+#[test]
+fn direct_json_array_unique_rule_works() {
+    Validator::new()
+        .value(&serde_json::json!(["rust", "validator"]), "unique")
+        .unwrap();
+
+    let fields = Validator::new()
+        .value(&serde_json::json!(["rust", "rust"]), "unique")
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields[0].namespace().as_str(), "$value");
+    assert_eq!(fields[0].rule(), "unique");
+}
+
+#[test]
+fn direct_json_object_unique_rule_checks_values() {
+    Validator::new()
+        .value(
+            &serde_json::json!({ "a": "rust", "b": "validator" }),
+            "unique",
+        )
+        .unwrap();
+
+    let fields = Validator::new()
+        .value(&serde_json::json!({ "a": "rust", "b": "rust" }), "unique")
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields[0].namespace().as_str(), "$value");
+    assert_eq!(fields[0].rule(), "unique");
+}
+
+#[test]
+fn unique_rejects_unsupported_json_array_elements() {
+    let fields = Validator::new()
+        .value(&serde_json::json!([{ "id": 1 }, { "id": 2 }]), "unique")
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields[0].rule(), "unique");
 }
 
 #[derive(Debug, Validate)]

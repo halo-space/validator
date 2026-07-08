@@ -97,6 +97,14 @@ pub trait Value {
             .or_else(|| self.uint().map(Number::Uint))
             .or_else(|| self.float().map(Number::Float))
     }
+
+    fn array_items(&self) -> Option<Vec<&dyn Value>> {
+        None
+    }
+
+    fn map_values(&self) -> Option<Vec<&dyn Value>> {
+        None
+    }
 }
 
 impl<T: Value> Value for Option<T> {
@@ -134,6 +142,14 @@ impl<T: Value> Value for Option<T> {
 
     fn boolean(&self) -> Option<bool> {
         self.as_ref().and_then(Value::boolean)
+    }
+
+    fn array_items(&self) -> Option<Vec<&dyn Value>> {
+        self.as_ref().and_then(Value::array_items)
+    }
+
+    fn map_values(&self) -> Option<Vec<&dyn Value>> {
+        self.as_ref().and_then(Value::map_values)
     }
 }
 
@@ -469,5 +485,23 @@ impl Value for JsonValue {
 
     fn boolean(&self) -> Option<bool> {
         self.as_bool()
+    }
+
+    fn array_items(&self) -> Option<Vec<&dyn Value>> {
+        self.as_array().map(|items| {
+            items
+                .iter()
+                .map(|item| item as &dyn Value)
+                .collect::<Vec<_>>()
+        })
+    }
+
+    fn map_values(&self) -> Option<Vec<&dyn Value>> {
+        self.as_object().map(|object| {
+            object
+                .values()
+                .map(|value| value as &dyn Value)
+                .collect::<Vec<_>>()
+        })
     }
 }

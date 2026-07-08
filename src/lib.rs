@@ -335,6 +335,29 @@ impl Validator {
     }
 
     #[doc(hidden)]
+    pub fn __validate_unique_items<'a, I, V>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        kind: Kind,
+        items: I,
+    ) where
+        I: IntoIterator<Item = &'a V>,
+        V: Value + 'a,
+    {
+        let items = items
+            .into_iter()
+            .map(|item| item as &dyn Value)
+            .collect::<Vec<_>>();
+
+        if crate::rules::values_are_unique(items) {
+            return;
+        }
+
+        errors.push(field_error(target, kind, "unique", "unique", Params::new()));
+    }
+
+    #[doc(hidden)]
     pub fn __validate_alias<V: Value>(
         &self,
         errors: &mut Vec<FieldError>,

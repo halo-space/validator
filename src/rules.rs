@@ -1,5 +1,6 @@
 mod alias;
 mod choice;
+mod collection;
 mod compare;
 mod format;
 mod network;
@@ -10,11 +11,13 @@ mod string;
 use crate::core::{Error, Rules};
 pub(crate) use alias::load as load_aliases;
 use choice::{NoneOf, OneOf};
+use collection::Unique;
+pub(crate) use collection::values_are_unique;
 use compare::{Eq, Gt, Gte, Lt, Lte, Ne};
 use format::{Cmyk, DateTime, Email, HexColor, Hsl, Hsla, Json, RegexRule, Rgb, Rgba};
 use network::{
-    Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HttpUrl, HttpsUrl, Ip, Ipv4, Ipv6, Port, Uri, UrlRule,
-    Uuid, Uuid3, Uuid4, Uuid5,
+    Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnameRfc1123, HttpUrl, HttpsUrl, Ip, Ipv4, Ipv6, Port,
+    Ulid, Uri, UrlRule, Uuid, Uuid3, Uuid4, Uuid5,
 };
 use required::Required;
 use size::{Length, Max, Min, Range};
@@ -47,12 +50,14 @@ pub(crate) fn load_rules(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("cidrv4", Cidrv4)?;
     rules.insert("cidrv6", Cidrv6)?;
     rules.insert("hostname", Hostname)?;
+    rules.insert("hostname_rfc1123", HostnameRfc1123)?;
     rules.insert("fqdn", Fqdn)?;
     rules.insert("port", Port)?;
     rules.insert("uuid", Uuid)?;
     rules.insert("uuid3", Uuid3)?;
     rules.insert("uuid4", Uuid4)?;
     rules.insert("uuid5", Uuid5)?;
+    rules.insert("ulid", Ulid)?;
     rules.insert("json", Json)?;
     rules.insert("datetime", DateTime)?;
     rules.insert("regex", RegexRule)?;
@@ -64,6 +69,7 @@ pub(crate) fn load_rules(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("cmyk", Cmyk)?;
     rules.insert("oneof", OneOf)?;
     rules.insert("noneof", NoneOf)?;
+    rules.insert("unique", Unique)?;
     rules.insert("contains", Contains)?;
     rules.insert("containsany", ContainsAny)?;
     rules.insert("startswith", StartsWith)?;

@@ -10,7 +10,7 @@
 - 默认入口是 `Validator::new().validate(&value)?`。
 - 单值校验入口是 `Validator::new().value(&value, "rules")?`。
 - 支持 `Validator::new().alias(...)? .rule(...)?` 这种链式运行时配置。
-- 内置必填、长度/范围、比较、字符串、格式、颜色、URL、枚举选择等常用规则。
+- 内置必填、长度/范围、比较、字符串、格式、网络标识、枚举选择、颜色等常用规则。
 - 支持显式嵌套结构体校验：`#[validate(nested)]`。
 - 支持 Vec、数组、切片引用和 map key/value 的集合校验：`dive(...)`。
 - 支持跨字段校验：`eq_field`、`ne_field`、`gt_field`、`gte_field`、`lt_field`、`lte_field`。
@@ -76,6 +76,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let email = "alice@example.com";
 
     Validator::new().value(&email, "required,email")?;
+    Validator::new().value(&"192.168.0.0/24", "cidr")?;
+    Validator::new().value(&"1.foo.com", "hostname_rfc1123")?;
+    Validator::new().value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4")?;
+    Validator::new().value(&"01BX5ZZKBKACTAV9WEVGEMMVRZ", "ulid")?;
+    Validator::new().value(&r#"{"ok":true}"#, "json")?;
+    Validator::new().value(&"2026-07-08T12:30:00+08:00", "datetime")?;
     Ok(())
 }
 ```
@@ -113,7 +119,7 @@ use validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Form {
-    #[validate(required, gt = 0, dive(required))]
+    #[validate(required, gt = 0, unique, dive(required))]
     tags: Vec<String>,
 }
 ```
@@ -126,12 +132,13 @@ use validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Labels {
-    #[validate(dive(keys(max = 10), values(required)))]
+    #[validate(unique, dive(keys(max = 10), values(required)))]
     labels: HashMap<String, String>,
 }
 ```
 
 Map entry 错误会带上 key，比如 `Labels.labels["source"]`。
+对于 Map，`unique` 校验的是 values 是否重复，因为 keys 天然唯一。
 
 ## 跨字段校验
 
@@ -348,10 +355,11 @@ fn main() {
 - Size: `length`, `min`, `max`, `range`
 - Compare: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`
 - Cross-field: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`，用于 derive 和 Schema 校验
+- Collection: `unique`
 - Choice: `oneof`, `noneof`
 - String: `contains`, `containsany`, `startswith`, `endswith`, `ascii`, `alpha`, `alphanum`, `numeric`, `number`, `lowercase`, `uppercase`, `boolean`
 - Format: `email`, `regex`, `json`, `datetime`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`, `cmyk`
-- Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`, `cidr`, `cidrv4`, `cidrv6`, `hostname`, `fqdn`, `port`, `uuid`, `uuid3`, `uuid4`, `uuid5`
+- Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`, `cidr`, `cidrv4`, `cidrv6`, `hostname`, `hostname_rfc1123`, `fqdn`, `port`, `uuid`, `uuid3`, `uuid4`, `uuid5`, `ulid`
 - Alias: `iscolor`
 
 比较和尺寸类规则会根据字段类型分派：

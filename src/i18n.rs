@@ -294,17 +294,20 @@ fn zh_cn_locale() -> Locale {
         .rule("cidrv4", "{field}必须是有效的IPv4 CIDR")
         .rule("cidrv6", "{field}必须是有效的IPv6 CIDR")
         .rule("hostname", "{field}必须是有效的主机名")
+        .rule("hostname_rfc1123", "{field}必须是有效的RFC1123主机名")
         .rule("fqdn", "{field}必须是有效的完整域名")
         .rule("port", "{field}必须是有效端口")
         .rule("uuid", "{field}必须是有效的小写UUID")
         .rule("uuid3", "{field}必须是有效的小写UUID v3")
         .rule("uuid4", "{field}必须是有效的小写UUID v4")
         .rule("uuid5", "{field}必须是有效的小写UUID v5")
+        .rule("ulid", "{field}必须是有效的ULID")
         .rule("json", "{field}必须是有效的JSON")
         .rule("datetime", "{field}必须是有效的日期时间")
         .rule("regex", "{field}格式不正确")
         .rule("oneof", "{field}必须是以下值之一：{values}")
         .rule("noneof", "{field}不能是以下值之一：{values}")
+        .rule("unique", "{field}不能包含重复值")
         .rule("contains", "{field}必须包含{value}")
         .rule("containsany", "{field}必须包含以下任一字符：{value}")
         .rule("startswith", "{field}必须以{value}开头")
@@ -363,6 +366,10 @@ fn en_locale() -> Locale {
         .rule("cidrv6", "{field} must be a valid IPv6 CIDR block")
         .rule("hostname", "{field} must be a valid hostname")
         .rule(
+            "hostname_rfc1123",
+            "{field} must be a valid RFC1123 hostname",
+        )
+        .rule(
             "fqdn",
             "{field} must be a valid fully qualified domain name",
         )
@@ -371,11 +378,13 @@ fn en_locale() -> Locale {
         .rule("uuid3", "{field} must be a valid lowercase UUID v3")
         .rule("uuid4", "{field} must be a valid lowercase UUID v4")
         .rule("uuid5", "{field} must be a valid lowercase UUID v5")
+        .rule("ulid", "{field} must be a valid ULID")
         .rule("json", "{field} must be valid JSON")
         .rule("datetime", "{field} must be a valid datetime")
         .rule("regex", "{field} format is invalid")
         .rule("oneof", "{field} must be one of: {values}")
         .rule("noneof", "{field} must not be one of: {values}")
+        .rule("unique", "{field} must contain unique values")
         .rule("contains", "{field} must contain {value}")
         .rule("containsany", "{field} must contain any of: {value}")
         .rule("startswith", "{field} must start with {value}")

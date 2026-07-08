@@ -1017,12 +1017,18 @@ fn direct_value_uses_new_common_rules() {
     Validator::new()
         .value(&"api.example.com", "hostname,fqdn")
         .unwrap();
+    Validator::new()
+        .value(&"1.foo.com", "hostname_rfc1123")
+        .unwrap();
     Validator::new().value(&"443", "port").unwrap();
     Validator::new()
         .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid")
         .unwrap();
     Validator::new()
         .value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4")
+        .unwrap();
+    Validator::new()
+        .value(&"01bx5zzkbkactav9wevgemmvrz", "ulid")
         .unwrap();
     Validator::new().value(&r#"{"ok":true}"#, "json").unwrap();
     Validator::new()
@@ -1089,6 +1095,10 @@ fields:
     type: string
     rules:
       - fqdn
+  rfc_host:
+    type: string
+    rules:
+      - hostname_rfc1123
   port:
     type: string
     rules:
@@ -1101,6 +1111,14 @@ fields:
     type: string
     rules:
       - uuid4
+  public_id:
+    type: string
+    rules:
+      - ulid
+  labels:
+    type: object
+    rules:
+      - unique
   metadata:
     type: string
     rules:
@@ -1123,6 +1141,10 @@ fields:
     type: uint
     rules:
       - oneof(1,2,3)
+  tags:
+    type: array
+    rules:
+      - unique
 "#,
     )?;
     let data = json!({
@@ -1132,14 +1154,18 @@ fields:
         "request_ip": "not-ip",
         "network": "10.0.0.0/33",
         "host": "api",
+        "rfc_host": "foo.bar:80",
         "port": "0",
         "id": "A987FBC9-4BED-3078-CF07-9141BA07C9F3",
         "request_id": "a987fbc9-4bed-3078-cf07-9141ba07c9f3",
+        "public_id": "01BX5ZZKBKACTAV9WEVGEMMVRU",
+        "labels": {"a": "rust", "b": "rust"},
         "metadata": "{not-json}",
         "created_at": "2026-02-30T12:00:00Z",
         "code": "你好",
         "username": "root",
-        "priority": 4
+        "priority": 4,
+        "tags": ["rust", "rust"]
     });
     let fields = fields(
         Validator::with_schema(schema)
@@ -1160,21 +1186,25 @@ fields:
             ("created_at", "datetime"),
             ("host", "fqdn"),
             ("id", "uuid"),
+            ("labels", "unique"),
             ("metadata", "json"),
             ("network", "cidr"),
             ("port", "port"),
             ("priority", "oneof"),
+            ("public_id", "ulid"),
             ("request_id", "uuid4"),
             ("request_ip", "ip"),
+            ("rfc_host", "hostname_rfc1123"),
             ("source_url", "https_url"),
             ("state", "eq"),
+            ("tags", "unique"),
             ("username", "noneof"),
         ]
     );
     assert_eq!(fields[2].params().get("value"), Some("-"));
-    assert_eq!(fields[9].params().get("values"), Some("1,2,3"));
-    assert_eq!(fields[13].params().get("value"), Some("published"));
-    assert_eq!(fields[14].params().get("values"), Some("root,admin"));
+    assert_eq!(fields[10].params().get("values"), Some("1,2,3"));
+    assert_eq!(fields[16].params().get("value"), Some("published"));
+    assert_eq!(fields[18].params().get("values"), Some("root,admin"));
 
     Ok(())
 }

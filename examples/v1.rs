@@ -17,10 +17,10 @@ struct User {
     #[validate(nested)]
     profile: Profile,
 
-    #[validate(dive(required))]
+    #[validate(unique, dive(required))]
     tags: Vec<String>,
 
-    #[validate(dive(keys(max = 10), values(required)))]
+    #[validate(unique, dive(keys(max = 10), values(required)))]
     labels: HashMap<String, String>,
 
     #[validate(required, email)]
@@ -37,6 +37,30 @@ struct RuleShowcase {
 
     #[validate(noneof(-1, 0))]
     score: i32,
+
+    #[validate(cidr)]
+    network: String,
+
+    #[validate(fqdn)]
+    host: String,
+
+    #[validate(hostname_rfc1123)]
+    rfc_host: String,
+
+    #[validate(port)]
+    port: String,
+
+    #[validate(uuid4)]
+    request_id: String,
+
+    #[validate(ulid)]
+    public_id: String,
+
+    #[validate(json)]
+    metadata: String,
+
+    #[validate(datetime)]
+    created_at: String,
 }
 
 #[derive(Debug, Validate)]
@@ -136,6 +160,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         username: "alice-dev".to_owned(),
         priority: 2,
         score: 10,
+        network: "192.168.0.0/24".to_owned(),
+        host: "api.example.com".to_owned(),
+        rfc_host: "1.foo.com".to_owned(),
+        port: "443".to_owned(),
+        request_id: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+        public_id: "01BX5ZZKBKACTAV9WEVGEMMVRZ".to_owned(),
+        metadata: r#"{"ok":true}"#.to_owned(),
+        created_at: "2026-07-08T12:30:00+08:00".to_owned(),
     };
     validator.validate(&showcase)?;
     validator.value(&4_u8, "noneof(1,2,3)")?;

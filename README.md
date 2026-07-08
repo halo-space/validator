@@ -12,8 +12,8 @@ The current implementation is centered on code-level validation and also support
 - `Validator::new().validate(&value)?` as the default entry point.
 - `Validator::new().value(&value, "rules")?` for direct single-value validation.
 - Chainable runtime configuration with `Validator::new().alias(...)? .rule(...)?`.
-- Built-in rules for required values, size checks, comparisons, strings, formats,
-  choices, colors, and URLs.
+- Built-in rules for required values, size checks, comparisons, strings,
+  formats, network identifiers, choices, and colors.
 - Explicit nested struct validation with `#[validate(nested)]`.
 - Collection validation with `dive(...)` for Vec, arrays, slices, and map
   key/value pairs.
@@ -102,6 +102,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let email = "alice@example.com";
 
     Validator::new().value(&email, "required,email")?;
+    Validator::new().value(&"192.168.0.0/24", "cidr")?;
+    Validator::new().value(&"1.foo.com", "hostname_rfc1123")?;
+    Validator::new().value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4")?;
+    Validator::new().value(&"01BX5ZZKBKACTAV9WEVGEMMVRZ", "ulid")?;
+    Validator::new().value(&r#"{"ok":true}"#, "json")?;
+    Validator::new().value(&"2026-07-08T12:30:00+08:00", "datetime")?;
     Ok(())
 }
 ```
@@ -141,7 +147,7 @@ use validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Form {
-    #[validate(required, gt = 0, dive(required))]
+    #[validate(required, gt = 0, unique, dive(required))]
     tags: Vec<String>,
 }
 ```
@@ -155,12 +161,13 @@ use validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Labels {
-    #[validate(dive(keys(max = 10), values(required)))]
+    #[validate(unique, dive(keys(max = 10), values(required)))]
     labels: HashMap<String, String>,
 }
 ```
 
 Map entry errors include the key, such as `Labels.labels["source"]`.
+For maps, `unique` checks map values because map keys are already unique.
 
 ## Cross-Field Validation
 
@@ -386,6 +393,7 @@ Current built-in rules:
 - Compare: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`
 - Cross-field: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`,
   `lte_field` for derive and Schema validation
+- Collection: `unique`
 - Choice: `oneof`, `noneof`
 - String: `contains`, `containsany`, `startswith`, `endswith`, `ascii`,
   `alpha`, `alphanum`, `numeric`, `number`, `lowercase`, `uppercase`,
@@ -393,8 +401,8 @@ Current built-in rules:
 - Format: `email`, `regex`, `json`, `datetime`, `hexcolor`, `rgb`, `rgba`,
   `hsl`, `hsla`, `cmyk`
 - Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`,
-  `cidr`, `cidrv4`, `cidrv6`, `hostname`, `fqdn`, `port`, `uuid`, `uuid3`,
-  `uuid4`, `uuid5`
+  `cidr`, `cidrv4`, `cidrv6`, `hostname`, `hostname_rfc1123`, `fqdn`,
+  `port`, `uuid`, `uuid3`, `uuid4`, `uuid5`, `ulid`
 - Alias: `iscolor`
 
 Comparison and size rules dispatch by field type:

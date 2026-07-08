@@ -67,6 +67,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
         let is_option = is_option_type(&field.ty);
         let item_is_option = collection_item_type(&field.ty).is_some_and(is_option_type);
         let map_value_is_option = map_value_type(&field.ty).is_some_and(is_option_type);
+        let collection_kind = collection_kind(&field.ty);
         let Some(field_ident) = field.ident.as_ref() else {
             continue;
         };
@@ -89,6 +90,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             is_option,
             Some(item_is_option),
             Some(map_value_is_option),
+            collection_kind,
         )?;
 
         if !field_checks.is_empty() {
@@ -188,11 +190,33 @@ enum DiveAttr {
     },
 }
 
+#[derive(Clone, Debug)]
+enum UniqueCollection {
+    Items(proc_macro2::TokenStream),
+    MapValues,
+}
+
+impl UniqueCollection {
+    fn kind(&self) -> proc_macro2::TokenStream {
+        match self {
+            Self::Items(kind) => kind.clone(),
+            Self::MapValues => quote!(::validator::Kind::Map),
+        }
+    }
+
+    fn values(&self, value: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        match self {
+            Self::Items(_) => quote!((#value).iter()),
+            Self::MapValues => quote!((#value).values()),
+        }
+    }
+}
+
 fn exposes_value_access(rules: &[RuleAttr]) -> bool {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
 
     rules.iter().any(|rule| match rule {
-        RuleAttr::Rule { name, .. } => !(has_nested && name == "required"),
+        RuleAttr::Rule { name, .. } => !(has_nested && name == "required") && name != "unique",
         RuleAttr::Alias(_) => true,
         RuleAttr::CompareField { .. } => true,
         RuleAttr::OmitEmpty => !has_nested,
@@ -274,6 +298,7 @@ fn build_checks(
     is_option: bool,
     dive_item_is_option: Option<bool>,
     map_value_is_option: Option<bool>,
+    collection_kind: Option<UniqueCollection>,
 ) -> syn::Result<Vec<proc_macro2::TokenStream>> {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
     let is_nested_option = has_nested && is_option;
@@ -282,6 +307,22 @@ fn build_checks(
     for rule in rules {
         match rule {
             RuleAttr::Rule { name, params } => {
+                if name == "unique" && let Some(collection) = collection_kind.clone() {
+                    let kind = collection.kind();
+                    let values = collection.values(&value);
+                    checks.push(quote! {
+                        if !skip_rest {
+                            validator.__validate_unique_items(
+                                &mut errors,
+                                #target,
+                                #kind,
+                                #values,
+                            );
+                        }
+                    });
+                    continue;
+                }
+
                 if has_nested && name == "required" {
                     if is_option {
                         checks.push(quote! {
@@ -394,6 +435,7 @@ fn build_checks(
                         item_is_option,
                         None,
                         None,
+                        None,
                     )?;
 
                     checks.push(quote! {
@@ -415,12 +457,14 @@ fn build_checks(
                         false,
                         None,
                         None,
+                        None,
                     )?;
                     let value_checks = build_checks(
                         values,
                         quote!(value),
                         quote!(entry_target.clone()),
                         value_is_option,
+                        None,
                         None,
                         None,
                     )?;
@@ -695,6 +739,28 @@ fn collection_item_type(ty: &Type) -> Option<&Type> {
     }
 }
 
+fn collection_kind(ty: &Type) -> Option<UniqueCollection> {
+    match ty {
+        Type::Path(path) => path.path.segments.last().and_then(|segment| {
+            if segment.ident == "Vec" {
+                return Some(UniqueCollection::Items(quote!(::validator::Kind::Vec)));
+            }
+
+            if segment.ident == "HashMap" || segment.ident == "BTreeMap" {
+                return Some(UniqueCollection::MapValues);
+            }
+
+            None
+        }),
+        Type::Array(_) => Some(UniqueCollection::Items(quote!(::validator::Kind::Array))),
+        Type::Reference(TypeReference { elem, .. }) => match elem.as_ref() {
+            Type::Slice(_) => Some(UniqueCollection::Items(quote!(::validator::Kind::Slice))),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 fn map_value_type(ty: &Type) -> Option<&Type> {
     let Type::Path(path) = ty else {
         return None;
@@ -733,12 +799,14 @@ const MARKER_RULES: &[&str] = &[
     "cidrv4",
     "cidrv6",
     "hostname",
+    "hostname_rfc1123",
     "fqdn",
     "port",
     "uuid",
     "uuid3",
     "uuid4",
     "uuid5",
+    "ulid",
     "json",
     "datetime",
     "ascii",
@@ -749,6 +817,7 @@ const MARKER_RULES: &[&str] = &[
     "lowercase",
     "uppercase",
     "boolean",
+    "unique",
     "hexcolor",
     "rgb",
     "rgba",
