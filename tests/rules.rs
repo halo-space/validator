@@ -109,6 +109,9 @@ struct Formats {
     #[validate(url)]
     source_url: String,
 
+    #[validate(uri)]
+    urn: String,
+
     #[validate(regex(pattern = "^[a-z0-9-]+$"))]
     slug: String,
 }
@@ -118,6 +121,7 @@ fn email_url_regex_pass() {
     let value = Formats {
         email: "team@example.com".to_owned(),
         source_url: "https://example.com/posts/1".to_owned(),
+        urn: "urn:isbn:0451450523".to_owned(),
         slug: "hello-rust-2024".to_owned(),
     };
 
@@ -129,6 +133,7 @@ fn email_url_regex_fail() {
     let value = Formats {
         email: "not-email".to_owned(),
         source_url: "example.com/posts/1".to_owned(),
+        urn: "not uri".to_owned(),
         slug: "Hello Rust".to_owned(),
     };
 
@@ -138,11 +143,124 @@ fn email_url_regex_fail() {
         .into_fields()
         .unwrap();
 
-    assert_eq!(fields.len(), 3);
+    assert_eq!(fields.len(), 4);
     assert_eq!(fields[0].rule(), "email");
     assert_eq!(fields[1].rule(), "url");
-    assert_eq!(fields[2].rule(), "regex");
-    assert_eq!(fields[2].params().get("pattern"), Some("^[a-z0-9-]+$"));
+    assert_eq!(fields[2].rule(), "uri");
+    assert_eq!(fields[3].rule(), "regex");
+    assert_eq!(fields[3].params().get("pattern"), Some("^[a-z0-9-]+$"));
+}
+
+#[derive(Debug, Validate)]
+struct NetworkFormats {
+    #[validate(cidr)]
+    cidr: String,
+
+    #[validate(cidrv4)]
+    cidrv4: String,
+
+    #[validate(cidrv6)]
+    cidrv6: String,
+
+    #[validate(hostname)]
+    hostname: String,
+
+    #[validate(fqdn)]
+    fqdn: String,
+
+    #[validate(port)]
+    port: String,
+
+    #[validate(uuid3)]
+    uuid3: String,
+
+    #[validate(uuid4)]
+    uuid4: String,
+
+    #[validate(uuid5)]
+    uuid5: String,
+}
+
+#[test]
+fn expanded_network_rules_pass() {
+    let value = NetworkFormats {
+        cidr: "192.168.0.0/24".to_owned(),
+        cidrv4: "10.0.0.0/8".to_owned(),
+        cidrv6: "2001:db8::/32".to_owned(),
+        hostname: "api".to_owned(),
+        fqdn: "api.example.com".to_owned(),
+        port: "443".to_owned(),
+        uuid3: "a987fbc9-4bed-3078-cf07-9141ba07c9f3".to_owned(),
+        uuid4: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+        uuid5: "987fbc97-4bed-5078-af07-9141ba07c9f3".to_owned(),
+    };
+
+    Validator::new().validate(&value).unwrap();
+}
+
+#[test]
+fn expanded_network_rules_fail() {
+    let value = NetworkFormats {
+        cidr: "192.168.0.0/33".to_owned(),
+        cidrv4: "2001:db8::/32".to_owned(),
+        cidrv6: "10.0.0.0/8".to_owned(),
+        hostname: "-api".to_owned(),
+        fqdn: "api".to_owned(),
+        port: "0".to_owned(),
+        uuid3: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+        uuid4: "a987fbc9-4bed-3078-cf07-9141ba07c9f3".to_owned(),
+        uuid5: "550e8400-e29b-41d4-a716-446655440000".to_owned(),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(
+        rules,
+        vec![
+            "cidr", "cidrv4", "cidrv6", "hostname", "fqdn", "port", "uuid3", "uuid4", "uuid5",
+        ]
+    );
+}
+
+#[derive(Debug, Validate)]
+struct DocumentFormats {
+    #[validate(json)]
+    json: String,
+
+    #[validate(datetime)]
+    datetime: String,
+}
+
+#[test]
+fn json_datetime_rules_pass() {
+    let value = DocumentFormats {
+        json: r#"{"ok":true}"#.to_owned(),
+        datetime: "2026-07-08T12:30:00Z".to_owned(),
+    };
+
+    Validator::new().validate(&value).unwrap();
+}
+
+#[test]
+fn json_datetime_rules_fail() {
+    let value = DocumentFormats {
+        json: "{not-json}".to_owned(),
+        datetime: "2026-13-08T12:30:00Z".to_owned(),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(rules, vec!["json", "datetime"]);
 }
 
 #[derive(Debug, Validate)]

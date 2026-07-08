@@ -350,8 +350,8 @@ fn main() {
 - Cross-field: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`，用于 derive 和 Schema 校验
 - Choice: `oneof`, `noneof`
 - String: `contains`, `containsany`, `startswith`, `endswith`, `ascii`, `alpha`, `alphanum`, `numeric`, `number`, `lowercase`, `uppercase`, `boolean`
-- Format: `email`, `regex`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`, `cmyk`
-- Network: `url`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`, `uuid`
+- Format: `email`, `regex`, `json`, `datetime`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`, `cmyk`
+- Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`, `cidr`, `cidrv4`, `cidrv6`, `hostname`, `fqdn`, `port`, `uuid`, `uuid3`, `uuid4`, `uuid5`
 - Alias: `iscolor`
 
 比较和尺寸类规则会根据字段类型分派：

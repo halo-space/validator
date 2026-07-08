@@ -1004,9 +1004,29 @@ fn direct_value_uses_new_common_rules() {
     Validator::new()
         .value(&"https://example.com", "required,http_url,https_url")
         .unwrap();
+    Validator::new()
+        .value(&"urn:isbn:0451450523", "uri")
+        .unwrap();
     Validator::new().value(&"127.0.0.1", "ip,ipv4").unwrap();
     Validator::new()
+        .value(&"192.168.0.0/24", "cidr,cidrv4")
+        .unwrap();
+    Validator::new()
+        .value(&"2001:db8::/32", "cidr,cidrv6")
+        .unwrap();
+    Validator::new()
+        .value(&"api.example.com", "hostname,fqdn")
+        .unwrap();
+    Validator::new().value(&"443", "port").unwrap();
+    Validator::new()
         .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid")
+        .unwrap();
+    Validator::new()
+        .value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4")
+        .unwrap();
+    Validator::new().value(&r#"{"ok":true}"#, "json").unwrap();
+    Validator::new()
+        .value(&"2026-07-08T12:30:00+08:00", "datetime")
         .unwrap();
     Validator::new()
         .value(&42_u32, "eq(value=42),ne(value=0)")
@@ -1053,14 +1073,42 @@ fields:
     type: string
     rules:
       - https_url
+  canonical_uri:
+    type: string
+    rules:
+      - uri
   request_ip:
     type: string
     rules:
       - ip
+  network:
+    type: string
+    rules:
+      - cidr
+  host:
+    type: string
+    rules:
+      - fqdn
+  port:
+    type: string
+    rules:
+      - port
   id:
     type: string
     rules:
       - uuid
+  request_id:
+    type: string
+    rules:
+      - uuid4
+  metadata:
+    type: string
+    rules:
+      - json
+  created_at:
+    type: string
+    rules:
+      - datetime
   code:
     type: string
     rules:
@@ -1080,8 +1128,15 @@ fields:
     let data = json!({
         "state": "draft",
         "source_url": "http://example.com",
+        "canonical_uri": "not uri",
         "request_ip": "not-ip",
+        "network": "10.0.0.0/33",
+        "host": "api",
+        "port": "0",
         "id": "A987FBC9-4BED-3078-CF07-9141BA07C9F3",
+        "request_id": "a987fbc9-4bed-3078-cf07-9141ba07c9f3",
+        "metadata": "{not-json}",
+        "created_at": "2026-02-30T12:00:00Z",
         "code": "你好",
         "username": "root",
         "priority": 4
@@ -1099,20 +1154,27 @@ fields:
     assert_eq!(
         failures,
         vec![
+            ("canonical_uri", "uri"),
             ("code", "ascii"),
             ("code", "containsany"),
+            ("created_at", "datetime"),
+            ("host", "fqdn"),
             ("id", "uuid"),
+            ("metadata", "json"),
+            ("network", "cidr"),
+            ("port", "port"),
             ("priority", "oneof"),
+            ("request_id", "uuid4"),
             ("request_ip", "ip"),
             ("source_url", "https_url"),
             ("state", "eq"),
             ("username", "noneof"),
         ]
     );
-    assert_eq!(fields[1].params().get("value"), Some("-"));
-    assert_eq!(fields[3].params().get("values"), Some("1,2,3"));
-    assert_eq!(fields[6].params().get("value"), Some("published"));
-    assert_eq!(fields[7].params().get("values"), Some("root,admin"));
+    assert_eq!(fields[2].params().get("value"), Some("-"));
+    assert_eq!(fields[9].params().get("values"), Some("1,2,3"));
+    assert_eq!(fields[13].params().get("value"), Some("published"));
+    assert_eq!(fields[14].params().get("values"), Some("root,admin"));
 
     Ok(())
 }

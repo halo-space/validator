@@ -173,6 +173,9 @@ struct NewRuleMessages {
     #[validate(https_url)]
     source_url: String,
 
+    #[validate(cidr)]
+    network: String,
+
     #[validate(ascii)]
     code: String,
 
@@ -188,6 +191,7 @@ fn i18n_renders_new_rule_messages() {
     let value = NewRuleMessages {
         state: "draft".to_owned(),
         source_url: "http://example.com".to_owned(),
+        network: "10.0.0.0/33".to_owned(),
         code: "你好".to_owned(),
         password: "hello".to_owned(),
         username: "root".to_owned(),
@@ -198,9 +202,10 @@ fn i18n_renders_new_rule_messages() {
 
     assert_eq!(messages[0].text, "state must be equal to published");
     assert_eq!(messages[1].text, "source_url must be a valid HTTPS URL");
-    assert_eq!(messages[2].text, "code must contain only ASCII characters");
-    assert_eq!(messages[3].text, "password must contain any of: !@#?");
-    assert_eq!(messages[4].text, "username must not be one of: root,admin");
+    assert_eq!(messages[2].text, "network must be a valid CIDR block");
+    assert_eq!(messages[3].text, "code must contain only ASCII characters");
+    assert_eq!(messages[4].text, "password must contain any of: !@#?");
+    assert_eq!(messages[5].text, "username must not be one of: root,admin");
 }
 
 #[derive(Debug, Validate)]

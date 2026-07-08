@@ -390,8 +390,11 @@ Current built-in rules:
 - String: `contains`, `containsany`, `startswith`, `endswith`, `ascii`,
   `alpha`, `alphanum`, `numeric`, `number`, `lowercase`, `uppercase`,
   `boolean`
-- Format: `email`, `regex`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`, `cmyk`
-- Network: `url`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`, `uuid`
+- Format: `email`, `regex`, `json`, `datetime`, `hexcolor`, `rgb`, `rgba`,
+  `hsl`, `hsla`, `cmyk`
+- Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`,
+  `cidr`, `cidrv4`, `cidrv6`, `hostname`, `fqdn`, `port`, `uuid`, `uuid3`,
+  `uuid4`, `uuid5`
 - Alias: `iscolor`
 
 Comparison and size rules dispatch by field type:

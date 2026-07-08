@@ -11,8 +11,11 @@ use crate::core::{Error, Rules};
 pub(crate) use alias::load as load_aliases;
 use choice::{NoneOf, OneOf};
 use compare::{Eq, Gt, Gte, Lt, Lte, Ne};
-use format::{Cmyk, Email, HexColor, Hsl, Hsla, RegexRule, Rgb, Rgba};
-use network::{HttpUrl, HttpsUrl, Ip, Ipv4, Ipv6, UrlRule, Uuid};
+use format::{Cmyk, DateTime, Email, HexColor, Hsl, Hsla, Json, RegexRule, Rgb, Rgba};
+use network::{
+    Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HttpUrl, HttpsUrl, Ip, Ipv4, Ipv6, Port, Uri, UrlRule,
+    Uuid, Uuid3, Uuid4, Uuid5,
+};
 use required::Required;
 use size::{Length, Max, Min, Range};
 use string::{
@@ -34,12 +37,24 @@ pub(crate) fn load_rules(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("range", Range)?;
     rules.insert("email", Email)?;
     rules.insert("url", UrlRule)?;
+    rules.insert("uri", Uri)?;
     rules.insert("http_url", HttpUrl)?;
     rules.insert("https_url", HttpsUrl)?;
     rules.insert("ip", Ip)?;
     rules.insert("ipv4", Ipv4)?;
     rules.insert("ipv6", Ipv6)?;
+    rules.insert("cidr", Cidr)?;
+    rules.insert("cidrv4", Cidrv4)?;
+    rules.insert("cidrv6", Cidrv6)?;
+    rules.insert("hostname", Hostname)?;
+    rules.insert("fqdn", Fqdn)?;
+    rules.insert("port", Port)?;
     rules.insert("uuid", Uuid)?;
+    rules.insert("uuid3", Uuid3)?;
+    rules.insert("uuid4", Uuid4)?;
+    rules.insert("uuid5", Uuid5)?;
+    rules.insert("json", Json)?;
+    rules.insert("datetime", DateTime)?;
     rules.insert("regex", RegexRule)?;
     rules.insert("hexcolor", HexColor)?;
     rules.insert("rgb", Rgb)?;
