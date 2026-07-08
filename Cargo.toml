@@ -12,7 +12,11 @@ categories = ["data-structures", "parsing"]
 
 [dependencies]
 regex = "1"
+serde = "1"
 serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "2"
 validator-derive = { version = "0.1.0", path = "derive" }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }

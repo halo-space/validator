@@ -96,6 +96,8 @@ pub enum Error {
     UnknownRule { name: String },
     #[error("unknown alias '{name}'")]
     UnknownAlias { name: String },
+    #[error("invalid data: {reason}")]
+    InvalidData { reason: String },
     #[error("invalid schema: {reason}")]
     InvalidSchema { reason: String },
     #[error("schema is required for validate_map")]

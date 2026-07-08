@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use serde::Serialize;
 use serde_json::json;
 use validator::prelude::*;
 
@@ -1031,6 +1032,212 @@ fields:
 fn validate_map_without_schema_returns_error() {
     let error = Validator::new()
         .validate_map(&json!({ "title": "Rust" }))
+        .unwrap_err();
+
+    assert!(matches!(error, validator::Error::MissingSchema));
+}
+
+#[derive(Serialize)]
+struct SerdeUser {
+    #[serde(rename = "user_name")]
+    name: String,
+    email: String,
+}
+
+#[test]
+fn validate_serde_validates_serializable_struct() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  user_name:
+    type: string
+    rules:
+      - required
+      - length:
+          min: 3
+  email:
+    type: string
+    rules:
+      - email
+"#,
+    )?;
+    let user = SerdeUser {
+        name: "alice".to_owned(),
+        email: "alice@example.com".to_owned(),
+    };
+
+    Validator::with_schema(schema).validate_serde(&user)?;
+
+    Ok(())
+}
+
+#[test]
+fn validate_serde_uses_serialized_field_names() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  user_name:
+    type: string
+    rules:
+      - length:
+          min: 3
+"#,
+    )?;
+    let user = SerdeUser {
+        name: "al".to_owned(),
+        email: "alice@example.com".to_owned(),
+    };
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_serde(&user)
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "user_name");
+    assert_eq!(fields[0].struct_namespace().as_str(), "user_name");
+    assert_eq!(fields[0].field(), "user_name");
+    assert_eq!(fields[0].struct_field(), "user_name");
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct SkippedTitle {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+}
+
+#[test]
+fn validate_serde_skipped_required_field_fails() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    rules:
+      - required
+"#,
+    )?;
+    let data = SkippedTitle { title: None };
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_serde(&data)
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "title");
+    assert_eq!(fields[0].rule(), "required");
+
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct SerdeProfile {
+    email: String,
+}
+
+#[derive(Serialize)]
+struct FlattenedUser {
+    name: String,
+    #[serde(flatten)]
+    profile: SerdeProfile,
+}
+
+#[test]
+fn validate_serde_validates_flattened_fields() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  name:
+    type: string
+    rules:
+      - required
+  email:
+    type: string
+    rules:
+      - email
+"#,
+    )?;
+    let user = FlattenedUser {
+        name: "alice".to_owned(),
+        profile: SerdeProfile {
+            email: "not-email".to_owned(),
+        },
+    };
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_serde(&user)
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "email");
+    assert_eq!(fields[0].rule(), "email");
+
+    Ok(())
+}
+
+#[test]
+fn validate_serde_non_object_root_reports_type_error() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+"#,
+    )?;
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_serde("not-object")
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "$value");
+    assert_eq!(fields[0].rule(), "type");
+    assert_eq!(fields[0].params().get("expected"), Some("object"));
+
+    Ok(())
+}
+
+struct BrokenSerde;
+
+impl serde::Serialize for BrokenSerde {
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        Err(serde::ser::Error::custom("broken serde value"))
+    }
+}
+
+#[test]
+fn validate_serde_reports_serialization_error() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+"#,
+    )?;
+    let error = Validator::with_schema(schema)
+        .validate_serde(&BrokenSerde)
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidData { reason } if reason.contains("broken serde value")
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn validate_serde_without_schema_returns_error() {
+    let error = Validator::new()
+        .validate_serde(&json!({ "title": "Rust" }))
         .unwrap_err();
 
     assert!(matches!(error, validator::Error::MissingSchema));

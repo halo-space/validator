@@ -111,6 +111,17 @@ impl Validator {
         }
     }
 
+    pub fn validate_serde<T>(&self, value: &T) -> Result<(), Error>
+    where
+        T: serde::Serialize + ?Sized,
+    {
+        let data = serde_json::to_value(value).map_err(|error| Error::InvalidData {
+            reason: error.to_string(),
+        })?;
+
+        self.validate_map(&data)
+    }
+
     fn bump_generation(&mut self) {
         self.generation = self.generation.wrapping_add(1);
         *self

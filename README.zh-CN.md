@@ -15,7 +15,7 @@
 - 支持 Vec、数组、切片引用和 map key/value 的集合校验：`dive(...)`。
 - 支持跨字段校验：`eq_field`、`ne_field`、`gt_field`、`gte_field`、`lt_field`、`lte_field`。
 - 支持结构体级校验：`#[validate(check = "...")]` 和 `validator::valid::Valid`。
-- 支持动态 Schema 校验：`Schema::from_yaml/json` 和 `Validator::with_schema(schema).validate_map(&data)`。
+- 支持动态 Schema 校验：`Schema::from_yaml/json`、`Validator::with_schema(schema).validate_map(&data)`，以及用于 `serde::Serialize` 数据的 `validate_serde(&value)`。
 - 通过 `Error`、`FieldError`、`Namespace`、`Params` 提供稳定的错误结果。
 - 支持 i18n 消息渲染：内置 `zh-CN` / `en`，并支持用户自定义 `Locale` 覆盖。
 
@@ -314,6 +314,44 @@ fields:
 ```
 
 这条路径复用同一套规则注册表、alias、`Value` 类型分派、`Error` 和 `Namespace` 模型，不是新加一套运行时引擎。
+
+如果数据已经实现了 `serde::Serialize`，可以直接使用 `validate_serde(...)`。
+Schema 字段名跟随序列化后的数据结构，包括 `serde(rename)`、`serde(rename_all)`、`serde(skip_serializing_if)` 和 `serde(flatten)`。
+
+```rust
+use serde::Serialize;
+use validator::prelude::*;
+
+#[derive(Serialize)]
+struct User {
+    #[serde(rename = "user_name")]
+    name: String,
+    email: String,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  user_name:
+    type: string
+    rules:
+      - required
+  email:
+    type: string
+    rules:
+      - email
+"#,
+    )?;
+    let user = User {
+        name: "alice".to_owned(),
+        email: "alice@example.com".to_owned(),
+    };
+
+    Validator::with_schema(schema).validate_serde(&user)?;
+    Ok(())
+}
+```
 
 ## i18n 消息渲染
 

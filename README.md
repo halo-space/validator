@@ -21,8 +21,9 @@ The current implementation is centered on code-level validation and also support
   `lt_field`, and `lte_field`.
 - Struct-level validation with `#[validate(check = "...")]` and
   `validator::valid::Valid`.
-- Dynamic Schema validation with `Schema::from_yaml/json` and
-  `Validator::with_schema(schema).validate_map(&data)`.
+- Dynamic Schema validation with `Schema::from_yaml/json`,
+  `Validator::with_schema(schema).validate_map(&data)`, and
+  `validate_serde(&value)` for `serde::Serialize` values.
 - Consistent error reporting through `Error`, `FieldError`, `Namespace`, and
   `Params`.
 - i18n message rendering with built-in `zh-CN` / `en` locales and custom
@@ -350,6 +351,46 @@ fields:
 
 This path reuses the same rule registry, aliases, `Value` dispatch, `Error`,
 and `Namespace` model as code-level validation.
+
+If the data already implements `serde::Serialize`, use `validate_serde(...)`.
+Schema field names follow the serialized data shape, including
+`serde(rename)`, `serde(rename_all)`, `serde(skip_serializing_if)`, and
+`serde(flatten)`.
+
+```rust
+use serde::Serialize;
+use validator::prelude::*;
+
+#[derive(Serialize)]
+struct User {
+    #[serde(rename = "user_name")]
+    name: String,
+    email: String,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  user_name:
+    type: string
+    rules:
+      - required
+  email:
+    type: string
+    rules:
+      - email
+"#,
+    )?;
+    let user = User {
+        name: "alice".to_owned(),
+        email: "alice@example.com".to_owned(),
+    };
+
+    Validator::with_schema(schema).validate_serde(&user)?;
+    Ok(())
+}
+```
 
 ## i18n Message Rendering
 
