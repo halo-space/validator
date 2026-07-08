@@ -371,6 +371,15 @@ fn main() {
 
 Choice 类规则会根据字段类型分派，当前支持字符串、有符号整数和无符号整数。
 
+## 当前边界
+
+这些是当前 API 有意保留的边界：
+
+- `unique` 支持整个集合和 Map values 去重，但暂不支持 `unique=field`。
+- 暂不内置 `country_code` 以及相关国家代码 alias。
+- 不内置 Web/RPC 框架集成；业务或外部 adapter 决定 locale 和响应格式。
+- 不要求用户使用 Rust 运行时反射。字段访问由 `#[derive(Validate)]` 生成，并保持在公开校验 DSL 背后。
+
 ## 错误结果
 
 所有公开校验入口都返回 `Error`。校验失败使用 `Error::Failed(Vec<FieldError>)`，配置错误使用 `UnknownRule`、`InvalidSchema` 等其他 `Error` 变体。
@@ -404,7 +413,11 @@ for field in error.fields().unwrap_or_default() {
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
+cargo package --manifest-path derive/Cargo.toml
+cargo package --list
 ```
+
+根包完整 package 校验要求目标 registry 里已经存在同版本的 `validator-derive`，因此需要先发布或提供 `validator-derive`。
 
 ## 示例
 

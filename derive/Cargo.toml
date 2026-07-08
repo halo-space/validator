@@ -2,9 +2,12 @@
 name = "validator-derive"
 version = "0.1.0"
 edition = "2024"
+description = "Derive macro implementation for the validator crate."
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/halo-space/validator"
 rust-version = "1.96.1"
+keywords = ["validation", "validator", "derive"]
+categories = ["development-tools::procedural-macro-helpers"]
 
 [lib]
 proc-macro = true

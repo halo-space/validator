@@ -414,6 +414,17 @@ Comparison and size rules dispatch by field type:
 
 Choice rules dispatch by field type for strings, signed integers, and unsigned integers.
 
+## Current Limits
+
+These are intentional limits in the current API surface:
+
+- `unique` supports whole collections and map values, but not `unique=field`.
+- `country_code` and related country aliases are not built in yet.
+- Framework integrations are not bundled; applications or adapters choose the
+  locale and response format.
+- Rust runtime reflection is not required from users. Field access is generated
+  by `#[derive(Validate)]` and kept behind the public validation DSL.
+
 ## Error Reporting
 
 All public validation entry points return `Error`. Validation failures use
@@ -449,7 +460,13 @@ Each `FieldError` exposes:
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
+cargo package --manifest-path derive/Cargo.toml
+cargo package --list
 ```
+
+Full root package verification requires `validator-derive` with the matching
+version to be available in the target registry, so publish or provide
+`validator-derive` first.
 
 ## Examples
 
