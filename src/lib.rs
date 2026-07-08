@@ -6,7 +6,9 @@ pub mod valid;
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::{Arc, RwLock};
 
 use self::core::{Aliases, FieldErrorParts, RuleGroup, Rules, parse_rule_expression};
 pub use self::core::{
@@ -32,6 +34,9 @@ pub struct Validator {
     rules: Rules,
     aliases: Aliases,
     schema: Option<Schema>,
+    generation: u64,
+    expression_cache: RwLock<BTreeMap<String, Arc<Vec<RuleGroup>>>>,
+    schema_checked_generation: RwLock<Option<u64>>,
 }
 
 impl Validator {
@@ -46,14 +51,16 @@ impl Validator {
             rules,
             aliases,
             schema: None,
+            generation: 0,
+            expression_cache: RwLock::new(BTreeMap::new()),
+            schema_checked_generation: RwLock::new(None),
         }
     }
 
     pub fn with_schema(schema: Schema) -> Self {
-        Self {
-            schema: Some(schema),
-            ..Self::new()
-        }
+        let mut validator = Self::new();
+        validator.schema = Some(schema);
+        validator
     }
 
     pub fn validate<T: Validate>(&self, value: &T) -> Result<(), Error> {
@@ -65,20 +72,22 @@ impl Validator {
         R: Rule + Send + Sync + 'static,
     {
         self.rules.insert(name, rule)?;
+        self.bump_generation();
         Ok(self)
     }
 
     pub fn alias(mut self, name: impl Into<String>, expr: impl AsRef<str>) -> Result<Self, Error> {
         self.aliases.insert(name, expr)?;
+        self.bump_generation();
         Ok(self)
     }
 
     pub fn value<V: Value>(&self, value: &V, rules: impl AsRef<str>) -> Result<(), Error> {
-        let groups = parse_rule_expression(rules.as_ref())?;
-        self.ensure_direct_value_rules(&groups)?;
+        let groups = self.cached_rule_expression(rules.as_ref())?;
+        self.ensure_direct_value_rules(groups.as_ref())?;
         let mut errors = Vec::new();
         let target = FieldTarget::value();
-        self.validate_rule_groups(&mut errors, target, value, &groups);
+        self.validate_rule_groups(&mut errors, target, value, groups.as_ref());
 
         if errors.is_empty() {
             Ok(())
@@ -90,7 +99,7 @@ impl Validator {
     pub fn validate_map(&self, value: &serde_json::Value) -> Result<(), Error> {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
 
-        schema.ensure_rules(self)?;
+        self.ensure_schema_rules(schema)?;
 
         let mut errors = Vec::new();
         schema.validate(self, &mut errors, value);
@@ -100,6 +109,56 @@ impl Validator {
         } else {
             Err(Error::failed(errors))
         }
+    }
+
+    fn bump_generation(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+        *self
+            .schema_checked_generation
+            .write()
+            .expect("schema verification cache lock must not be poisoned") = None;
+    }
+
+    fn cached_rule_expression(&self, expression: &str) -> Result<Arc<Vec<RuleGroup>>, Error> {
+        if let Some(groups) = self
+            .expression_cache
+            .read()
+            .expect("rule expression cache lock must not be poisoned")
+            .get(expression)
+            .cloned()
+        {
+            return Ok(groups);
+        }
+
+        let groups = Arc::new(parse_rule_expression(expression)?);
+        let mut cache = self
+            .expression_cache
+            .write()
+            .expect("rule expression cache lock must not be poisoned");
+        if let Some(groups) = cache.get(expression).cloned() {
+            return Ok(groups);
+        }
+
+        cache.insert(expression.to_owned(), groups.clone());
+        Ok(groups)
+    }
+
+    fn ensure_schema_rules(&self, schema: &Schema) -> Result<(), Error> {
+        let checked_generation = *self
+            .schema_checked_generation
+            .read()
+            .expect("schema verification cache lock must not be poisoned");
+        if checked_generation == Some(self.generation) {
+            return Ok(());
+        }
+
+        schema.ensure_rules(self)?;
+
+        *self
+            .schema_checked_generation
+            .write()
+            .expect("schema verification cache lock must not be poisoned") = Some(self.generation);
+        Ok(())
     }
 
     pub(crate) fn ensure_rule_groups(&self, groups: &[RuleGroup]) -> Result<(), Error> {

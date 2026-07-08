@@ -736,6 +736,19 @@ fn direct_value_reports_value_namespace() {
 }
 
 #[test]
+fn repeated_direct_value_validation_preserves_errors() {
+    let validator = Validator::new();
+    validator
+        .value(&"team@example.com", "required,email")
+        .unwrap();
+
+    let first = fields(validator.value(&"not-email", "required,email").unwrap_err());
+    let second = fields(validator.value(&"not-email", "required,email").unwrap_err());
+
+    assert_eq!(first, second);
+}
+
+#[test]
 fn direct_value_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new().value(&String::new(), "omitempty,email")?;
 
@@ -964,6 +977,30 @@ fields:
         error,
         validator::Error::UnknownRule { name } if name == "missing_rule"
     ));
+
+    Ok(())
+}
+
+#[test]
+fn repeated_schema_validation_preserves_errors() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    rules:
+      - required
+      - length:
+          min: 3
+"#,
+    )?;
+    let validator = Validator::with_schema(schema);
+    let data = json!({ "title": "rs" });
+
+    let first = fields(validator.validate_map(&data).unwrap_err());
+    let second = fields(validator.validate_map(&data).unwrap_err());
+
+    assert_eq!(first, second);
 
     Ok(())
 }

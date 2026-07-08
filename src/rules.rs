@@ -60,7 +60,7 @@ pub(crate) fn load_rules(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("ulid", Ulid)?;
     rules.insert("json", Json)?;
     rules.insert("datetime", DateTime)?;
-    rules.insert("regex", RegexRule)?;
+    rules.insert("regex", RegexRule::default())?;
     rules.insert("hexcolor", HexColor)?;
     rules.insert("rgb", Rgb)?;
     rules.insert("rgba", Rgba)?;
