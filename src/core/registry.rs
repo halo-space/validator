@@ -31,6 +31,11 @@ impl Rules {
     pub(crate) fn contains(&self, name: &str) -> bool {
         self.values.contains_key(name)
     }
+
+    #[cfg(test)]
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.values.keys().map(String::as_str)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -61,6 +66,11 @@ impl Aliases {
 
     pub(crate) fn contains(&self, name: &str) -> bool {
         self.values.contains_key(name)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.values.keys().map(String::as_str)
     }
 }
 

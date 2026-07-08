@@ -621,3 +621,51 @@ fn en_compare(ctx: &Context<'_>, label: &str) -> String {
         _ => format!("{} {label} {value}", ctx.field()),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::core::{Aliases, Rules};
+
+    use super::*;
+
+    const INTERNAL_ERROR_RULES: &[&str] = &[
+        "type",
+        "eq_field",
+        "ne_field",
+        "gt_field",
+        "gte_field",
+        "lt_field",
+        "lte_field",
+        "required_without",
+    ];
+
+    #[test]
+    fn built_in_locales_cover_default_rules_aliases_and_internal_errors() {
+        let mut rules = Rules::new();
+        crate::rules::load_rules(&mut rules).expect("default rules must load");
+        let mut aliases = Aliases::new();
+        crate::rules::load_aliases(&mut aliases).expect("default aliases must load");
+
+        let names = rules
+            .names()
+            .chain(aliases.names())
+            .chain(INTERNAL_ERROR_RULES.iter().copied())
+            .collect::<Vec<_>>();
+
+        assert_locale_covers("zh-CN", &zh_cn_locale(), &names);
+        assert_locale_covers("en", &en_locale(), &names);
+    }
+
+    fn assert_locale_covers(locale_name: &str, locale: &Locale, names: &[&str]) {
+        let missing = names
+            .iter()
+            .copied()
+            .filter(|name| !locale.rules.contains_key(*name))
+            .collect::<Vec<_>>();
+
+        assert!(
+            missing.is_empty(),
+            "{locale_name} missing i18n templates: {missing:?}"
+        );
+    }
+}
