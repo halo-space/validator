@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+use serde::Serialize;
+use serde_json::json;
 use validator::prelude::*;
 
 #[derive(Debug, Validate)]
@@ -136,6 +138,13 @@ impl Rule for Slug {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct SchemaUser {
+    #[serde(rename = "user_name")]
+    name: String,
+    email: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let validator = Validator::new()
         .alias("username", "required,length(min=3,max=20)")?
@@ -183,6 +192,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         title: String::new(),
     };
     validator.validate(&draft)?;
+
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  user_name:
+    type: string
+    rules:
+      - required
+      - length:
+          min: 3
+  email:
+    type: string
+    rules:
+      - email
+"#,
+    )?;
+    let schema_user = SchemaUser {
+        name: "alice".to_owned(),
+        email: "alice@example.com".to_owned(),
+    };
+    Validator::with_schema(schema.clone()).validate_serde(&schema_user)?;
+    Validator::with_schema(schema).validate_map(&json!({
+        "user_name": "alice",
+        "email": "alice@example.com"
+    }))?;
 
     let invalid = User {
         name: "al".to_owned(),
