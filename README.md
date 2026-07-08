@@ -37,6 +37,18 @@ application chooses the locale and passes field errors to i18n rendering.
 - Rust edition: `2024`
 - Minimum supported rustc: `1.96.1`
 
+## Git Dependency
+
+This project is currently intended to be consumed from Git, not crates.io.
+
+```toml
+[dependencies]
+validator = { git = "ssh://git@github-halo/halo-space/validator.git" }
+```
+
+Use the Git URL that is reachable from your environment. Pin `rev`, `tag`, or
+`branch` in applications that need reproducible builds.
+
 ## Design Note: Reflection
 
 Go validators can lean on language-level runtime reflection to inspect struct
@@ -523,15 +535,11 @@ cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo package --manifest-path derive/Cargo.toml --allow-dirty
-cargo publish --manifest-path derive/Cargo.toml --dry-run --allow-dirty
 cargo package --list --allow-dirty
 ```
 
-Root package verification requires `validator-derive` with the matching version
-to be available in the target registry, so publish or provide
-`validator-derive` first. The crates.io package name `validator` is already
-occupied; publishing to crates.io needs a separate package naming decision, or
-use a private registry that owns the `validator` name.
+The current distribution path is Git dependency usage. Registry publishing is
+out of scope for now.
 
 ## Examples
 
