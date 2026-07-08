@@ -7,7 +7,7 @@ mod ne;
 
 use std::cmp::Ordering;
 
-use crate::{Field, FloatKind, Kind};
+use crate::{Error, Field, FloatKind, Kind};
 
 pub(super) use eq::Eq;
 pub(super) use gt::Gt;
@@ -25,27 +25,47 @@ pub(super) enum Relation {
     Lte,
 }
 
-pub(super) fn satisfies(field: &Field<'_>, limit_name: &str, relation: Relation) -> bool {
-    field
+pub(super) fn satisfies(
+    field: &Field<'_>,
+    limit_name: &str,
+    relation: Relation,
+) -> Result<bool, Error> {
+    let limit = field
         .params()
         .get(limit_name)
-        .or_else(|| field.params().get("value"))
-        .is_some_and(|limit| value_satisfies(field, limit, relation))
+        .or_else(|| field.params().get("value"));
+
+    if field.value().kind() == Kind::Time {
+        if let Some(limit) = limit {
+            return Err(invalid_time_parameter(limit_name, limit));
+        }
+
+        return Ok(limit_name == "value" && time_satisfies_now(field, relation));
+    }
+
+    Ok(limit.is_some_and(|limit| value_satisfies(field, limit, relation)))
 }
 
-pub(super) fn equals(field: &Field<'_>) -> bool {
-    equality(field).unwrap_or(false)
+pub(super) fn equals(field: &Field<'_>) -> Result<bool, Error> {
+    equality(field, "eq").map(|value| value.unwrap_or(false))
 }
 
-pub(super) fn not_equals(field: &Field<'_>) -> bool {
-    equality(field).is_some_and(|equal| !equal)
+pub(super) fn not_equals(field: &Field<'_>) -> Result<bool, Error> {
+    equality(field, "ne").map(|value| value.is_some_and(|equal| !equal))
 }
 
-fn equality(field: &Field<'_>) -> Option<bool> {
-    field
+fn equality(field: &Field<'_>, rule: &str) -> Result<Option<bool>, Error> {
+    if field.value().kind() == Kind::Time {
+        if let Some(value) = field.params().get("value") {
+            return Err(invalid_time_parameter("value", value));
+        }
+        return Err(invalid_time_equality(rule));
+    }
+
+    Ok(field
         .params()
         .get("value")
-        .and_then(|value| value_equals(field, value))
+        .and_then(|value| value_equals(field, value)))
 }
 
 fn value_equals(field: &Field<'_>, limit: &str) -> Option<bool> {
@@ -139,6 +159,14 @@ fn value_satisfies(field: &Field<'_>, limit: &str, relation: Relation) -> bool {
     }
 }
 
+fn time_satisfies_now(field: &Field<'_>, relation: Relation) -> bool {
+    field
+        .value()
+        .time()
+        .and_then(|value| value.partial_cmp(&field.now()))
+        .is_some_and(|ordering| ordering_satisfies(ordering, relation))
+}
+
 fn signed_satisfies(value: i128, limit: i128, relation: Relation) -> bool {
     ordering_satisfies(value.cmp(&limit), relation)
 }
@@ -177,4 +205,18 @@ fn f32_limit(value: &str) -> Option<f64> {
 
 fn f64_limit(value: &str) -> Option<f64> {
     value.parse().ok()
+}
+
+fn invalid_time_parameter(name: &str, value: &str) -> Error {
+    Error::InvalidRuleExpression {
+        expression: format!("{name}={value}"),
+        reason: "SystemTime comparison does not support literal parameters; use lt/lte/gt/gte without a value or compare two fields with *_field".to_owned(),
+    }
+}
+
+fn invalid_time_equality(rule: &str) -> Error {
+    Error::InvalidRuleExpression {
+        expression: rule.to_owned(),
+        reason: "SystemTime eq/ne against the current time is unsupported; use eq_field/ne_field for time equality".to_owned(),
+    }
 }

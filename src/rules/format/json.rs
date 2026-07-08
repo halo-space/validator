@@ -6,10 +6,10 @@ use crate::{Field, Rule};
 pub struct Json;
 
 impl Rule for Json {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| serde_json::from_str::<JsonValue>(value.as_ref()).is_ok())
+            .is_some_and(|value| serde_json::from_str::<JsonValue>(value.as_ref()).is_ok()))
     }
 }

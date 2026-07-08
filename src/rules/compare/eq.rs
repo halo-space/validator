@@ -4,7 +4,7 @@ use crate::{Field, Rule};
 pub struct Eq;
 
 impl Rule for Eq {
-    fn check(&self, field: &Field<'_>) -> bool {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         super::equals(field)
     }
 }

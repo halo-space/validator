@@ -4,11 +4,11 @@ use crate::{Field, Rule};
 pub struct HostnameRfc1123;
 
 impl Rule for HostnameRfc1123 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_hostname_rfc1123(value.as_ref()))
+            .is_some_and(|value| is_hostname_rfc1123(value.as_ref())))
     }
 }
 

@@ -8,11 +8,11 @@ use crate::{Field, Rule};
 pub struct HexColor;
 
 impl Rule for HexColor {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| hexcolor_regex().is_match(value.as_ref()))
+            .is_some_and(|value| hexcolor_regex().is_match(value.as_ref())))
     }
 }
 

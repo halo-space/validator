@@ -4,7 +4,7 @@ use crate::{Field, Rule};
 pub struct Max;
 
 impl Rule for Max {
-    fn check(&self, field: &Field<'_>) -> bool {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         super::satisfies(field, "max", super::Relation::Lte)
     }
 }

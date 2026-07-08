@@ -4,11 +4,11 @@ use crate::{Field, Rule};
 pub struct HttpUrl;
 
 impl Rule for HttpUrl {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_http_url(value.as_ref()))
+            .is_some_and(|value| is_http_url(value.as_ref())))
     }
 }
 
@@ -16,11 +16,11 @@ impl Rule for HttpUrl {
 pub struct HttpsUrl;
 
 impl Rule for HttpsUrl {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_https_url(value.as_ref()))
+            .is_some_and(|value| is_https_url(value.as_ref())))
     }
 }
 

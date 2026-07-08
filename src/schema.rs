@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value as JsonValue;
 
-use crate::core::{RuleGroup, RuleSpec, parse_rule_expression};
+use crate::core::{Context, RuleGroup, RuleSpec, parse_rule_expression};
 use crate::{
     Error, FieldError, FieldTarget, Kind, Params, Validator, Value, field_error,
     is_cross_field_rule,
@@ -41,9 +41,10 @@ impl Schema {
     pub(crate) fn validate(
         &self,
         validator: &Validator,
+        context: &Context,
         errors: &mut Vec<FieldError>,
         data: &JsonValue,
-    ) {
+    ) -> Result<(), Error> {
         let Some(object) = data.as_object() else {
             let mut params = Params::new();
             params.insert("expected", "object");
@@ -54,10 +55,10 @@ impl Schema {
                 "type",
                 params,
             ));
-            return;
+            return Ok(());
         };
 
-        validate_fields(validator, errors, "", &self.fields, object);
+        validate_fields(validator, context, errors, "", &self.fields, object)
     }
 
     fn from_value(value: JsonValue) -> Result<Self, Error> {
@@ -257,11 +258,12 @@ fn ensure_compare_target(
 
 fn validate_fields(
     validator: &Validator,
+    context: &Context,
     errors: &mut Vec<FieldError>,
     parent: &str,
     fields: &BTreeMap<String, FieldSchema>,
     object: &serde_json::Map<String, JsonValue>,
-) {
+) -> Result<(), Error> {
     for (name, field) in fields {
         let target = FieldTarget::schema_field(parent, name);
         let value = object.get(name).unwrap_or(&JsonValue::Null);
@@ -273,7 +275,8 @@ fn validate_fields(
                 value,
                 &field.rules,
                 |compare| object.get(compare).map(|value| value as &dyn Value),
-            );
+                context,
+            )?;
             continue;
         }
 
@@ -292,15 +295,18 @@ fn validate_fields(
             value,
             &field.rules,
             |compare| object.get(compare).map(|value| value as &dyn Value),
-        );
+            context,
+        )?;
 
         if !field.fields.is_empty()
             && let Some(child) = value.as_object()
         {
             let parent = namespace(parent, name);
-            validate_fields(validator, errors, &parent, &field.fields, child);
+            validate_fields(validator, context, errors, &parent, &field.fields, child)?;
         }
     }
+
+    Ok(())
 }
 
 fn parse_fields(parent: &str, value: &JsonValue) -> Result<BTreeMap<String, FieldSchema>, Error> {

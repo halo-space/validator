@@ -4,11 +4,11 @@ use crate::{Field, Rule};
 pub struct Uuid;
 
 impl Rule for Uuid {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid(value.as_ref()))
+            .is_some_and(|value| is_uuid(value.as_ref())))
     }
 }
 
@@ -16,11 +16,11 @@ impl Rule for Uuid {
 pub struct Uuid3;
 
 impl Rule for Uuid3 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid_version(value.as_ref(), b'3'))
+            .is_some_and(|value| is_uuid_version(value.as_ref(), b'3')))
     }
 }
 
@@ -28,11 +28,11 @@ impl Rule for Uuid3 {
 pub struct Uuid4;
 
 impl Rule for Uuid4 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid_version(value.as_ref(), b'4'))
+            .is_some_and(|value| is_uuid_version(value.as_ref(), b'4')))
     }
 }
 
@@ -40,11 +40,11 @@ impl Rule for Uuid4 {
 pub struct Uuid5;
 
 impl Rule for Uuid5 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid_version(value.as_ref(), b'5'))
+            .is_some_and(|value| is_uuid_version(value.as_ref(), b'5')))
     }
 }
 

@@ -4,11 +4,11 @@ use crate::{Field, Rule};
 pub struct UrlRule;
 
 impl Rule for UrlRule {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| has_scheme_and_host(value.as_ref()))
+            .is_some_and(|value| has_scheme_and_host(value.as_ref())))
     }
 }
 

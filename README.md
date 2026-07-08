@@ -211,6 +211,52 @@ Supported rules are `eq_field`, `ne_field`, `gt_field`, `gte_field`,
 or `None` target values fail validation; a current `Option::None` skips the
 cross-field rule unless `required` is also present.
 
+## SystemTime Validation
+
+Native time validation intentionally supports only `std::time::SystemTime`, the
+standard-library time point closest to Go's `time.Time` use case.
+
+```rust
+use std::time::{Duration, SystemTime};
+use validator::prelude::*;
+
+#[derive(Debug, Validate)]
+struct Event {
+    #[validate(lte)]
+    created_at: SystemTime,
+
+    #[validate(gt)]
+    expires_at: SystemTime,
+
+    #[validate(gt_field = "created_at")]
+    updated_at: SystemTime,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let now = SystemTime::now();
+    let event = Event {
+        created_at: now.checked_sub(Duration::from_secs(60)).unwrap(),
+        expires_at: now + Duration::from_secs(60),
+        updated_at: now + Duration::from_secs(1),
+    };
+
+    Validator::new().validate(&event)?;
+    Validator::new().value(&event.created_at, "lte")?;
+    Ok(())
+}
+```
+
+For `SystemTime`, no-parameter `lt`, `lte`, `gt`, and `gte` compare against one
+captured `now` per validation call. Literal parameters such as
+`#[validate(gt = "2026-07-08T00:00:00Z")]` are rejected as configuration
+errors because `SystemTime` has no single built-in string format. `eq` and `ne`
+do not compare with the current time; use `eq_field` or `ne_field` for time
+equality.
+
+The `datetime` rule remains string format validation. Dynamic Schema validation
+does not have a native `type: time`; use `type: string` plus `datetime` for
+timestamp text.
+
 ## Struct-Level Validation
 
 Use a struct-level check when validation depends on custom business logic that
@@ -291,8 +337,8 @@ use validator::prelude::*;
 struct Slug;
 
 impl Rule for Slug {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+        Ok(field
             .value()
             .string()
             .map(|value| {
@@ -300,7 +346,7 @@ impl Rule for Slug {
                     .chars()
                     .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
             })
-            .unwrap_or(false)
+            .unwrap_or(false))
     }
 }
 
@@ -363,6 +409,9 @@ fields:
 
 This path reuses the same rule registry, aliases, `Value` dispatch, `Error`,
 and `Namespace` model as code-level validation.
+
+Schema validation is JSON/YAML-data oriented. It supports `datetime` as a string
+rule, but does not support native `SystemTime` values or `type: time`.
 
 If the data already implements `serde::Serialize`, use `validate_serde(...)`.
 Schema field names follow the serialized data shape, including
@@ -484,6 +533,8 @@ Comparison and size rules dispatch by field type:
 - Strings use character count.
 - Vectors, arrays, slices, and maps use item count.
 - Signed integers, unsigned integers, and floats use their own numeric families.
+- `std::time::SystemTime` supports no-parameter time comparison against a
+  captured `now` and same-kind `*_field` comparison.
 - `Option::None` skips non-`required` rules and fails `required`.
 
 Choice rules dispatch by field type for strings, signed integers, and unsigned integers.
@@ -493,6 +544,8 @@ Choice rules dispatch by field type for strings, signed integers, and unsigned i
 These are intentional limits in the current API surface:
 
 - `unique` supports whole collections and map values, but not `unique=field`.
+- Native time validation is limited to `std::time::SystemTime`; `Duration`,
+  `chrono`, and `time` crate values are not built in.
 - `country_code` and related country aliases are not built in yet.
 - Framework integrations are not bundled; applications or adapters choose the
   locale and response format.

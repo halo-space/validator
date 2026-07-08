@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use self::core::{Aliases, FieldErrorParts, RuleGroup, Rules, parse_rule_expression};
+use self::core::{Aliases, Context, FieldErrorParts, RuleGroup, Rules, parse_rule_expression};
 pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Params, Rule, UintKind,
     Value,
@@ -20,7 +20,7 @@ pub use validator_derive::Validate;
 
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::core::{Access, FieldRef};
+    pub use crate::core::{Access, Context, FieldRef};
 }
 
 pub mod prelude {
@@ -64,7 +64,8 @@ impl Validator {
     }
 
     pub fn validate<T: Validate>(&self, value: &T) -> Result<(), Error> {
-        value.validate(self)
+        let context = Context::new();
+        value.__validate_with_context(self, &context)
     }
 
     pub fn rule<R>(mut self, name: impl Into<String>, rule: R) -> Result<Self, Error>
@@ -87,7 +88,8 @@ impl Validator {
         self.ensure_direct_value_rules(groups.as_ref())?;
         let mut errors = Vec::new();
         let target = FieldTarget::value();
-        self.validate_rule_groups(&mut errors, target, value, groups.as_ref());
+        let context = Context::new();
+        self.validate_rule_groups(&mut errors, target, value, groups.as_ref(), &context)?;
 
         if errors.is_empty() {
             Ok(())
@@ -102,7 +104,8 @@ impl Validator {
         self.ensure_schema_rules(schema)?;
 
         let mut errors = Vec::new();
-        schema.validate(self, &mut errors, value);
+        let context = Context::new();
+        schema.validate(self, &context, &mut errors, value)?;
 
         if errors.is_empty() {
             Ok(())
@@ -246,18 +249,19 @@ impl Validator {
         target: FieldTarget<'_>,
         value: &V,
         groups: &[RuleGroup],
-    ) {
+        context: &Context,
+    ) -> Result<(), Error> {
         for group in groups {
             if let Some(spec) = group.single() {
                 if spec.name() == "omitempty" {
                     if self.__skip_empty(value) {
-                        return;
+                        return Ok(());
                     }
                     continue;
                 }
 
                 if !self.rules.contains(spec.name()) && self.aliases.contains(spec.name()) {
-                    self.__validate_alias(errors, target.clone(), value, spec.name());
+                    self.__validate_alias(errors, target.clone(), value, spec.name(), context)?;
                     continue;
                 }
 
@@ -265,17 +269,28 @@ impl Validator {
                     errors,
                     target.clone(),
                     value,
-                    spec.name(),
-                    spec.name(),
+                    RuleDisplay::same(spec.name()),
                     spec.params().clone(),
-                );
+                    context,
+                )?;
                 continue;
             }
 
             if let Some(alternatives) = group.alternatives() {
-                if alternatives.iter().any(|spec| {
-                    self.direct_spec_passes(target.clone(), value, spec.name(), spec.params())
-                }) {
+                let mut passes = false;
+                for spec in alternatives {
+                    if self.direct_spec_passes(
+                        target.clone(),
+                        value,
+                        spec.name(),
+                        spec.params(),
+                        context,
+                    )? {
+                        passes = true;
+                        break;
+                    }
+                }
+                if passes {
                     continue;
                 }
 
@@ -293,6 +308,8 @@ impl Validator {
                 ));
             }
         }
+
+        Ok(())
     }
 
     pub(crate) fn validate_rule_groups_with_compare<'a, V, F>(
@@ -302,7 +319,9 @@ impl Validator {
         value: &V,
         groups: &[RuleGroup],
         compare_field: F,
-    ) where
+        context: &Context,
+    ) -> Result<(), Error>
+    where
         V: Value,
         F: Fn(&str) -> Option<&'a dyn Value>,
     {
@@ -310,7 +329,7 @@ impl Validator {
             if let Some(spec) = group.single() {
                 if spec.name() == "omitempty" {
                     if self.__skip_empty(value) {
-                        return;
+                        return Ok(());
                     }
                     continue;
                 }
@@ -329,7 +348,7 @@ impl Validator {
                 }
 
                 if !self.rules.contains(spec.name()) && self.aliases.contains(spec.name()) {
-                    self.__validate_alias(errors, target.clone(), value, spec.name());
+                    self.__validate_alias(errors, target.clone(), value, spec.name(), context)?;
                     continue;
                 }
 
@@ -337,23 +356,29 @@ impl Validator {
                     errors,
                     target.clone(),
                     value,
-                    spec.name(),
-                    spec.name(),
+                    RuleDisplay::same(spec.name()),
                     spec.params().clone(),
-                );
+                    context,
+                )?;
                 continue;
             }
 
             if let Some(alternatives) = group.alternatives() {
-                if alternatives.iter().any(|spec| {
-                    self.spec_passes_with_compare(
+                let mut passes = false;
+                for spec in alternatives {
+                    if self.spec_passes_with_compare(
                         target.clone(),
                         value,
                         spec.name(),
                         spec.params(),
                         &compare_field,
-                    )
-                }) {
+                        context,
+                    )? {
+                        passes = true;
+                        break;
+                    }
+                }
+                if passes {
                     continue;
                 }
 
@@ -371,6 +396,8 @@ impl Validator {
                 ));
             }
         }
+
+        Ok(())
     }
 
     #[doc(hidden)]
@@ -381,8 +408,16 @@ impl Validator {
         value: &V,
         rule: &str,
         params: Params,
-    ) {
-        self.__validate_rule_with_display(errors, target, value, rule, rule, params);
+        context: &Context,
+    ) -> Result<(), Error> {
+        self.__validate_rule_with_display(
+            errors,
+            target,
+            value,
+            RuleDisplay::same(rule),
+            params,
+            context,
+        )
     }
 
     #[doc(hidden)]
@@ -434,7 +469,8 @@ impl Validator {
         target: FieldTarget<'_>,
         value: &V,
         alias: &str,
-    ) {
+        context: &Context,
+    ) -> Result<(), Error> {
         let Some(specs) = self.aliases.get(alias) else {
             errors.push(field_error(
                 target.clone(),
@@ -443,14 +479,14 @@ impl Validator {
                 "alias",
                 Params::new(),
             ));
-            return;
+            return Ok(());
         };
 
         for group in specs {
             if let Some(spec) = group.single() {
                 if spec.name() == "omitempty" {
                     if self.__skip_empty(value) {
-                        return;
+                        return Ok(());
                     }
                     continue;
                 }
@@ -459,17 +495,28 @@ impl Validator {
                     errors,
                     target.clone(),
                     value,
-                    alias,
-                    spec.name(),
+                    RuleDisplay::new(alias, spec.name()),
                     spec.params().clone(),
-                );
+                    context,
+                )?;
                 continue;
             }
 
             if let Some(alternatives) = group.alternatives() {
-                if alternatives.iter().any(|spec| {
-                    self.__rule_passes(target.clone(), value, spec.name(), spec.params())
-                }) {
+                let mut passes = false;
+                for spec in alternatives {
+                    if self.__rule_passes(
+                        target.clone(),
+                        value,
+                        spec.name(),
+                        spec.params(),
+                        context,
+                    )? {
+                        passes = true;
+                        break;
+                    }
+                }
+                if passes {
                     continue;
                 }
 
@@ -487,6 +534,8 @@ impl Validator {
                 ));
             }
         }
+
+        Ok(())
     }
 
     #[doc(hidden)]
@@ -518,10 +567,14 @@ impl Validator {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &T,
-    ) {
-        if let Err(nested) = value.validate(self) {
-            push_nested_errors(errors, target, nested);
+        context: &Context,
+    ) -> Result<(), Error> {
+        match value.__validate_with_context(self, context) {
+            Ok(()) => {}
+            Err(nested) if nested.is_failed() => push_nested_errors(errors, target, nested),
+            Err(error) => return Err(error),
         }
+        Ok(())
     }
 
     #[doc(hidden)]
@@ -530,10 +583,12 @@ impl Validator {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &Option<T>,
-    ) {
+        context: &Context,
+    ) -> Result<(), Error> {
         if let Some(value) = value {
-            self.__validate_nested(errors, target, value);
+            self.__validate_nested(errors, target, value, context)?;
         }
+        Ok(())
     }
 
     #[doc(hidden)]
@@ -550,13 +605,20 @@ impl Validator {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        rule: &str,
-        reason: &str,
+        display: RuleDisplay<'_>,
         params: Params,
-    ) {
-        if !self.__rule_passes(target.clone(), value, reason, &params) {
-            errors.push(field_error(target, value.kind(), rule, reason, params));
+        context: &Context,
+    ) -> Result<(), Error> {
+        if !self.__rule_passes(target.clone(), value, display.reason, &params, context)? {
+            errors.push(field_error(
+                target,
+                value.kind(),
+                display.rule,
+                display.reason,
+                params,
+            ));
         }
+        Ok(())
     }
 
     fn __rule_passes<V: Value>(
@@ -565,29 +627,31 @@ impl Validator {
         value: &V,
         reason: &str,
         params: &Params,
-    ) -> bool {
+        context: &Context,
+    ) -> Result<bool, Error> {
         if reason == "omitempty" {
-            return true;
+            return Ok(true);
         }
 
         if reason != "required" && value.is_none() {
-            return true;
+            return Ok(true);
         }
 
         let Some(handler) = self.rules.get(reason) else {
-            return false;
+            return Ok(false);
         };
 
         let namespace = Namespace::new(namespace_for(&target.type_name, &target.field_name));
         let struct_namespace =
             Namespace::new(namespace_for(&target.type_name, &target.struct_field_name));
-        let field = Field::new(
+        let field = Field::with_context(
             &namespace,
             &struct_namespace,
             target.field_name.as_ref(),
             target.struct_field_name.as_ref(),
             params,
             value,
+            context,
         );
 
         handler.check(&field)
@@ -599,18 +663,19 @@ impl Validator {
         value: &V,
         name: &str,
         params: &Params,
-    ) -> bool {
+        context: &Context,
+    ) -> Result<bool, Error> {
         if self.rules.contains(name) || name == "omitempty" {
-            return self.__rule_passes(target.clone(), value, name, params);
+            return self.__rule_passes(target.clone(), value, name, params, context);
         }
 
         if self.aliases.contains(name) {
             let mut errors = Vec::new();
-            self.__validate_alias(&mut errors, target.clone(), value, name);
-            return errors.is_empty();
+            self.__validate_alias(&mut errors, target.clone(), value, name, context)?;
+            return Ok(errors.is_empty());
         }
 
-        false
+        Ok(false)
     }
 
     fn spec_passes_with_compare<'a, V, F>(
@@ -620,17 +685,18 @@ impl Validator {
         name: &str,
         params: &Params,
         compare_field: &F,
-    ) -> bool
+        context: &Context,
+    ) -> Result<bool, Error>
     where
         V: Value,
         F: Fn(&str) -> Option<&'a dyn Value>,
     {
         if is_cross_field_rule(name) {
             let compare = compare_param(params).unwrap_or_default();
-            return compare_field_passes(value, compare_field(compare), name);
+            return Ok(compare_field_passes(value, compare_field(compare), name));
         }
 
-        self.direct_spec_passes(target, value, name, params)
+        self.direct_spec_passes(target, value, name, params, context)
     }
 }
 
@@ -642,6 +708,31 @@ impl Default for Validator {
 
 pub trait Validate {
     fn validate(&self, validator: &Validator) -> Result<(), Error>;
+
+    #[doc(hidden)]
+    fn __validate_with_context(
+        &self,
+        validator: &Validator,
+        _context: &__private::Context,
+    ) -> Result<(), Error> {
+        self.validate(validator)
+    }
+}
+
+#[derive(Clone, Copy)]
+struct RuleDisplay<'a> {
+    rule: &'a str,
+    reason: &'a str,
+}
+
+impl<'a> RuleDisplay<'a> {
+    fn new(rule: &'a str, reason: &'a str) -> Self {
+        Self { rule, reason }
+    }
+
+    fn same(name: &'a str) -> Self {
+        Self::new(name, name)
+    }
 }
 
 #[derive(Clone)]
@@ -795,8 +886,9 @@ fn values_equal(left: &dyn Value, right: &dyn Value) -> Option<bool> {
         Kind::Int(_) => Some(left.int()? == right.int()?),
         Kind::Uint(_) => Some(left.uint()? == right.uint()?),
         Kind::Float(_) => Some(left.float()? == right.float()?),
+        Kind::Time => Some(left.time()? == right.time()?),
         Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => Some(left.len()? == right.len()?),
-        Kind::Option | Kind::Time | Kind::Other => None,
+        Kind::Option | Kind::Other => None,
     }
 }
 
@@ -808,7 +900,8 @@ fn values_cmp(left: &dyn Value, right: &dyn Value) -> Option<Ordering> {
         Kind::Int(_) => Some(left.int()?.cmp(&right.int()?)),
         Kind::Uint(_) => Some(left.uint()?.cmp(&right.uint()?)),
         Kind::Float(_) => left.float()?.partial_cmp(&right.float()?),
-        Kind::Bool | Kind::Option | Kind::Time | Kind::Other => None,
+        Kind::Time => left.time()?.partial_cmp(&right.time()?),
+        Kind::Bool | Kind::Option | Kind::Other => None,
     }
 }
 

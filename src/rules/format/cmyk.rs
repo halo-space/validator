@@ -8,11 +8,11 @@ use crate::{Field, Rule};
 pub struct Cmyk;
 
 impl Rule for Cmyk {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| cmyk_regex().is_match(value.as_ref()))
+            .is_some_and(|value| cmyk_regex().is_match(value.as_ref())))
     }
 }
 

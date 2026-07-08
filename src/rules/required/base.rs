@@ -4,7 +4,7 @@ use crate::{Field, Rule};
 pub struct Required;
 
 impl Rule for Required {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field.value().required()
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field.value().required())
     }
 }

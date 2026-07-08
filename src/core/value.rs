@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::time::SystemTime;
 
 use serde_json::Value as JsonValue;
 
@@ -91,6 +92,10 @@ pub trait Value {
         None
     }
 
+    fn time(&self) -> Option<SystemTime> {
+        None
+    }
+
     fn number(&self) -> Option<Number> {
         self.int()
             .map(Number::Int)
@@ -142,6 +147,10 @@ impl<T: Value> Value for Option<T> {
 
     fn boolean(&self) -> Option<bool> {
         self.as_ref().and_then(Value::boolean)
+    }
+
+    fn time(&self) -> Option<SystemTime> {
+        self.as_ref().and_then(Value::time)
     }
 
     fn array_items(&self) -> Option<Vec<&dyn Value>> {
@@ -303,6 +312,20 @@ impl Value for f64 {
     }
 
     fn float(&self) -> Option<f64> {
+        Some(*self)
+    }
+}
+
+impl Value for SystemTime {
+    fn kind(&self) -> Kind {
+        Kind::Time
+    }
+
+    fn required(&self) -> bool {
+        true
+    }
+
+    fn time(&self) -> Option<SystemTime> {
         Some(*self)
     }
 }

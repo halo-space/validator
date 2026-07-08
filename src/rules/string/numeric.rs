@@ -8,15 +8,15 @@ use crate::{Field, Rule};
 pub struct Numeric;
 
 impl Rule for Numeric {
-    fn check(&self, field: &Field<'_>) -> bool {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         if field.value().number().is_some() {
-            return true;
+            return Ok(true);
         }
 
-        field
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| numeric_regex().is_match(value.as_ref()))
+            .is_some_and(|value| numeric_regex().is_match(value.as_ref())))
     }
 }
 

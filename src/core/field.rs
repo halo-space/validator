@@ -1,4 +1,6 @@
-use super::{Namespace, Params, Value};
+use std::time::SystemTime;
+
+use super::{Context, Namespace, Params, Value};
 
 pub struct Field<'a> {
     namespace: &'a Namespace,
@@ -7,6 +9,7 @@ pub struct Field<'a> {
     struct_field: &'a str,
     params: &'a Params,
     value: &'a dyn Value,
+    now: SystemTime,
 }
 
 impl<'a> Field<'a> {
@@ -25,6 +28,27 @@ impl<'a> Field<'a> {
             struct_field,
             params,
             value,
+            now: SystemTime::now(),
+        }
+    }
+
+    pub(crate) fn with_context(
+        namespace: &'a Namespace,
+        struct_namespace: &'a Namespace,
+        field: &'a str,
+        struct_field: &'a str,
+        params: &'a Params,
+        value: &'a dyn Value,
+        context: &Context,
+    ) -> Self {
+        Self {
+            namespace,
+            struct_namespace,
+            field,
+            struct_field,
+            params,
+            value,
+            now: context.now(),
         }
     }
 
@@ -50,5 +74,9 @@ impl<'a> Field<'a> {
 
     pub fn value(&self) -> &dyn Value {
         self.value
+    }
+
+    pub fn now(&self) -> SystemTime {
+        self.now
     }
 }

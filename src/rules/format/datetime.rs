@@ -4,11 +4,11 @@ use crate::{Field, Rule};
 pub struct DateTime;
 
 impl Rule for DateTime {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_datetime(value.as_ref()))
+            .is_some_and(|value| is_datetime(value.as_ref())))
     }
 }
 

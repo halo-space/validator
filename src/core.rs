@@ -1,4 +1,5 @@
 mod access;
+mod context;
 mod error;
 mod field;
 mod namespace;
@@ -8,6 +9,8 @@ mod spec;
 mod value;
 
 pub use access::{Access, FieldRef};
+#[doc(hidden)]
+pub use context::Context;
 pub use error::{Error, FieldError};
 pub use field::Field;
 pub use namespace::Namespace;
@@ -19,5 +22,5 @@ pub(crate) use registry::{Aliases, Rules};
 pub(crate) use spec::{RuleGroup, RuleSpec, parse_rule_expression};
 
 pub trait Rule: Send + Sync {
-    fn check(&self, field: &Field<'_>) -> bool;
+    fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
 }

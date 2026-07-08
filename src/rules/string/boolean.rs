@@ -4,15 +4,15 @@ use crate::{Field, Rule};
 pub struct Boolean;
 
 impl Rule for Boolean {
-    fn check(&self, field: &Field<'_>) -> bool {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         if field.value().boolean().is_some() {
-            return true;
+            return Ok(true);
         }
 
-        field
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| parse_bool(value.as_ref()))
+            .is_some_and(|value| parse_bool(value.as_ref())))
     }
 }
 

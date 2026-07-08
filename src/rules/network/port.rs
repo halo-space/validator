@@ -4,11 +4,11 @@ use crate::{Field, Rule};
 pub struct Port;
 
 impl Rule for Port {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
             .and_then(|value| value.parse::<u16>().ok())
-            .is_some_and(|port| port > 0)
+            .is_some_and(|port| port > 0))
     }
 }

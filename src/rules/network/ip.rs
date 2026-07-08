@@ -6,11 +6,11 @@ use crate::{Field, Rule};
 pub struct Ip;
 
 impl Rule for Ip {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| value.parse::<IpAddr>().is_ok())
+            .is_some_and(|value| value.parse::<IpAddr>().is_ok()))
     }
 }
 
@@ -18,11 +18,11 @@ impl Rule for Ip {
 pub struct Ipv4;
 
 impl Rule for Ipv4 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| value.parse::<Ipv4Addr>().is_ok())
+            .is_some_and(|value| value.parse::<Ipv4Addr>().is_ok()))
     }
 }
 
@@ -30,10 +30,10 @@ impl Rule for Ipv4 {
 pub struct Ipv6;
 
 impl Rule for Ipv6 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| value.parse::<Ipv6Addr>().is_ok())
+            .is_some_and(|value| value.parse::<Ipv6Addr>().is_ok()))
     }
 }

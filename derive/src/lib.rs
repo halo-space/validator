@@ -121,6 +121,15 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                 &self,
                 validator: &::validator::Validator,
             ) -> std::result::Result<(), ::validator::Error> {
+                let context = ::validator::__private::Context::new();
+                self.__validate_with_context(validator, &context)
+            }
+
+            fn __validate_with_context(
+                &self,
+                validator: &::validator::Validator,
+                context: &::validator::__private::Context,
+            ) -> std::result::Result<(), ::validator::Error> {
                 let mut errors = Vec::new();
 
                 #(#checks)*
@@ -353,7 +362,8 @@ fn build_checks(
                             #value,
                             #name,
                             params,
-                        );
+                            context,
+                        )?;
                     }
                 });
             }
@@ -365,7 +375,8 @@ fn build_checks(
                             #target,
                             #value,
                             #alias,
-                        );
+                            context,
+                        )?;
                     }
                 });
             }
@@ -407,10 +418,11 @@ fn build_checks(
                     checks.push(quote! {
                         if !skip_rest {
                             validator.__validate_nested_option(
-                                &mut errors,
-                                #target,
-                                #value,
-                            );
+                            &mut errors,
+                            #target,
+                            #value,
+                            context,
+                            )?;
                         }
                     });
                 } else {
@@ -420,7 +432,8 @@ fn build_checks(
                                 &mut errors,
                                 #target,
                                 #value,
-                            );
+                                context,
+                            )?;
                         }
                     });
                 }
@@ -563,38 +576,32 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
     }
 
     if meta.path.is_ident("eq") {
-        let value = meta.value()?;
-        rules.push(rule("eq", vec![("value".to_owned(), parse_param_value(value)?)]));
+        rules.push(rule("eq", parse_optional_value_param(meta)?));
         return Ok(());
     }
 
     if meta.path.is_ident("ne") {
-        let value = meta.value()?;
-        rules.push(rule("ne", vec![("value".to_owned(), parse_param_value(value)?)]));
+        rules.push(rule("ne", parse_optional_value_param(meta)?));
         return Ok(());
     }
 
     if meta.path.is_ident("gt") {
-        let value = meta.value()?;
-        rules.push(rule("gt", vec![("value".to_owned(), parse_param_value(value)?)]));
+        rules.push(rule("gt", parse_optional_value_param(meta)?));
         return Ok(());
     }
 
     if meta.path.is_ident("gte") {
-        let value = meta.value()?;
-        rules.push(rule("gte", vec![("value".to_owned(), parse_param_value(value)?)]));
+        rules.push(rule("gte", parse_optional_value_param(meta)?));
         return Ok(());
     }
 
     if meta.path.is_ident("lt") {
-        let value = meta.value()?;
-        rules.push(rule("lt", vec![("value".to_owned(), parse_param_value(value)?)]));
+        rules.push(rule("lt", parse_optional_value_param(meta)?));
         return Ok(());
     }
 
     if meta.path.is_ident("lte") {
-        let value = meta.value()?;
-        rules.push(rule("lte", vec![("value".to_owned(), parse_param_value(value)?)]));
+        rules.push(rule("lte", parse_optional_value_param(meta)?));
         return Ok(());
     }
 
@@ -702,6 +709,15 @@ fn parse_dive_section(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<RuleAttr>> {
     }
 
     Ok(rules)
+}
+
+fn parse_optional_value_param(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<(String, String)>> {
+    if meta.input.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let value = meta.value()?;
+    Ok(vec![("value".to_owned(), parse_param_value(value)?)])
 }
 
 fn is_option_type(ty: &Type) -> bool {

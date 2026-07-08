@@ -4,7 +4,7 @@ use crate::{Field, Rule};
 pub struct OneOf;
 
 impl Rule for OneOf {
-    fn check(&self, field: &Field<'_>) -> bool {
-        super::contains(field).unwrap_or(false)
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(super::contains(field).unwrap_or(false))
     }
 }

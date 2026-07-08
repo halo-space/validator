@@ -8,11 +8,11 @@ use crate::{Field, Rule};
 pub struct Rgb;
 
 impl Rule for Rgb {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| rgb_regex().is_match(value.as_ref()))
+            .is_some_and(|value| rgb_regex().is_match(value.as_ref())))
     }
 }
 

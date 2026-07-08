@@ -6,11 +6,11 @@ use crate::{Field, Rule};
 pub struct Cidr;
 
 impl Rule for Cidr {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| parse_cidr(value.as_ref()).is_some())
+            .is_some_and(|value| parse_cidr(value.as_ref()).is_some()))
     }
 }
 
@@ -18,11 +18,11 @@ impl Rule for Cidr {
 pub struct Cidrv4;
 
 impl Rule for Cidrv4 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| matches!(parse_cidr(value.as_ref()), Some(CidrKind::V4)))
+            .is_some_and(|value| matches!(parse_cidr(value.as_ref()), Some(CidrKind::V4))))
     }
 }
 
@@ -30,11 +30,11 @@ impl Rule for Cidrv4 {
 pub struct Cidrv6;
 
 impl Rule for Cidrv6 {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
             .value()
             .string()
-            .is_some_and(|value| matches!(parse_cidr(value.as_ref()), Some(CidrKind::V6)))
+            .is_some_and(|value| matches!(parse_cidr(value.as_ref()), Some(CidrKind::V6))))
     }
 }
 

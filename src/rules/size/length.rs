@@ -4,23 +4,23 @@ use crate::{Field, Rule};
 pub struct Length;
 
 impl Rule for Length {
-    fn check(&self, field: &Field<'_>) -> bool {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         if field.params().get("exact").is_some() {
             return super::satisfies(field, "exact", super::Relation::Eq);
         }
 
         if field.params().get("min").is_some()
-            && !super::satisfies(field, "min", super::Relation::Gte)
+            && !super::satisfies(field, "min", super::Relation::Gte)?
         {
-            return false;
+            return Ok(false);
         }
 
         if field.params().get("max").is_some()
-            && !super::satisfies(field, "max", super::Relation::Lte)
+            && !super::satisfies(field, "max", super::Relation::Lte)?
         {
-            return false;
+            return Ok(false);
         }
 
-        true
+        Ok(true)
     }
 }

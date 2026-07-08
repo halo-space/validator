@@ -125,8 +125,8 @@ fn validate_draft(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
 struct Slug;
 
 impl Rule for Slug {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field
+    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+        Ok(field
             .value()
             .string()
             .map(|value| {
@@ -134,7 +134,7 @@ impl Rule for Slug {
                     .chars()
                     .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
             })
-            .unwrap_or(false)
+            .unwrap_or(false))
     }
 }
 

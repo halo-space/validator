@@ -4,7 +4,7 @@ use crate::{Field, Rule};
 pub struct Ascii;
 
 impl Rule for Ascii {
-    fn check(&self, field: &Field<'_>) -> bool {
-        field.value().string().is_some_and(|value| value.is_ascii())
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field.value().string().is_some_and(|value| value.is_ascii()))
     }
 }
