@@ -2,7 +2,9 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::{FieldError, Kind, Namespace, Params};
+use serde::Deserialize;
+
+use crate::{Error, FieldError, Kind, Namespace, Params};
 
 pub type RenderFn = Arc<dyn for<'a> Fn(&Context<'a>) -> String + Send + Sync + 'static>;
 
@@ -72,6 +74,18 @@ impl Locale {
         }
     }
 
+    pub fn from_yaml(yaml: impl AsRef<str>) -> Result<Self, Error> {
+        let resource =
+            serde_yaml::from_str::<LocaleResource>(yaml.as_ref()).map_err(invalid_locale_error)?;
+        Self::from_resource(resource)
+    }
+
+    pub fn from_json(json: impl AsRef<str>) -> Result<Self, Error> {
+        let resource =
+            serde_json::from_str::<LocaleResource>(json.as_ref()).map_err(invalid_locale_error)?;
+        Self::from_resource(resource)
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
@@ -106,6 +120,26 @@ impl Locale {
         self.fields.extend(other.fields);
     }
 
+    fn from_resource(resource: LocaleResource) -> Result<Self, Error> {
+        let name = resource
+            .locale
+            .or(resource.name)
+            .ok_or_else(|| invalid_locale("locale name is required"))?;
+        if name.trim().is_empty() {
+            return Err(invalid_locale("locale name is required"));
+        }
+
+        let mut locale = Self::new(name);
+        for (rule, template) in resource.rules.unwrap_or_default() {
+            locale = locale.rule(rule, template);
+        }
+        for (field, label) in resource.fields.unwrap_or_default() {
+            locale = locale.field(field, label);
+        }
+
+        Ok(locale)
+    }
+
     fn template_for(&self, error: &FieldError) -> Option<&Template> {
         self.rules
             .get(error.rule())
@@ -118,6 +152,14 @@ impl Locale {
             .map(String::as_str)
             .unwrap_or_else(|| error.field())
     }
+}
+
+#[derive(Deserialize)]
+struct LocaleResource {
+    locale: Option<String>,
+    name: Option<String>,
+    rules: Option<BTreeMap<String, String>>,
+    fields: Option<BTreeMap<String, String>>,
 }
 
 pub struct Translator<'a> {
@@ -258,6 +300,16 @@ fn render_text(template: &str, context: &Context<'_>) -> String {
 
 fn default_text(error: &FieldError) -> String {
     format!("{} failed {}", error.namespace().as_str(), error.rule())
+}
+
+fn invalid_locale_error(error: impl std::error::Error) -> Error {
+    invalid_locale(error.to_string())
+}
+
+fn invalid_locale(reason: impl Into<String>) -> Error {
+    Error::InvalidData {
+        reason: format!("invalid locale resource: {}", reason.into()),
+    }
 }
 
 fn kind_name(kind: Kind) -> &'static str {

@@ -88,6 +88,141 @@ fn user_locale_overrides_rule_and_field_label() {
     assert_eq!(messages[0].text, "请输入正确的邮箱");
 }
 
+#[test]
+fn yaml_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
+    let account = Account {
+        email: "not-email".to_owned(),
+    };
+    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let zh = validator::i18n::Locale::from_yaml(
+        r#"
+locale: zh-CN
+rules:
+  email: "请输入正确的{field}"
+fields:
+  email: "邮箱"
+"#,
+    )?;
+
+    let messages = validator::i18n::new()
+        .use_locale(zh)
+        .locale("zh-CN")
+        .render(&fields);
+
+    assert_eq!(messages[0].field, "邮箱");
+    assert_eq!(messages[0].text, "请输入正确的邮箱");
+
+    Ok(())
+}
+
+#[test]
+fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
+    let account = Account {
+        email: "not-email".to_owned(),
+    };
+    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let en = validator::i18n::Locale::from_json(
+        r#"{
+  "locale": "en",
+  "rules": {
+    "email": "Please use a valid {field}"
+  },
+  "fields": {
+    "email": "email address"
+  }
+}"#,
+    )?;
+
+    let messages = validator::i18n::new()
+        .use_locale(en)
+        .locale("en")
+        .render(&fields);
+
+    assert_eq!(messages[0].field, "email address");
+    assert_eq!(messages[0].text, "Please use a valid email address");
+
+    Ok(())
+}
+
+#[test]
+fn locale_loader_accepts_name_alias() -> Result<(), Box<dyn std::error::Error>> {
+    let locale = validator::i18n::Locale::from_yaml(
+        r#"
+name: zh-CN
+rules:
+  email: "{field}格式不正确"
+"#,
+    )?;
+
+    assert_eq!(locale.name(), "zh-CN");
+
+    Ok(())
+}
+
+#[test]
+fn loaded_locale_overrides_builtin_locale() -> Result<(), Box<dyn std::error::Error>> {
+    let account = Account {
+        email: "not-email".to_owned(),
+    };
+    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let zh = validator::i18n::Locale::from_yaml(
+        r#"
+locale: zh-CN
+rules:
+  email: "邮箱要写对"
+"#,
+    )?;
+
+    let messages = validator::i18n::new()
+        .zh_cn()
+        .use_locale(zh)
+        .locale("zh-CN")
+        .render(&fields);
+
+    assert_eq!(messages[0].text, "邮箱要写对");
+
+    Ok(())
+}
+
+#[test]
+fn locale_loader_requires_locale_name() {
+    let Err(error) = validator::i18n::Locale::from_yaml(
+        r#"
+rules:
+  email: "{field}格式不正确"
+"#,
+    ) else {
+        panic!("expected locale loading to fail");
+    };
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidData { reason }
+            if reason.contains("invalid locale resource")
+                && reason.contains("locale name is required")
+    ));
+}
+
+#[test]
+fn locale_loader_rejects_invalid_rule_template() {
+    let Err(error) = validator::i18n::Locale::from_yaml(
+        r#"
+locale: zh-CN
+rules:
+  email:
+    text: "{field}格式不正确"
+"#,
+    ) else {
+        panic!("expected locale loading to fail");
+    };
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidData { reason }
+            if reason.contains("invalid locale resource")
+    ));
+}
+
 #[derive(Debug, Validate)]
 struct Profile {
     #[validate(alias = "username")]

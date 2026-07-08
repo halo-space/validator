@@ -425,6 +425,27 @@ fn main() {
 
 For fixed Chinese output, use the shortcut: `validator::i18n::zh_cn().render(fields)`.
 
+Custom locale resources can be loaded from YAML or JSON:
+
+```rust
+let zh = validator::i18n::Locale::from_yaml(
+    r#"
+locale: zh-CN
+rules:
+  email: "请输入正确的{field}"
+fields:
+  email: "邮箱"
+"#,
+)?;
+
+let messages = validator::i18n::new()
+    .zh_cn()
+    .use_locale(zh)
+    .fallback("zh-CN")
+    .locale("zh-CN")
+    .render(error.fields().unwrap());
+```
+
 ## Built-In Rules
 
 Current built-in rules:

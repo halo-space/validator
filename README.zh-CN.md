@@ -385,6 +385,27 @@ fn main() {
 
 固定中文项目可以直接使用快捷方式：`validator::i18n::zh_cn().render(fields)`。
 
+用户自定义 locale 可以从 YAML 或 JSON 加载：
+
+```rust
+let zh = validator::i18n::Locale::from_yaml(
+    r#"
+locale: zh-CN
+rules:
+  email: "请输入正确的{field}"
+fields:
+  email: "邮箱"
+"#,
+)?;
+
+let messages = validator::i18n::new()
+    .zh_cn()
+    .use_locale(zh)
+    .fallback("zh-CN")
+    .locale("zh-CN")
+    .render(error.fields().unwrap());
+```
+
 ## 内置规则
 
 当前内置规则：
