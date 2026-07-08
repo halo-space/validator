@@ -276,6 +276,28 @@ fn alias_falls_back_to_reason_template() -> Result<(), Box<dyn std::error::Error
 }
 
 #[derive(Debug, Validate)]
+struct ColorAlias {
+    #[validate(alias = "iscolor")]
+    color: String,
+}
+
+#[test]
+fn built_in_locales_render_iscolor_alias_message() {
+    let value = ColorAlias {
+        color: "#000-".to_owned(),
+    };
+    let fields = fields(Validator::new().validate(&value).unwrap_err());
+
+    let zh = validator::i18n::zh_cn().render(&fields);
+    let en = validator::i18n::en().render(&fields);
+
+    assert_eq!(fields[0].rule(), "iscolor");
+    assert_eq!(fields[0].reason(), "hexcolor|rgb|rgba|hsl|hsla|cmyk");
+    assert_eq!(zh[0].text, "color必须是有效颜色");
+    assert_eq!(en[0].text, "color must be a valid color");
+}
+
+#[derive(Debug, Validate)]
 struct Bounds {
     #[validate(min = 3)]
     name: String,
