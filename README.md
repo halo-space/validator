@@ -588,11 +588,12 @@ cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo package --manifest-path derive/Cargo.toml --allow-dirty
-cargo package --list --allow-dirty
 ```
 
 The current distribution path is Git dependency usage. Registry publishing is
-out of scope for now.
+out of scope for now. The root `validator` crate is intentionally not packaged
+for crates.io in this phase; only the technical `validator-derive` package is
+checked with `cargo package`.
 
 ## Examples
 

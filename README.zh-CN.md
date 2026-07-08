@@ -526,10 +526,9 @@ cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo package --manifest-path derive/Cargo.toml --allow-dirty
-cargo package --list --allow-dirty
 ```
 
-当前分发路径是 Git 依赖使用，暂不处理 registry 发布。
+当前分发路径是 Git 依赖使用，暂不处理 registry 发布。根 `validator` crate 这一阶段不按 crates.io package 方式收口；这里只对技术包 `validator-derive` 做 `cargo package` 检查。
 
 ## 示例
 
