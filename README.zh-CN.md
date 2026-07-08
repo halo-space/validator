@@ -472,11 +472,12 @@ for field in error.fields().unwrap_or_default() {
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo package --manifest-path derive/Cargo.toml
-cargo package --list
+cargo package --manifest-path derive/Cargo.toml --allow-dirty
+cargo publish --manifest-path derive/Cargo.toml --dry-run --allow-dirty
+cargo package --list --allow-dirty
 ```
 
-根包完整 package 校验要求目标 registry 里已经存在同版本的 `validator-derive`，因此需要先发布或提供 `validator-derive`。
+根包完整 package 校验要求目标 registry 里已经存在同版本的 `validator-derive`，因此需要先发布或提供 `validator-derive`。crates.io 上的 `validator` 包名已经被占用；如果要发布到 crates.io，需要单独决定 package name，或者使用拥有 `validator` 包名的私有 registry。
 
 ## 示例
 

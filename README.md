@@ -522,13 +522,16 @@ Each `FieldError` exposes:
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo package --manifest-path derive/Cargo.toml
-cargo package --list
+cargo package --manifest-path derive/Cargo.toml --allow-dirty
+cargo publish --manifest-path derive/Cargo.toml --dry-run --allow-dirty
+cargo package --list --allow-dirty
 ```
 
-Full root package verification requires `validator-derive` with the matching
-version to be available in the target registry, so publish or provide
-`validator-derive` first.
+Root package verification requires `validator-derive` with the matching version
+to be available in the target registry, so publish or provide
+`validator-derive` first. The crates.io package name `validator` is already
+occupied; publishing to crates.io needs a separate package naming decision, or
+use a private registry that owns the `validator` name.
 
 ## Examples
 
