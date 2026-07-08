@@ -2,6 +2,7 @@ mod access;
 mod context;
 mod error;
 mod field;
+mod group;
 mod namespace;
 mod params;
 mod registry;
@@ -18,6 +19,7 @@ pub use params::Params;
 pub use value::{FloatKind, IntKind, Kind, Number, UintKind, Value};
 
 pub(crate) use error::FieldErrorParts;
+pub(crate) use group::Group;
 pub(crate) use registry::{Aliases, Rules};
 pub(crate) use spec::{RuleGroup, RuleSpec, parse_rule_expression};
 

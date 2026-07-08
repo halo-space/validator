@@ -758,11 +758,61 @@ fn direct_value_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::
 }
 
 #[test]
+fn direct_value_alias_preserves_rule_and_reason() -> Result<(), Box<dyn std::error::Error>> {
+    let fields = fields(
+        Validator::new()
+            .alias("username", "required,length(min=3,max=20)")?
+            .value(&"al", "username")
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "username");
+    assert_eq!(fields[0].reason(), "length");
+    assert_eq!(fields[0].params().get("min"), Some("3"));
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_alias_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new()
+        .alias("optional_email", "omitempty,email")?
+        .value(&String::new(), "optional_email")?;
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_alternatives_preserve_joined_reason() {
+    let fields = fields(
+        Validator::new()
+            .value(&"not-a-color", "hexcolor|rgb|rgba")
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "hexcolor|rgb|rgba");
+    assert_eq!(fields[0].reason(), "hexcolor|rgb|rgba");
+}
+
+#[test]
 fn direct_value_reuses_alias_and_custom_rule() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new()
         .alias("slug_alias", "slug")?
         .rule("slug", Slug)?
         .value(&"hello-rust", "slug_alias")?;
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_cache_is_generation_scoped() -> Result<(), Box<dyn std::error::Error>> {
+    let validator = Validator::new().alias("slug", "required")?;
+    assert!(validator.value(&String::new(), "slug").is_err());
+
+    let validator = validator.rule("slug", Slug)?;
+    validator.value(&String::new(), "slug")?;
 
     Ok(())
 }
@@ -1734,6 +1784,22 @@ fn system_time_eq_now_returns_config_error() {
 fn direct_system_time_parameter_returns_config_error() {
     let error = Validator::new()
         .value(&SystemTime::now(), r#"gt(value="2026-07-08T00:00:00Z")"#)
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::InvalidRuleExpression { reason, .. }
+            if reason.contains("SystemTime comparison does not support literal parameters")
+    ));
+}
+
+#[test]
+fn direct_alternative_system_time_config_error_is_not_swallowed() {
+    let error = Validator::new()
+        .value(
+            &SystemTime::now(),
+            r#"gt(value="2026-07-08T00:00:00Z")|lte"#,
+        )
         .unwrap_err();
 
     assert!(matches!(

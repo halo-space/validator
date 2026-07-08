@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use self::core::{Aliases, Context, FieldErrorParts, RuleGroup, Rules, parse_rule_expression};
+use self::core::{
+    Aliases, Context, FieldErrorParts, Group, RuleGroup, Rules, parse_rule_expression,
+};
 pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Params, Rule, UintKind,
     Value,
@@ -36,6 +38,7 @@ pub struct Validator {
     schema: Option<Schema>,
     generation: u64,
     expression_cache: RwLock<BTreeMap<String, Arc<Vec<RuleGroup>>>>,
+    compiled_cache: RwLock<BTreeMap<(u64, String), Arc<Group>>>,
     schema_checked_generation: RwLock<Option<u64>>,
 }
 
@@ -53,6 +56,7 @@ impl Validator {
             schema: None,
             generation: 0,
             expression_cache: RwLock::new(BTreeMap::new()),
+            compiled_cache: RwLock::new(BTreeMap::new()),
             schema_checked_generation: RwLock::new(None),
         }
     }
@@ -84,12 +88,11 @@ impl Validator {
     }
 
     pub fn value<V: Value>(&self, value: &V, rules: impl AsRef<str>) -> Result<(), Error> {
-        let groups = self.cached_rule_expression(rules.as_ref())?;
-        self.ensure_direct_value_rules(groups.as_ref())?;
+        let group = self.compile(rules.as_ref())?;
         let mut errors = Vec::new();
         let target = FieldTarget::value();
         let context = Context::new();
-        self.validate_rule_groups(&mut errors, target, value, groups.as_ref(), &context)?;
+        group.execute(&mut errors, target, value, &context)?;
 
         if errors.is_empty() {
             Ok(())
@@ -131,13 +134,17 @@ impl Validator {
             .schema_checked_generation
             .write()
             .expect("schema verification cache lock must not be poisoned") = None;
+        self.compiled_cache
+            .write()
+            .expect("compiled cache lock must not be poisoned")
+            .clear();
     }
 
-    fn cached_rule_expression(&self, expression: &str) -> Result<Arc<Vec<RuleGroup>>, Error> {
+    fn parse(&self, expression: &str) -> Result<Arc<Vec<RuleGroup>>, Error> {
         if let Some(groups) = self
             .expression_cache
             .read()
-            .expect("rule expression cache lock must not be poisoned")
+            .expect("expression cache lock must not be poisoned")
             .get(expression)
             .cloned()
         {
@@ -148,13 +155,39 @@ impl Validator {
         let mut cache = self
             .expression_cache
             .write()
-            .expect("rule expression cache lock must not be poisoned");
+            .expect("expression cache lock must not be poisoned");
         if let Some(groups) = cache.get(expression).cloned() {
             return Ok(groups);
         }
 
         cache.insert(expression.to_owned(), groups.clone());
         Ok(groups)
+    }
+
+    fn compile(&self, expression: &str) -> Result<Arc<Group>, Error> {
+        let key = (self.generation, expression.to_owned());
+        if let Some(group) = self
+            .compiled_cache
+            .read()
+            .expect("compiled cache lock must not be poisoned")
+            .get(&key)
+            .cloned()
+        {
+            return Ok(group);
+        }
+
+        let groups = self.parse(expression)?;
+        let group = Arc::new(Group::compile(groups.as_ref(), &self.rules, &self.aliases)?);
+        let mut cache = self
+            .compiled_cache
+            .write()
+            .expect("compiled cache lock must not be poisoned");
+        if let Some(group) = cache.get(&key).cloned() {
+            return Ok(group);
+        }
+
+        cache.insert(key, group.clone());
+        Ok(group)
     }
 
     fn ensure_schema_rules(&self, schema: &Schema) -> Result<(), Error> {
@@ -190,10 +223,6 @@ impl Validator {
         }
 
         Ok(())
-    }
-
-    fn ensure_direct_value_rules(&self, groups: &[RuleGroup]) -> Result<(), Error> {
-        self.ensure_rule_groups(groups)
     }
 
     fn ensure_rule(&self, name: &str) -> Result<(), Error> {
@@ -241,75 +270,6 @@ impl Validator {
         Err(Error::UnknownRule {
             name: name.to_owned(),
         })
-    }
-
-    pub(crate) fn validate_rule_groups<V: Value>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        groups: &[RuleGroup],
-        context: &Context,
-    ) -> Result<(), Error> {
-        for group in groups {
-            if let Some(spec) = group.single() {
-                if spec.name() == "omitempty" {
-                    if self.__skip_empty(value) {
-                        return Ok(());
-                    }
-                    continue;
-                }
-
-                if !self.rules.contains(spec.name()) && self.aliases.contains(spec.name()) {
-                    self.__validate_alias(errors, target.clone(), value, spec.name(), context)?;
-                    continue;
-                }
-
-                self.__validate_rule_with_display(
-                    errors,
-                    target.clone(),
-                    value,
-                    RuleDisplay::same(spec.name()),
-                    spec.params().clone(),
-                    context,
-                )?;
-                continue;
-            }
-
-            if let Some(alternatives) = group.alternatives() {
-                let mut passes = false;
-                for spec in alternatives {
-                    if self.direct_spec_passes(
-                        target.clone(),
-                        value,
-                        spec.name(),
-                        spec.params(),
-                        context,
-                    )? {
-                        passes = true;
-                        break;
-                    }
-                }
-                if passes {
-                    continue;
-                }
-
-                let reason = alternatives
-                    .iter()
-                    .map(|spec| spec.name())
-                    .collect::<Vec<_>>()
-                    .join("|");
-                errors.push(field_error(
-                    target.clone(),
-                    value.kind(),
-                    &reason,
-                    &reason,
-                    Params::new(),
-                ));
-            }
-        }
-
-        Ok(())
     }
 
     pub(crate) fn validate_rule_groups_with_compare<'a, V, F>(
