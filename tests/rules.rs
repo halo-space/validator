@@ -440,6 +440,42 @@ struct DocumentFormats {
 
     #[validate(datetime)]
     datetime: String,
+
+    #[validate(e164)]
+    phone: String,
+
+    #[validate(base32)]
+    base32: String,
+
+    #[validate(base64)]
+    base64: String,
+
+    #[validate(base64url)]
+    base64url: String,
+
+    #[validate(base64rawurl)]
+    base64rawurl: String,
+
+    #[validate(hexadecimal)]
+    hexadecimal: String,
+
+    #[validate(url_encoded)]
+    url_encoded: String,
+
+    #[validate(html)]
+    html: String,
+
+    #[validate(html_encoded)]
+    html_encoded: String,
+
+    #[validate(jwt)]
+    jwt: String,
+
+    #[validate(mac)]
+    mac: String,
+
+    #[validate(semver)]
+    semver: String,
 }
 
 #[test]
@@ -447,6 +483,18 @@ fn json_datetime_rules_pass() {
     let value = DocumentFormats {
         json: r#"{"ok":true}"#.to_owned(),
         datetime: "2026-07-08T12:30:00Z".to_owned(),
+        phone: "+14155552671".to_owned(),
+        base32: "MZXW6===".to_owned(),
+        base64: "aGVsbG8=".to_owned(),
+        base64url: "aGVsbG8=".to_owned(),
+        base64rawurl: "aGVsbG8".to_owned(),
+        hexadecimal: "0xdeadBEEF".to_owned(),
+        url_encoded: "hello%20rust".to_owned(),
+        html: "<section>".to_owned(),
+        html_encoded: "&lt;".to_owned(),
+        jwt: "eyJhbGciOiJOT05FIn0.e30.".to_owned(),
+        mac: "01:23:45:67:89:ab".to_owned(),
+        semver: "1.2.3-alpha.1+build.5".to_owned(),
     };
 
     Validator::new().validate(&value).unwrap();
@@ -457,6 +505,18 @@ fn json_datetime_rules_fail() {
     let value = DocumentFormats {
         json: "{not-json}".to_owned(),
         datetime: "2026-13-08T12:30:00Z".to_owned(),
+        phone: "+0123".to_owned(),
+        base32: "mzxw6===".to_owned(),
+        base64: "aGVsbG8".to_owned(),
+        base64url: "aGVsbG8+".to_owned(),
+        base64rawurl: "aGVsbG8=".to_owned(),
+        hexadecimal: "0xnot-hex".to_owned(),
+        url_encoded: "%test%".to_owned(),
+        html: "<123nonsense>".to_owned(),
+        html_encoded: "&x00".to_owned(),
+        jwt: "eyJhbGciOiJOT05FIn0.e30.\n".to_owned(),
+        mac: "01:23:45:67:89".to_owned(),
+        semver: "1.2.3-0123".to_owned(),
     };
 
     let fields = Validator::new()
@@ -466,7 +526,34 @@ fn json_datetime_rules_fail() {
         .unwrap();
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
 
-    assert_eq!(rules, vec!["json", "datetime"]);
+    assert_eq!(
+        rules,
+        vec![
+            "json",
+            "datetime",
+            "e164",
+            "base32",
+            "base64",
+            "base64url",
+            "base64rawurl",
+            "hexadecimal",
+            "url_encoded",
+            "html",
+            "html_encoded",
+            "jwt",
+            "mac",
+            "semver",
+        ]
+    );
+}
+
+#[test]
+fn mac_accepts_common_notations() {
+    let validator = Validator::new();
+
+    validator.value(&"01:23:45:67:89:ab", "mac").unwrap();
+    validator.value(&"01-23-45-67-89-ab", "mac").unwrap();
+    validator.value(&"0123.4567.89ab", "mac").unwrap();
 }
 
 #[derive(Debug, Validate)]
@@ -738,6 +825,52 @@ fn noneof_dispatches_integer_candidates_by_field_type() {
     assert_eq!(fields[0].params().get("values"), Some("1,2,3"));
 }
 
+#[test]
+fn case_insensitive_choice_rules_work_for_strings() {
+    let validator = Validator::new();
+
+    validator.value(&"ReD", "oneofci(red,green)").unwrap();
+    validator
+        .value(&"BLUE", "oneofci('red green',blue)")
+        .unwrap();
+    validator.value(&"yellow", "noneofci(red,green)").unwrap();
+
+    let fields = validator
+        .value(&"RED", "noneofci(red,green)")
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields[0].rule(), "noneofci");
+    assert_eq!(fields[0].params().get("values"), Some("red,green"));
+}
+
+#[derive(Debug, Validate)]
+struct ChoiceCaseRules {
+    #[validate(oneofci("draft", "published"))]
+    state: String,
+
+    #[validate(noneofci("root", "admin"))]
+    username: String,
+}
+
+#[test]
+fn derive_case_insensitive_choice_rules_work() {
+    let value = ChoiceCaseRules {
+        state: "PUBLISHED".to_owned(),
+        username: "ADMIN".to_owned(),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "noneofci");
+}
+
 #[derive(Debug, Validate)]
 struct AliasState {
     #[validate(alias = "publish_state")]
@@ -773,11 +906,29 @@ struct TextHelpers {
     #[validate(containsany(value = "!@#?"))]
     password: String,
 
+    #[validate(containsrune(value = "好"))]
+    greeting: String,
+
+    #[validate(excludes(value = "admin"))]
+    display_name: String,
+
+    #[validate(excludesall(value = "!@#"))]
+    slug: String,
+
+    #[validate(excludesrune(value = "☻"))]
+    mood: String,
+
     #[validate(startswith(value = "usr_"))]
     username: String,
 
     #[validate(endswith(value = ".rs"))]
     path: String,
+
+    #[validate(startsnotwith(value = "tmp"))]
+    storage_key: String,
+
+    #[validate(endsnotwith(value = ".bak"))]
+    filename: String,
 }
 
 #[test]
@@ -785,8 +936,14 @@ fn string_helpers_pass() {
     let value = TextHelpers {
         body: "hello rust".to_owned(),
         password: "hello!".to_owned(),
+        greeting: "你好".to_owned(),
+        display_name: "alice".to_owned(),
+        slug: "hello-rust".to_owned(),
+        mood: "happy".to_owned(),
         username: "usr_alice".to_owned(),
         path: "main.rs".to_owned(),
+        storage_key: "cache/file".to_owned(),
+        filename: "report.txt".to_owned(),
     };
 
     Validator::new().validate(&value).unwrap();
@@ -797,8 +954,14 @@ fn string_helpers_fail() {
     let value = TextHelpers {
         body: "hello go".to_owned(),
         password: "hello".to_owned(),
+        greeting: "hello".to_owned(),
+        display_name: "root-admin".to_owned(),
+        slug: "hello@rust".to_owned(),
+        mood: "a☻b".to_owned(),
         username: "admin".to_owned(),
         path: "main.go".to_owned(),
+        storage_key: "tmp/file".to_owned(),
+        filename: "report.bak".to_owned(),
     };
 
     let fields = Validator::new()
@@ -807,18 +970,36 @@ fn string_helpers_fail() {
         .into_fields()
         .unwrap();
 
-    assert_eq!(fields.len(), 4);
-    assert_eq!(fields[0].rule(), "contains");
-    assert_eq!(fields[1].rule(), "containsany");
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(
+        rules,
+        vec![
+            "contains",
+            "containsany",
+            "containsrune",
+            "excludes",
+            "excludesall",
+            "excludesrune",
+            "startswith",
+            "endswith",
+            "startsnotwith",
+            "endsnotwith",
+        ]
+    );
     assert_eq!(fields[1].params().get("value"), Some("!@#?"));
-    assert_eq!(fields[2].rule(), "startswith");
-    assert_eq!(fields[3].rule(), "endswith");
 }
 
 #[derive(Debug, Validate)]
 struct CharacterClasses {
     #[validate(ascii)]
     ascii: String,
+
+    #[validate(printascii)]
+    printascii: String,
+
+    #[validate(multibyte)]
+    multibyte: String,
 
     #[validate(alpha)]
     alpha: String,
@@ -846,6 +1027,8 @@ struct CharacterClasses {
 fn character_classes_pass() {
     let value = CharacterClasses {
         ascii: "abc-123".to_owned(),
+        printascii: "Hello, Rust!".to_owned(),
+        multibyte: "你好".to_owned(),
         alpha: "abcXYZ".to_owned(),
         alphanum: "abc123".to_owned(),
         numeric: "-12.5".to_owned(),
@@ -862,6 +1045,8 @@ fn character_classes_pass() {
 fn character_classes_fail() {
     let value = CharacterClasses {
         ascii: "你好".to_owned(),
+        printascii: "hello\n".to_owned(),
+        multibyte: "hello".to_owned(),
         alpha: "abc1".to_owned(),
         alphanum: "abc-123".to_owned(),
         numeric: "12e3".to_owned(),
@@ -877,15 +1062,17 @@ fn character_classes_fail() {
         .into_fields()
         .unwrap();
 
-    assert_eq!(fields.len(), 8);
+    assert_eq!(fields.len(), 10);
     assert_eq!(fields[0].rule(), "ascii");
-    assert_eq!(fields[1].rule(), "alpha");
-    assert_eq!(fields[2].rule(), "alphanum");
-    assert_eq!(fields[3].rule(), "numeric");
-    assert_eq!(fields[4].rule(), "number");
-    assert_eq!(fields[5].rule(), "lowercase");
-    assert_eq!(fields[6].rule(), "uppercase");
-    assert_eq!(fields[7].rule(), "boolean");
+    assert_eq!(fields[1].rule(), "printascii");
+    assert_eq!(fields[2].rule(), "multibyte");
+    assert_eq!(fields[3].rule(), "alpha");
+    assert_eq!(fields[4].rule(), "alphanum");
+    assert_eq!(fields[5].rule(), "numeric");
+    assert_eq!(fields[6].rule(), "number");
+    assert_eq!(fields[7].rule(), "lowercase");
+    assert_eq!(fields[8].rule(), "uppercase");
+    assert_eq!(fields[9].rule(), "boolean");
 }
 
 #[derive(Debug, Validate)]

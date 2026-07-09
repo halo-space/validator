@@ -103,7 +103,7 @@ fn parse_rule(item: &str) -> Result<Spec, Error> {
         }
 
         if !positional.is_empty() {
-            if !matches!(name, "oneof" | "noneof") {
+            if !matches!(name, "oneof" | "oneofci" | "noneof" | "noneofci") {
                 return Err(invalid_rule_expression(
                     item,
                     "expected key=value parameter",
@@ -121,7 +121,7 @@ fn parse_rule(item: &str) -> Result<Spec, Error> {
             "min" => "min",
             "max" => "max",
             "regex" => "pattern",
-            "oneof" | "noneof" => "values",
+            "oneof" | "oneofci" | "noneof" | "noneofci" => "values",
             _ => "value",
         };
         return Ok(Spec::new(name).param(param, trim_quotes(value.trim())));

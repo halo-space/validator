@@ -623,20 +623,14 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
         return Ok(());
     }
 
-    if meta.path.is_ident("oneof") {
-        rules.push(rule(
-            "oneof",
-            vec![("values".to_owned(), parse_choice_values(meta, "oneof")?)],
-        ));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("noneof") {
-        rules.push(rule(
-            "noneof",
-            vec![("values".to_owned(), parse_choice_values(meta, "noneof")?)],
-        ));
-        return Ok(());
+    for name in CHOICE_RULES {
+        if meta.path.is_ident(*name) {
+            rules.push(rule(
+                *name,
+                vec![("values".to_owned(), parse_choice_values(meta, name)?)],
+            ));
+            return Ok(());
+        }
     }
 
     for name in MARKER_RULES {
@@ -825,7 +819,21 @@ const MARKER_RULES: &[&str] = &[
     "ulid",
     "json",
     "datetime",
+    "e164",
+    "base32",
+    "base64",
+    "base64url",
+    "base64rawurl",
+    "hexadecimal",
+    "url_encoded",
+    "html",
+    "html_encoded",
+    "jwt",
+    "mac",
+    "semver",
     "ascii",
+    "printascii",
+    "multibyte",
     "alpha",
     "alphanum",
     "numeric",
@@ -842,7 +850,20 @@ const MARKER_RULES: &[&str] = &[
     "cmyk",
 ];
 
-const STRING_PARAM_RULES: &[&str] = &["contains", "containsany", "startswith", "endswith"];
+const CHOICE_RULES: &[&str] = &["oneof", "oneofci", "noneof", "noneofci"];
+
+const STRING_PARAM_RULES: &[&str] = &[
+    "contains",
+    "containsany",
+    "containsrune",
+    "excludes",
+    "excludesall",
+    "excludesrune",
+    "startswith",
+    "endswith",
+    "startsnotwith",
+    "endsnotwith",
+];
 
 const COMPARE_FIELD_RULES: &[&str] = &[
     "eq_field",

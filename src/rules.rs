@@ -10,11 +10,14 @@ mod string;
 
 use crate::core::{Error, Rules};
 pub(crate) use alias::load as load_aliases;
-use choice::{NoneOf, OneOf};
+use choice::{NoneOf, NoneOfCi, OneOf, OneOfCi};
 use collection::Unique;
 pub(crate) use collection::values_are_unique;
 use compare::{Eq, Gt, Gte, Lt, Lte, Ne};
-use format::{Cmyk, DateTime, Email, HexColor, Hsl, Hsla, Json, Regex, Rgb, Rgba};
+use format::{
+    Base32, Base64, Base64RawUrl, Base64Url, Cmyk, DateTime, E164, Email, HexColor, Hexadecimal,
+    Hsl, Hsla, Html, HtmlEncoded, Json, Jwt, Mac, Regex, Rgb, Rgba, Semver, UrlEncoded,
+};
 use network::{
     Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnameRfc1123, HttpUrl, HttpsUrl, Ip, Ipv4, Ipv6, Port,
     Ulid, Uri, Url, Uuid, Uuid3, Uuid4, Uuid5,
@@ -22,8 +25,9 @@ use network::{
 use required::Required;
 use size::{Length, Max, Min, Range};
 use string::{
-    Alpha, Alphanum, Ascii, Boolean, Contains, ContainsAny, EndsWith, Lowercase, Number, Numeric,
-    StartsWith, Uppercase,
+    Alpha, Alphanum, Ascii, Boolean, Contains, ContainsAny, ContainsRune, EndsNotWith, EndsWith,
+    Excludes, ExcludesAll, ExcludesRune, Lowercase, Multibyte, Number, Numeric, PrintAscii,
+    StartsNotWith, StartsWith, Uppercase,
 };
 
 pub(crate) fn load(rules: &mut Rules) -> Result<(), Error> {
@@ -61,6 +65,18 @@ pub(crate) fn load(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("json", Json)?;
     rules.insert("datetime", DateTime)?;
     rules.insert("regex", Regex::default())?;
+    rules.insert("e164", E164)?;
+    rules.insert("base32", Base32)?;
+    rules.insert("base64", Base64)?;
+    rules.insert("base64url", Base64Url)?;
+    rules.insert("base64rawurl", Base64RawUrl)?;
+    rules.insert("hexadecimal", Hexadecimal)?;
+    rules.insert("url_encoded", UrlEncoded)?;
+    rules.insert("html", Html)?;
+    rules.insert("html_encoded", HtmlEncoded)?;
+    rules.insert("jwt", Jwt)?;
+    rules.insert("mac", Mac)?;
+    rules.insert("semver", Semver)?;
     rules.insert("hexcolor", HexColor)?;
     rules.insert("rgb", Rgb)?;
     rules.insert("rgba", Rgba)?;
@@ -68,13 +84,23 @@ pub(crate) fn load(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("hsla", Hsla)?;
     rules.insert("cmyk", Cmyk)?;
     rules.insert("oneof", OneOf)?;
+    rules.insert("oneofci", OneOfCi)?;
     rules.insert("noneof", NoneOf)?;
+    rules.insert("noneofci", NoneOfCi)?;
     rules.insert("unique", Unique)?;
     rules.insert("contains", Contains)?;
     rules.insert("containsany", ContainsAny)?;
+    rules.insert("containsrune", ContainsRune)?;
+    rules.insert("excludes", Excludes)?;
+    rules.insert("excludesall", ExcludesAll)?;
+    rules.insert("excludesrune", ExcludesRune)?;
     rules.insert("startswith", StartsWith)?;
     rules.insert("endswith", EndsWith)?;
+    rules.insert("startsnotwith", StartsNotWith)?;
+    rules.insert("endsnotwith", EndsNotWith)?;
     rules.insert("ascii", Ascii)?;
+    rules.insert("printascii", PrintAscii)?;
+    rules.insert("multibyte", Multibyte)?;
     rules.insert("alpha", Alpha)?;
     rules.insert("alphanum", Alphanum)?;
     rules.insert("numeric", Numeric)?;
