@@ -8,11 +8,11 @@ impl Rule for DateTime {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_datetime(value.as_ref())))
+            .is_some_and(|value| valid(value.as_ref())))
     }
 }
 
-fn is_datetime(value: &str) -> bool {
+fn valid(value: &str) -> bool {
     let Some((date, time)) = value.split_once('T') else {
         return false;
     };

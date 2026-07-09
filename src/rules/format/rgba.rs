@@ -12,13 +12,13 @@ impl Rule for Rgba {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| rgba_regex().is_match(value.as_ref())))
+            .is_some_and(|value| pattern().is_match(value.as_ref())))
     }
 }
 
-fn rgba_regex() -> &'static Regex {
-    static RGBA: OnceLock<Regex> = OnceLock::new();
-    RGBA.get_or_init(|| {
+fn pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
         Regex::new(
             r"^rgba\(\s*(?:(?:0|[1-9][0-9]?|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\s*,\s*(?:0|[1-9][0-9]?|1[0-9][0-9]|2[0-4][0-9]|25[0-5])\s*,\s*(?:0|[1-9][0-9]?|1[0-9][0-9]|2[0-4][0-9]|25[0-5])|(?:0|[1-9][0-9]?|1[0-9][0-9]|2[0-4][0-9]|25[0-5])%\s*,\s*(?:0|[1-9][0-9]?|1[0-9][0-9]|2[0-4][0-9]|25[0-5])%\s*,\s*(?:0|[1-9][0-9]?|1[0-9][0-9]|2[0-4][0-9]|25[0-5])%)\s*,\s*(?:0(?:\.[0-9]+)?|1(?:\.0+)?)\s*\)$",
         )

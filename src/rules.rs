@@ -14,10 +14,10 @@ use choice::{NoneOf, OneOf};
 use collection::Unique;
 pub(crate) use collection::values_are_unique;
 use compare::{Eq, Gt, Gte, Lt, Lte, Ne};
-use format::{Cmyk, DateTime, Email, HexColor, Hsl, Hsla, Json, RegexRule, Rgb, Rgba};
+use format::{Cmyk, DateTime, Email, HexColor, Hsl, Hsla, Json, Regex, Rgb, Rgba};
 use network::{
     Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnameRfc1123, HttpUrl, HttpsUrl, Ip, Ipv4, Ipv6, Port,
-    Ulid, Uri, UrlRule, Uuid, Uuid3, Uuid4, Uuid5,
+    Ulid, Uri, Url, Uuid, Uuid3, Uuid4, Uuid5,
 };
 use required::Required;
 use size::{Length, Max, Min, Range};
@@ -26,7 +26,7 @@ use string::{
     StartsWith, Uppercase,
 };
 
-pub(crate) fn load_rules(rules: &mut Rules) -> Result<(), Error> {
+pub(crate) fn load(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("required", Required)?;
     rules.insert("length", Length)?;
     rules.insert("min", Min)?;
@@ -39,7 +39,7 @@ pub(crate) fn load_rules(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("lte", Lte)?;
     rules.insert("range", Range)?;
     rules.insert("email", Email)?;
-    rules.insert("url", UrlRule)?;
+    rules.insert("url", Url)?;
     rules.insert("uri", Uri)?;
     rules.insert("http_url", HttpUrl)?;
     rules.insert("https_url", HttpsUrl)?;
@@ -60,7 +60,7 @@ pub(crate) fn load_rules(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("ulid", Ulid)?;
     rules.insert("json", Json)?;
     rules.insert("datetime", DateTime)?;
-    rules.insert("regex", RegexRule::default())?;
+    rules.insert("regex", Regex::default())?;
     rules.insert("hexcolor", HexColor)?;
     rules.insert("rgb", Rgb)?;
     rules.insert("rgba", Rgba)?;

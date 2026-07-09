@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct Schema {
-    fields: BTreeMap<String, FieldSchema>,
+    fields: BTreeMap<String, FieldDef>,
 }
 
 impl Schema {
@@ -64,7 +64,7 @@ impl Schema {
     fn from_value(value: JsonValue) -> Result<Self, Error> {
         let fields = required_object(&value, "fields")?
             .iter()
-            .map(|(name, field)| Ok((name.clone(), FieldSchema::from_value(name, field)?)))
+            .map(|(name, field)| Ok((name.clone(), FieldDef::from_value(name, field)?)))
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
 
         Ok(Self { fields })
@@ -72,19 +72,19 @@ impl Schema {
 }
 
 #[derive(Clone, Debug)]
-struct FieldSchema {
-    ty: Option<SchemaType>,
+struct FieldDef {
+    ty: Option<Type>,
     rules: Vec<RuleGroup>,
-    fields: BTreeMap<String, FieldSchema>,
+    fields: BTreeMap<String, FieldDef>,
 }
 
-impl FieldSchema {
+impl FieldDef {
     fn from_value(name: &str, value: &JsonValue) -> Result<Self, Error> {
         let object = value
             .as_object()
-            .ok_or_else(|| invalid_schema(format!("field '{name}' must be an object")))?;
+            .ok_or_else(|| invalid(format!("field '{name}' must be an object")))?;
         if object.contains_key("types") {
-            return Err(invalid_schema(format!(
+            return Err(invalid(format!(
                 "field '{name}' uses unsupported key 'types'; use 'type'"
             )));
         }
@@ -95,13 +95,13 @@ impl FieldSchema {
             .unwrap_or_default();
         let ty = object
             .get("type")
-            .map(|value| SchemaType::from_value(name, value))
+            .map(|value| Type::from_value(name, value))
             .transpose()?
             .or({
                 if fields.is_empty() {
                     None
                 } else {
-                    Some(SchemaType::Object)
+                    Some(Type::Object)
                 }
             });
         let rules = object
@@ -115,7 +115,7 @@ impl FieldSchema {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SchemaType {
+enum Type {
     String,
     Bool,
     Int,
@@ -125,12 +125,10 @@ enum SchemaType {
     Object,
 }
 
-impl SchemaType {
+impl Type {
     fn from_value(field: &str, value: &JsonValue) -> Result<Self, Error> {
         let Some(name) = value.as_str() else {
-            return Err(invalid_schema(format!(
-                "field '{field}' type must be a string"
-            )));
+            return Err(invalid(format!("field '{field}' type must be a string")));
         };
 
         match name {
@@ -141,7 +139,7 @@ impl SchemaType {
             "float" | "number" => Ok(Self::Float),
             "array" => Ok(Self::Array),
             "object" | "map" => Ok(Self::Object),
-            _ => Err(invalid_schema(format!(
+            _ => Err(invalid(format!(
                 "field '{field}' has unsupported type '{name}'"
             ))),
         }
@@ -174,10 +172,10 @@ impl SchemaType {
 
 fn ensure_field_rules(
     validator: &Validator,
-    fields: &BTreeMap<String, FieldSchema>,
+    fields: &BTreeMap<String, FieldDef>,
 ) -> Result<(), Error> {
     for field in fields.values() {
-        ensure_schema_rule_groups(validator, &field.rules)?;
+        ensure_rule_groups(validator, &field.rules)?;
         ensure_compare_targets(&field.rules, fields)?;
         ensure_field_rules(validator, &field.fields)?;
     }
@@ -185,16 +183,16 @@ fn ensure_field_rules(
     Ok(())
 }
 
-fn ensure_schema_rule_groups(validator: &Validator, groups: &[RuleGroup]) -> Result<(), Error> {
+fn ensure_rule_groups(validator: &Validator, groups: &[RuleGroup]) -> Result<(), Error> {
     for group in groups {
         if let Some(spec) = group.single() {
-            ensure_schema_rule(validator, spec)?;
+            ensure_rule(validator, spec)?;
             continue;
         }
 
         if let Some(alternatives) = group.alternatives() {
             for spec in alternatives {
-                ensure_schema_rule(validator, spec)?;
+                ensure_rule(validator, spec)?;
             }
         }
     }
@@ -202,7 +200,7 @@ fn ensure_schema_rule_groups(validator: &Validator, groups: &[RuleGroup]) -> Res
     Ok(())
 }
 
-fn ensure_schema_rule(validator: &Validator, spec: &RuleSpec) -> Result<(), Error> {
+fn ensure_rule(validator: &Validator, spec: &RuleSpec) -> Result<(), Error> {
     if is_cross_field_rule(spec.name()) {
         return Ok(());
     }
@@ -212,7 +210,7 @@ fn ensure_schema_rule(validator: &Validator, spec: &RuleSpec) -> Result<(), Erro
 
 fn ensure_compare_targets(
     rules: &[RuleGroup],
-    fields: &BTreeMap<String, FieldSchema>,
+    fields: &BTreeMap<String, FieldDef>,
 ) -> Result<(), Error> {
     for group in rules {
         if let Some(spec) = group.single() {
@@ -232,14 +230,14 @@ fn ensure_compare_targets(
 
 fn ensure_compare_target(
     spec: &RuleSpec,
-    fields: &BTreeMap<String, FieldSchema>,
+    fields: &BTreeMap<String, FieldDef>,
 ) -> Result<(), Error> {
     if !is_cross_field_rule(spec.name()) {
         return Ok(());
     }
 
     let Some(compare) = compare_param(spec.params()) else {
-        return Err(invalid_schema(format!(
+        return Err(invalid(format!(
             "cross-field rule '{}' must define compare target",
             spec.name()
         )));
@@ -248,7 +246,7 @@ fn ensure_compare_target(
     if fields.contains_key(compare) {
         Ok(())
     } else {
-        Err(invalid_schema(format!(
+        Err(invalid(format!(
             "cross-field rule '{}' references undeclared field '{}'",
             spec.name(),
             compare
@@ -261,7 +259,7 @@ fn validate_fields(
     context: &Context,
     errors: &mut Vec<FieldError>,
     parent: &str,
-    fields: &BTreeMap<String, FieldSchema>,
+    fields: &BTreeMap<String, FieldDef>,
     object: &serde_json::Map<String, JsonValue>,
 ) -> Result<(), Error> {
     for (name, field) in fields {
@@ -309,14 +307,14 @@ fn validate_fields(
     Ok(())
 }
 
-fn parse_fields(parent: &str, value: &JsonValue) -> Result<BTreeMap<String, FieldSchema>, Error> {
-    let object = value.as_object().ok_or_else(|| {
-        invalid_schema(format!("field '{parent}' nested fields must be an object"))
-    })?;
+fn parse_fields(parent: &str, value: &JsonValue) -> Result<BTreeMap<String, FieldDef>, Error> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| invalid(format!("field '{parent}' nested fields must be an object")))?;
 
     object
         .iter()
-        .map(|(name, field)| Ok((name.clone(), FieldSchema::from_value(name, field)?)))
+        .map(|(name, field)| Ok((name.clone(), FieldDef::from_value(name, field)?)))
         .collect()
 }
 
@@ -328,7 +326,7 @@ fn parse_rules(field: &str, value: &JsonValue) -> Result<Vec<RuleGroup>, Error> 
             .collect::<Result<Vec<_>, _>>()
             .map(|groups| groups.into_iter().flatten().collect()),
         JsonValue::String(expr) => parse_rule_expression(expr),
-        _ => Err(invalid_schema(format!(
+        _ => Err(invalid(format!(
             "field '{field}' rules must be a string or array"
         ))),
     }
@@ -339,7 +337,7 @@ fn parse_rule_item(field: &str, value: &JsonValue) -> Result<Vec<RuleGroup>, Err
         JsonValue::String(expr) => parse_rule_expression(expr),
         JsonValue::Object(object) => {
             if object.len() != 1 {
-                return Err(invalid_schema(format!(
+                return Err(invalid(format!(
                     "field '{field}' rule object must contain exactly one rule"
                 )));
             }
@@ -350,7 +348,7 @@ fn parse_rule_item(field: &str, value: &JsonValue) -> Result<Vec<RuleGroup>, Err
                 .expect("rule object must contain one entry");
             Ok(vec![RuleGroup::Single(parse_rule_object(name, params)?)])
         }
-        _ => Err(invalid_schema(format!(
+        _ => Err(invalid(format!(
             "field '{field}' rule item must be a string or object"
         ))),
     }
@@ -382,7 +380,7 @@ fn param_value(value: &JsonValue) -> Result<String, Error> {
             .map(param_value)
             .collect::<Result<Vec<_>, _>>()
             .map(|values| values.join(",")),
-        JsonValue::Null | JsonValue::Object(_) => Err(invalid_schema(
+        JsonValue::Null | JsonValue::Object(_) => Err(invalid(
             "rule parameters must be strings, numbers, booleans, or arrays",
         )),
     }
@@ -410,7 +408,7 @@ fn required_object<'a>(
     value
         .get(field)
         .and_then(JsonValue::as_object)
-        .ok_or_else(|| invalid_schema(format!("schema must contain object '{field}'")))
+        .ok_or_else(|| invalid(format!("schema must contain object '{field}'")))
 }
 
 fn namespace(parent: &str, field: &str) -> String {
@@ -421,7 +419,7 @@ fn namespace(parent: &str, field: &str) -> String {
     }
 }
 
-fn invalid_schema(reason: impl Into<String>) -> Error {
+fn invalid(reason: impl Into<String>) -> Error {
     Error::InvalidSchema {
         reason: reason.into(),
     }

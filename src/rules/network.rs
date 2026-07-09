@@ -17,5 +17,5 @@ pub(super) use ip::{Ip, Ipv4, Ipv6};
 pub(super) use port::Port;
 pub(super) use ulid::Ulid;
 pub(super) use uri::Uri;
-pub(super) use url::UrlRule;
+pub(super) use url::Url;
 pub(super) use uuid::{Uuid, Uuid3, Uuid4, Uuid5};

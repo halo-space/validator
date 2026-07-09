@@ -12,11 +12,11 @@ impl Rule for Boolean {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| parse_bool(value.as_ref())))
+            .is_some_and(|value| parse(value.as_ref())))
     }
 }
 
-fn parse_bool(value: &str) -> bool {
+fn parse(value: &str) -> bool {
     matches!(
         value,
         "1" | "t" | "T" | "true" | "TRUE" | "True" | "0" | "f" | "F" | "false" | "FALSE" | "False"

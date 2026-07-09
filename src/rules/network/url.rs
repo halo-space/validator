@@ -1,9 +1,9 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct UrlRule;
+pub struct Url;
 
-impl Rule for UrlRule {
+impl Rule for Url {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()

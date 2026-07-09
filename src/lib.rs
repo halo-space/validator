@@ -45,7 +45,7 @@ pub struct Validator {
 impl Validator {
     pub fn new() -> Self {
         let mut rules = Rules::new();
-        crate::rules::load_rules(&mut rules).expect("default validator rules must be valid");
+        crate::rules::load(&mut rules).expect("default validator rules must be valid");
 
         let mut aliases = Aliases::new();
         crate::rules::load_aliases(&mut aliases).expect("default validator aliases must be valid");
@@ -104,7 +104,7 @@ impl Validator {
     pub fn validate_map(&self, value: &serde_json::Value) -> Result<(), Error> {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
 
-        self.ensure_schema_rules(schema)?;
+        self.ensure_schema(schema)?;
 
         let mut errors = Vec::new();
         let context = Context::new();
@@ -190,7 +190,7 @@ impl Validator {
         Ok(group)
     }
 
-    fn ensure_schema_rules(&self, schema: &Schema) -> Result<(), Error> {
+    fn ensure_schema(&self, schema: &Schema) -> Result<(), Error> {
         let checked_generation = *self
             .schema_checked_generation
             .read()

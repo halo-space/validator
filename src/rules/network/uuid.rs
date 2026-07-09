@@ -8,7 +8,7 @@ impl Rule for Uuid {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid(value.as_ref())))
+            .is_some_and(|value| valid(value.as_ref())))
     }
 }
 
@@ -20,7 +20,7 @@ impl Rule for Uuid3 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid_version(value.as_ref(), b'3')))
+            .is_some_and(|value| valid_version(value.as_ref(), b'3')))
     }
 }
 
@@ -32,7 +32,7 @@ impl Rule for Uuid4 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid_version(value.as_ref(), b'4')))
+            .is_some_and(|value| valid_version(value.as_ref(), b'4')))
     }
 }
 
@@ -44,19 +44,19 @@ impl Rule for Uuid5 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_uuid_version(value.as_ref(), b'5')))
+            .is_some_and(|value| valid_version(value.as_ref(), b'5')))
     }
 }
 
-fn is_uuid(value: &str) -> bool {
-    uuid_version(value).is_some()
+fn valid(value: &str) -> bool {
+    version(value).is_some()
 }
 
-fn is_uuid_version(value: &str, version: u8) -> bool {
-    uuid_version(value) == Some(version)
+fn valid_version(value: &str, expected: u8) -> bool {
+    version(value) == Some(expected)
 }
 
-fn uuid_version(value: &str) -> Option<u8> {
+fn version(value: &str) -> Option<u8> {
     if value.len() != 36 {
         return None;
     }

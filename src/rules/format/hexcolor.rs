@@ -12,13 +12,13 @@ impl Rule for HexColor {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| hexcolor_regex().is_match(value.as_ref())))
+            .is_some_and(|value| pattern().is_match(value.as_ref())))
     }
 }
 
-fn hexcolor_regex() -> &'static Regex {
-    static HEXCOLOR: OnceLock<Regex> = OnceLock::new();
-    HEXCOLOR.get_or_init(|| {
+fn pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
         Regex::new(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
             .expect("hexcolor regex must compile")
     })

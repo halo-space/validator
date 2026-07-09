@@ -642,7 +642,7 @@ mod tests {
     #[test]
     fn built_in_locales_cover_default_rules_aliases_and_internal_errors() {
         let mut rules = Rules::new();
-        crate::rules::load_rules(&mut rules).expect("default rules must load");
+        crate::rules::load(&mut rules).expect("default rules must load");
         let mut aliases = Aliases::new();
         crate::rules::load_aliases(&mut aliases).expect("default aliases must load");
 

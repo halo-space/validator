@@ -8,11 +8,11 @@ impl Rule for HostnameRfc1123 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_hostname_rfc1123(value.as_ref())))
+            .is_some_and(|value| valid(value.as_ref())))
     }
 }
 
-fn is_hostname_rfc1123(value: &str) -> bool {
+fn valid(value: &str) -> bool {
     if value.is_empty() || value.len() > 253 || value.starts_with('.') || value.ends_with('.') {
         return false;
     }

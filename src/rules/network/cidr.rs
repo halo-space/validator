@@ -10,7 +10,7 @@ impl Rule for Cidr {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| parse_cidr(value.as_ref()).is_some()))
+            .is_some_and(|value| parse(value.as_ref()).is_some()))
     }
 }
 
@@ -22,7 +22,7 @@ impl Rule for Cidrv4 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| matches!(parse_cidr(value.as_ref()), Some(CidrKind::V4))))
+            .is_some_and(|value| matches!(parse(value.as_ref()), Some(Kind::V4))))
     }
 }
 
@@ -34,22 +34,22 @@ impl Rule for Cidrv6 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| matches!(parse_cidr(value.as_ref()), Some(CidrKind::V6))))
+            .is_some_and(|value| matches!(parse(value.as_ref()), Some(Kind::V6))))
     }
 }
 
-enum CidrKind {
+enum Kind {
     V4,
     V6,
 }
 
-fn parse_cidr(value: &str) -> Option<CidrKind> {
+fn parse(value: &str) -> Option<Kind> {
     let (addr, prefix) = value.split_once('/')?;
     let prefix = prefix.parse::<u8>().ok()?;
 
     match addr.parse::<IpAddr>().ok()? {
-        IpAddr::V4(_) if prefix <= 32 && addr.parse::<Ipv4Addr>().is_ok() => Some(CidrKind::V4),
-        IpAddr::V6(_) if prefix <= 128 && addr.parse::<Ipv6Addr>().is_ok() => Some(CidrKind::V6),
+        IpAddr::V4(_) if prefix <= 32 && addr.parse::<Ipv4Addr>().is_ok() => Some(Kind::V4),
+        IpAddr::V6(_) if prefix <= 128 && addr.parse::<Ipv6Addr>().is_ok() => Some(Kind::V6),
         _ => None,
     }
 }

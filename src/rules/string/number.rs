@@ -16,11 +16,11 @@ impl Rule for Number {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| number_regex().is_match(value.as_ref())))
+            .is_some_and(|value| pattern().is_match(value.as_ref())))
     }
 }
 
-fn number_regex() -> &'static Regex {
-    static NUMBER: OnceLock<Regex> = OnceLock::new();
-    NUMBER.get_or_init(|| Regex::new(r"^[0-9]+$").expect("number regex must compile"))
+fn pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| Regex::new(r"^[0-9]+$").expect("number regex must compile"))
 }

@@ -8,7 +8,7 @@ impl Rule for Hostname {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_hostname(value.as_ref())))
+            .is_some_and(|value| valid(value.as_ref())))
     }
 }
 
@@ -20,11 +20,11 @@ impl Rule for Fqdn {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_hostname(value.as_ref()) && value.contains('.')))
+            .is_some_and(|value| valid(value.as_ref()) && value.contains('.')))
     }
 }
 
-fn is_hostname(value: &str) -> bool {
+fn valid(value: &str) -> bool {
     if value.is_empty() || value.len() > 253 || value.starts_with('.') || value.ends_with('.') {
         return false;
     }

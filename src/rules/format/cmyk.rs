@@ -12,13 +12,13 @@ impl Rule for Cmyk {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| cmyk_regex().is_match(value.as_ref())))
+            .is_some_and(|value| pattern().is_match(value.as_ref())))
     }
 }
 
-fn cmyk_regex() -> &'static Regex {
-    static CMYK: OnceLock<Regex> = OnceLock::new();
-    CMYK.get_or_init(|| {
+fn pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
         Regex::new(
             r"^cmyk\((?:100|[1-9]?[0-9])%\s*,\s*(?:100|[1-9]?[0-9])%\s*,\s*(?:100|[1-9]?[0-9])%\s*,\s*(?:100|[1-9]?[0-9])%\)$",
         )

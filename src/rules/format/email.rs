@@ -12,13 +12,13 @@ impl Rule for Email {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| email_regex().is_match(value.as_ref())))
+            .is_some_and(|value| pattern().is_match(value.as_ref())))
     }
 }
 
-fn email_regex() -> &'static Regex {
-    static EMAIL: OnceLock<Regex> = OnceLock::new();
-    EMAIL.get_or_init(|| {
+fn pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
         Regex::new(r"^[^\s@]+@[^\s@]+\.[^\s@]+$").expect("email regex must compile")
     })
 }

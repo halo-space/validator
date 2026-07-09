@@ -16,6 +16,6 @@ pub(super) use hexcolor::HexColor;
 pub(super) use hsl::Hsl;
 pub(super) use hsla::Hsla;
 pub(super) use json::Json;
-pub(super) use regex::RegexRule;
+pub(super) use regex::Regex;
 pub(super) use rgb::Rgb;
 pub(super) use rgba::Rgba;

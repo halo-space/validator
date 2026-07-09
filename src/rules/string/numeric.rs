@@ -16,13 +16,13 @@ impl Rule for Numeric {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| numeric_regex().is_match(value.as_ref())))
+            .is_some_and(|value| pattern().is_match(value.as_ref())))
     }
 }
 
-fn numeric_regex() -> &'static Regex {
-    static NUMERIC: OnceLock<Regex> = OnceLock::new();
-    NUMERIC.get_or_init(|| {
+fn pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
         Regex::new(r"^[-+]?[0-9]+(?:\.[0-9]+)?$").expect("numeric regex must compile")
     })
 }

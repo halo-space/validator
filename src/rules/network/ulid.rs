@@ -8,15 +8,15 @@ impl Rule for Ulid {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| is_ulid(value.as_ref())))
+            .is_some_and(|value| valid(value.as_ref())))
     }
 }
 
-fn is_ulid(value: &str) -> bool {
-    value.len() == 26 && value.bytes().all(is_ulid_byte)
+fn valid(value: &str) -> bool {
+    value.len() == 26 && value.bytes().all(valid_byte)
 }
 
-fn is_ulid_byte(byte: u8) -> bool {
+fn valid_byte(byte: u8) -> bool {
     let byte = byte.to_ascii_uppercase();
 
     byte.is_ascii_digit()
