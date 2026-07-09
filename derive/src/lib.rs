@@ -585,6 +585,16 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
         return Ok(());
     }
 
+    if meta.path.is_ident("eq_ignore_case") {
+        rules.push(rule("eq_ignore_case", parse_optional_value_param(meta)?));
+        return Ok(());
+    }
+
+    if meta.path.is_ident("ne_ignore_case") {
+        rules.push(rule("ne_ignore_case", parse_optional_value_param(meta)?));
+        return Ok(());
+    }
+
     if meta.path.is_ident("gt") {
         rules.push(rule("gt", parse_optional_value_param(meta)?));
         return Ok(());
@@ -805,6 +815,9 @@ const MARKER_RULES: &[&str] = &[
     "ip",
     "ipv4",
     "ipv6",
+    "ip_addr",
+    "ip4_addr",
+    "ip6_addr",
     "cidr",
     "cidrv4",
     "cidrv6",
@@ -816,7 +829,17 @@ const MARKER_RULES: &[&str] = &[
     "uuid3",
     "uuid4",
     "uuid5",
+    "uuid_rfc4122",
+    "uuid3_rfc4122",
+    "uuid4_rfc4122",
+    "uuid5_rfc4122",
     "ulid",
+    "tcp4_addr",
+    "tcp6_addr",
+    "tcp_addr",
+    "udp4_addr",
+    "udp6_addr",
+    "udp_addr",
     "json",
     "datetime",
     "e164",
@@ -831,11 +854,45 @@ const MARKER_RULES: &[&str] = &[
     "jwt",
     "mac",
     "semver",
+    "origin",
+    "datauri",
+    "latitude",
+    "longitude",
+    "ssn",
+    "md4",
+    "md5",
+    "sha256",
+    "sha384",
+    "sha512",
+    "ripemd128",
+    "ripemd160",
+    "tiger128",
+    "tiger160",
+    "tiger192",
+    "eth_addr",
+    "mongodb",
+    "mongodb_connection_string",
+    "dns_rfc1035_label",
+    "cve",
+    "cron",
+    "ein",
+    "bic_iso_9362_2014",
+    "bic",
+    "isbn",
+    "isbn10",
+    "isbn13",
+    "issn",
+    "credit_card",
+    "luhn_checksum",
     "ascii",
     "printascii",
     "multibyte",
     "alpha",
+    "alphaspace",
+    "alphaunicode",
     "alphanum",
+    "alphanumspace",
+    "alphanumunicode",
     "numeric",
     "number",
     "lowercase",

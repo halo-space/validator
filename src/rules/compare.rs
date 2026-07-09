@@ -1,20 +1,24 @@
 mod eq;
+mod eq_ignore_case;
 mod gt;
 mod gte;
 mod lt;
 mod lte;
 mod ne;
+mod ne_ignore_case;
 
 use std::cmp::Ordering;
 
 use crate::{Error, Field, FloatKind, Kind};
 
 pub(super) use eq::Eq;
+pub(super) use eq_ignore_case::EqIgnoreCase;
 pub(super) use gt::Gt;
 pub(super) use gte::Gte;
 pub(super) use lt::Lt;
 pub(super) use lte::Lte;
 pub(super) use ne::Ne;
+pub(super) use ne_ignore_case::NeIgnoreCase;
 
 #[derive(Clone, Copy, Debug)]
 pub(super) enum Relation {

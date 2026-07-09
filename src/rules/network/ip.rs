@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr as StdIpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::{Field, Rule};
 
@@ -10,7 +10,7 @@ impl Rule for Ip {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| value.parse::<IpAddr>().is_ok()))
+            .is_some_and(|value| value.parse::<StdIpAddr>().is_ok()))
     }
 }
 
@@ -30,6 +30,42 @@ impl Rule for Ipv4 {
 pub struct Ipv6;
 
 impl Rule for Ipv6 {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
+            .value()
+            .string()
+            .is_some_and(|value| value.parse::<Ipv6Addr>().is_ok()))
+    }
+}
+
+#[derive(Debug)]
+pub struct IpAddress;
+
+impl Rule for IpAddress {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
+            .value()
+            .string()
+            .is_some_and(|value| value.parse::<StdIpAddr>().is_ok()))
+    }
+}
+
+#[derive(Debug)]
+pub struct Ip4Address;
+
+impl Rule for Ip4Address {
+    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+        Ok(field
+            .value()
+            .string()
+            .is_some_and(|value| value.parse::<Ipv4Addr>().is_ok()))
+    }
+}
+
+#[derive(Debug)]
+pub struct Ip6Address;
+
+impl Rule for Ip6Address {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()

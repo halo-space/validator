@@ -316,6 +316,69 @@ fn ulid_rejects_ambiguous_characters_and_wrong_length() {
     }
 }
 
+#[test]
+fn rfc4122_uuid_rules_accept_uppercase_and_version_boundaries() {
+    let validator = Validator::new();
+
+    validator
+        .value(&"a987Fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid_rfc4122")
+        .unwrap();
+    validator
+        .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9F3", "uuid3_rfc4122")
+        .unwrap();
+    validator
+        .value(&"57b73598-8764-4ad0-a76A-679bb6640eb1", "uuid4_rfc4122")
+        .unwrap();
+    validator
+        .value(&"987Fbc97-4bed-5078-9f07-9141ba07c9f3", "uuid5_rfc4122")
+        .unwrap();
+
+    for (value, rule) in [
+        ("a987fbc9-4bed-5078-af07-9141ba07c9F3", "uuid4_rfc4122"),
+        ("9c858901-8a57-4791-81Fe-4c455b099bc9", "uuid5_rfc4122"),
+        ("aaaaaaaa-1111-1111-aaaG-111111111111", "uuid_rfc4122"),
+    ] {
+        let fields = validator
+            .value(&value, rule)
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), rule);
+    }
+}
+
+#[test]
+fn address_compatibility_rules_match_ip_literal_socket_semantics() {
+    let validator = Validator::new();
+
+    validator.value(&"127.0.0.1", "ip4_addr").unwrap();
+    validator.value(&"::1", "ip6_addr").unwrap();
+    validator.value(&"::1", "ip_addr").unwrap();
+    validator.value(&"127.0.0.1:80", "tcp4_addr").unwrap();
+    validator.value(&"[::1]:80", "tcp6_addr").unwrap();
+    validator.value(&"127.0.0.1:80", "tcp_addr").unwrap();
+    validator.value(&"[::1]:80", "udp_addr").unwrap();
+    validator.value(&"127.0.0.1:80", "udp4_addr").unwrap();
+    validator.value(&"[::1]:80", "udp6_addr").unwrap();
+
+    for (value, rule) in [
+        ("127.0.0.1:80", "ip4_addr"),
+        ("[::1]:80", "tcp4_addr"),
+        ("127.0.0.1:80", "tcp6_addr"),
+        (":80", "udp_addr"),
+        ("localhost:80", "tcp_addr"),
+    ] {
+        let fields = validator
+            .value(&value, rule)
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), rule);
+    }
+}
+
 #[derive(Debug, Validate)]
 struct UniqueCollections<'a> {
     #[validate(unique)]
@@ -554,6 +617,111 @@ fn mac_accepts_common_notations() {
     validator.value(&"01:23:45:67:89:ab", "mac").unwrap();
     validator.value(&"01-23-45-67-89-ab", "mac").unwrap();
     validator.value(&"0123.4567.89ab", "mac").unwrap();
+}
+
+#[test]
+fn extended_format_rules_pass() {
+    let validator = Validator::new();
+
+    for (value, rule) in [
+        ("https://example.com:443", "origin"),
+        ("data:text/plain;base64,aGVsbG8=", "datauri"),
+        ("90.0", "latitude"),
+        ("-180", "longitude"),
+        ("123-45-6789", "ssn"),
+        ("0x0123456789abcdef0123456789ABCDEF01234567", "eth_addr"),
+        ("507f1f77bcf86cd799439011", "mongodb"),
+        ("mongodb://localhost:27017", "mongodb_connection_string"),
+        ("example", "dns_rfc1035_label"),
+        ("CVE-2024-12345", "cve"),
+        ("@daily", "cron"),
+        ("12-3456789", "ein"),
+        ("SBICKEN1345", "bic_iso_9362_2014"),
+        ("DEUTDEFF500", "bic"),
+        ("978-4-87311-368-5", "isbn"),
+        ("3 401 01319 X", "isbn10"),
+        ("9784873113685", "isbn13"),
+        ("1050-124X", "issn"),
+        ("4624 7482 3324 9780", "credit_card"),
+        ("586824160825533338", "luhn_checksum"),
+    ] {
+        validator.value(&value, rule).unwrap();
+    }
+
+    validator.value(&90_i32, "latitude").unwrap();
+    validator.value(&180_u32, "longitude").unwrap();
+    validator.value(&10000000116_i64, "luhn_checksum").unwrap();
+    validator
+        .value(&586824160825533338_u64, "luhn_checksum")
+        .unwrap();
+
+    for (value, rule) in [
+        ("a".repeat(32), "md4"),
+        ("a".repeat(32), "md5"),
+        ("a".repeat(64), "sha256"),
+        ("a".repeat(96), "sha384"),
+        ("a".repeat(128), "sha512"),
+        ("a".repeat(32), "ripemd128"),
+        ("a".repeat(40), "ripemd160"),
+        ("a".repeat(32), "tiger128"),
+        ("a".repeat(40), "tiger160"),
+        ("a".repeat(48), "tiger192"),
+    ] {
+        validator.value(&value, rule).unwrap();
+    }
+}
+
+#[test]
+fn extended_format_rules_fail() {
+    let validator = Validator::new();
+
+    for (value, rule) in [
+        ("https://example.com/path", "origin"),
+        ("data:text/plain,hello", "datauri"),
+        ("91", "latitude"),
+        ("181", "longitude"),
+        ("123456789", "ssn"),
+        ("0x0123456789abcdef0123456789ABCDEF0123456", "eth_addr"),
+        ("507f1f77bcf86cd79943901z", "mongodb"),
+        (
+            "mongodb+srv://localhost:27017?",
+            "mongodb_connection_string",
+        ),
+        ("Example", "dns_rfc1035_label"),
+        ("CVE-2024-0000", "cve"),
+        ("invalid-cron", "cron"),
+        ("123456789", "ein"),
+        ("SBICKENXX", "bic_iso_9362_2014"),
+        ("deUTDEFF", "bic"),
+        ("foo", "isbn"),
+        ("3423214121", "isbn10"),
+        ("978 3 8362 2119 0", "isbn13"),
+        ("2051-999X", "issn"),
+        ("4624 7482 3324 978A", "credit_card"),
+        ("586824160825533328", "luhn_checksum"),
+    ] {
+        let fields = validator
+            .value(&value, rule)
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), rule);
+    }
+
+    for (value, rule) in [
+        ("A".repeat(32), "md5"),
+        ("a".repeat(63), "sha256"),
+        ("g".repeat(40), "ripemd160"),
+    ] {
+        let fields = validator
+            .value(&value, rule)
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), rule);
+    }
 }
 
 #[derive(Debug, Validate)]
@@ -1073,6 +1241,73 @@ fn character_classes_fail() {
     assert_eq!(fields[7].rule(), "lowercase");
     assert_eq!(fields[8].rule(), "uppercase");
     assert_eq!(fields[9].rule(), "boolean");
+}
+
+#[derive(Debug, Validate)]
+struct ExtendedCharacterClasses {
+    #[validate(alphaspace)]
+    alphaspace: String,
+
+    #[validate(alphanumspace)]
+    alphanumspace: String,
+
+    #[validate(alphaunicode)]
+    alphaunicode: String,
+
+    #[validate(alphanumunicode)]
+    alphanumunicode: String,
+
+    #[validate(eq_ignore_case = "Rust")]
+    exact: String,
+
+    #[validate(ne_ignore_case = "admin")]
+    username: String,
+}
+
+#[test]
+fn extended_character_classes_pass() {
+    let value = ExtendedCharacterClasses {
+        alphaspace: "Hello Rust".to_owned(),
+        alphanumspace: "Rust 2024".to_owned(),
+        alphaunicode: "你好Rust".to_owned(),
+        alphanumunicode: "你好Rust2024".to_owned(),
+        exact: "rust".to_owned(),
+        username: "alice".to_owned(),
+    };
+
+    Validator::new().validate(&value).unwrap();
+}
+
+#[test]
+fn extended_character_classes_fail() {
+    let value = ExtendedCharacterClasses {
+        alphaspace: "Hello 2024".to_owned(),
+        alphanumspace: "Rust-2024".to_owned(),
+        alphaunicode: "你好2024".to_owned(),
+        alphanumunicode: "你好_Rust".to_owned(),
+        exact: "Go".to_owned(),
+        username: "ADMIN".to_owned(),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(
+        rules,
+        vec![
+            "alphaspace",
+            "alphanumspace",
+            "alphaunicode",
+            "alphanumunicode",
+            "eq_ignore_case",
+            "ne_ignore_case",
+        ]
+    );
+    assert_eq!(fields[4].params().get("value"), Some("Rust"));
 }
 
 #[derive(Debug, Validate)]

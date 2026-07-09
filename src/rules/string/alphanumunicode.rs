@@ -5,9 +5,9 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Semver;
+pub struct AlphanumUnicode;
 
-impl Rule for Semver {
+impl Rule for AlphanumUnicode {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
@@ -18,10 +18,6 @@ impl Rule for Semver {
 
 fn pattern() -> &'static Regex {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
-    PATTERN.get_or_init(|| {
-        Regex::new(
-            r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$",
-        )
-        .expect("semver regex must compile")
-    })
+    PATTERN
+        .get_or_init(|| Regex::new(r"^[\p{L}\p{N}]+$").expect("alphanumunicode regex must compile"))
 }

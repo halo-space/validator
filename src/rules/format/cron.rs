@@ -5,9 +5,9 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Semver;
+pub struct Cron;
 
-impl Rule for Semver {
+impl Rule for Cron {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
@@ -19,9 +19,7 @@ impl Rule for Semver {
 fn pattern() -> &'static Regex {
     static PATTERN: OnceLock<Regex> = OnceLock::new();
     PATTERN.get_or_init(|| {
-        Regex::new(
-            r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$",
-        )
-        .expect("semver regex must compile")
+        Regex::new(r"^((@(annually|yearly|monthly|weekly|daily|hourly|reboot))|(@every ([0-9]+(ns|us|\x{00B5}s|ms|s|m|h))+)|(([A-Za-z0-9*?][A-Za-z0-9*?/,#L-]+|[*?0-9])( +([A-Za-z0-9*?][A-Za-z0-9*?/,#L-]+|[*?0-9])){4,6}))$")
+            .expect("cron regex must compile")
     })
 }

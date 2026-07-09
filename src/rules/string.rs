@@ -1,5 +1,9 @@
 mod alpha;
 mod alphanum;
+mod alphanumspace;
+mod alphanumunicode;
+mod alphaspace;
+mod alphaunicode;
 mod ascii;
 mod boolean;
 mod contains;
@@ -25,6 +29,10 @@ use crate::Field;
 
 pub(super) use alpha::Alpha;
 pub(super) use alphanum::Alphanum;
+pub(super) use alphanumspace::AlphanumSpace;
+pub(super) use alphanumunicode::AlphanumUnicode;
+pub(super) use alphaspace::AlphaSpace;
+pub(super) use alphaunicode::AlphaUnicode;
 pub(super) use ascii::Ascii;
 pub(super) use boolean::Boolean;
 pub(super) use contains::Contains;
