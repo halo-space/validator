@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use self::core::{Aliases, Context, Expr, FieldErrorParts, Group, Rules, parse_expression};
+use self::core::{Aliases, Context, Expr, FieldErrorParts, Fields, Group, Rules, parse_expression};
 pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Params, Rule, UintKind,
     Value,
@@ -234,21 +234,23 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_field_rule<V: Value>(
+    pub fn __validate_field_rule<'a, V, F>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        field_value: Option<&dyn Value>,
         rule: &str,
-        compare: &str,
-    ) {
-        if field_rule_passes(value, field_value, rule) {
+        params: Params,
+        fields: F,
+    ) where
+        V: Value,
+        F: Fn(&str) -> Option<&'a dyn Value> + 'a,
+    {
+        let fields = &fields as &Fields<'a>;
+        if field_rule_passes(value, &params, Some(fields), rule) {
             return;
         }
 
-        let mut params = Params::new();
-        params.insert("compare", compare);
         errors.push(field_error(target, value.kind(), rule, rule, params));
     }
 
@@ -533,8 +535,21 @@ pub(crate) fn is_field_rule(name: &str) -> bool {
     field_rule(name).is_some()
 }
 
-pub(crate) fn field_param(params: &Params) -> Option<&str> {
+fn compare_field(params: &Params) -> Option<&str> {
     params.get("compare").or_else(|| params.get("value"))
+}
+
+pub(crate) fn field_targets<'a>(rule: &str, params: &'a Params) -> Vec<&'a str> {
+    match field_rule(rule) {
+        Some(FieldRule::Relation(_) | FieldRule::Contains | FieldRule::Excludes) => {
+            compare_field(params).into_iter().collect()
+        }
+        Some(FieldRule::RequiredIf | FieldRule::RequiredUnless) => {
+            params.iter().map(|(field, _)| field).collect()
+        }
+        Some(FieldRule::RequiredWith | FieldRule::RequiredWithout) => field_list(params),
+        None => Vec::new(),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -542,6 +557,10 @@ enum FieldRule {
     Relation(FieldRelation),
     Contains,
     Excludes,
+    RequiredIf,
+    RequiredUnless,
+    RequiredWith,
+    RequiredWithout,
 }
 
 #[derive(Clone, Copy)]
@@ -564,23 +583,106 @@ fn field_rule(rule: &str) -> Option<FieldRule> {
         "lte_field" => Some(FieldRule::Relation(FieldRelation::Lte)),
         "fieldcontains" => Some(FieldRule::Contains),
         "fieldexcludes" => Some(FieldRule::Excludes),
+        "required_if" => Some(FieldRule::RequiredIf),
+        "required_unless" => Some(FieldRule::RequiredUnless),
+        "required_with" => Some(FieldRule::RequiredWith),
+        "required_without" => Some(FieldRule::RequiredWithout),
         _ => None,
     }
 }
 
 pub(crate) fn field_rule_passes<V: Value>(
     value: &V,
-    field_value: Option<&dyn Value>,
+    params: &Params,
+    fields: Option<&Fields<'_>>,
     rule: &str,
 ) -> bool {
-    if value.is_none() {
-        return true;
-    }
-
     let Some(rule) = field_rule(rule) else {
         return false;
     };
 
+    if matches!(
+        rule,
+        FieldRule::Relation(_) | FieldRule::Contains | FieldRule::Excludes
+    ) && value.is_none()
+    {
+        return true;
+    }
+
+    if matches!(rule, FieldRule::RequiredIf | FieldRule::RequiredUnless) && params.is_empty() {
+        return value.required();
+    }
+
+    if matches!(rule, FieldRule::RequiredWith | FieldRule::RequiredWithout)
+        && field_list(params).is_empty()
+    {
+        return true;
+    }
+
+    let Some(fields) = fields else {
+        return matches!(
+            rule,
+            FieldRule::Excludes | FieldRule::RequiredWith | FieldRule::RequiredIf
+        );
+    };
+
+    match rule {
+        FieldRule::Relation(relation) => {
+            let field_value = compare_field(params).and_then(fields);
+            compare_field_rule(value, field_value, FieldRule::Relation(relation))
+        }
+        FieldRule::Contains => {
+            let field_value = compare_field(params).and_then(fields);
+            compare_field_rule(value, field_value, FieldRule::Contains)
+        }
+        FieldRule::Excludes => {
+            let field_value = compare_field(params).and_then(fields);
+            compare_field_rule(value, field_value, FieldRule::Excludes)
+        }
+        FieldRule::RequiredIf => {
+            if params
+                .iter()
+                .all(|(field, expected)| field_matches_value(fields(field), expected))
+            {
+                value.required()
+            } else {
+                true
+            }
+        }
+        FieldRule::RequiredUnless => {
+            if params
+                .iter()
+                .any(|(field, expected)| field_matches_value(fields(field), expected))
+            {
+                true
+            } else {
+                value.required()
+            }
+        }
+        FieldRule::RequiredWith => {
+            if field_list(params)
+                .into_iter()
+                .any(|field| field_is_present(fields(field)))
+            {
+                value.required()
+            } else {
+                true
+            }
+        }
+        FieldRule::RequiredWithout => {
+            if field_list(params)
+                .into_iter()
+                .any(|field| !field_is_present(fields(field)))
+            {
+                value.required()
+            } else {
+                true
+            }
+        }
+    }
+}
+
+fn compare_field_rule(value: &dyn Value, field_value: Option<&dyn Value>, rule: FieldRule) -> bool {
     let Some(field_value) = field_value else {
         return matches!(rule, FieldRule::Excludes);
     };
@@ -592,6 +694,54 @@ pub(crate) fn field_rule_passes<V: Value>(
         FieldRule::Relation(relation) => values_satisfy(value, field_value, relation),
         FieldRule::Contains => strings_contain(value, field_value).unwrap_or(false),
         FieldRule::Excludes => strings_contain(value, field_value).is_none_or(|contains| !contains),
+        FieldRule::RequiredIf
+        | FieldRule::RequiredUnless
+        | FieldRule::RequiredWith
+        | FieldRule::RequiredWithout => false,
+    }
+}
+
+fn field_list(params: &Params) -> Vec<&str> {
+    params
+        .get("fields")
+        .into_iter()
+        .flat_map(|fields| fields.split(','))
+        .map(str::trim)
+        .filter(|field| !str::is_empty(field))
+        .collect()
+}
+
+fn field_is_present(value: Option<&dyn Value>) -> bool {
+    value.is_some_and(Value::required)
+}
+
+fn field_matches_value(value: Option<&dyn Value>, expected: &str) -> bool {
+    let Some(value) = value else {
+        return false;
+    };
+
+    if value.is_none() {
+        return matches!(expected, "nil" | "null");
+    }
+
+    match value.kind() {
+        Kind::String => value.string().is_some_and(|value| value == expected),
+        Kind::Bool => expected
+            .parse::<bool>()
+            .is_ok_and(|expected| value.boolean() == Some(expected)),
+        Kind::Int(_) => expected
+            .parse::<i128>()
+            .is_ok_and(|expected| value.int() == Some(expected)),
+        Kind::Uint(_) => expected
+            .parse::<u128>()
+            .is_ok_and(|expected| value.uint() == Some(expected)),
+        Kind::Float(_) => expected
+            .parse::<f64>()
+            .is_ok_and(|expected| value.float() == Some(expected)),
+        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => expected
+            .parse::<usize>()
+            .is_ok_and(|expected| value.len() == Some(expected)),
+        Kind::Time | Kind::Option | Kind::Other => false,
     }
 }
 

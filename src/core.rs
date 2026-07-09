@@ -23,6 +23,8 @@ pub(crate) use group::Group;
 pub(crate) use registry::{Aliases, Rules};
 pub(crate) use spec::{Expr, Spec, parse_expression};
 
+pub(crate) type Fields<'a> = dyn Fn(&str) -> Option<&'a dyn Value> + 'a;
+
 pub trait Rule: Send + Sync {
     fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
 }

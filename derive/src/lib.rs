@@ -184,7 +184,10 @@ enum RuleAttr {
         params: Vec<(String, String)>,
     },
     Alias(String),
-    FieldRule { name: String, target: String },
+    FieldRule {
+        name: String,
+        params: Vec<(String, String)>,
+    },
     OmitEmpty,
     Nested,
     Dive(DiveAttr),
@@ -239,25 +242,51 @@ fn collect_access_fields(rules: &[RuleAttr], current: &str, access_fields: &mut 
     }
 
     for rule in rules {
-        if let RuleAttr::FieldRule { target, .. } = rule {
-            access_fields.insert(target.clone());
+        if let RuleAttr::FieldRule { name, params } = rule {
+            for target in field_targets(name, params) {
+                access_fields.insert(target.to_owned());
+            }
         }
     }
 }
 
 fn validate_field_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) -> syn::Result<()> {
     for rule in rules {
-        if let RuleAttr::FieldRule { name, target } = rule
-            && !field_names.contains(target)
-        {
-            return Err(syn::Error::new(
-                proc_macro2::Span::call_site(),
-                format!("validate rule '{name}' references unknown field '{target}'"),
-            ));
+        if let RuleAttr::FieldRule { name, params } = rule {
+            for target in field_targets(name, params) {
+                if !field_names.contains(target) {
+                    return Err(syn::Error::new(
+                        proc_macro2::Span::call_site(),
+                        format!("validate rule '{name}' references unknown field '{target}'"),
+                    ));
+                }
+            }
         }
     }
 
     Ok(())
+}
+
+fn field_targets<'a>(rule: &str, params: &'a [(String, String)]) -> Vec<&'a str> {
+    match rule {
+        "required_with" | "required_without" => params
+            .iter()
+            .find(|(name, _)| name == "fields")
+            .into_iter()
+            .flat_map(|(_, fields)| fields.split(','))
+            .map(str::trim)
+            .filter(|field| !field.is_empty())
+            .collect(),
+        "required_if" | "required_unless" => params
+            .iter()
+            .map(|(field, _)| field.as_str())
+            .collect::<Vec<_>>(),
+        _ => params
+            .iter()
+            .find(|(name, _)| name == "compare")
+            .map(|(_, compare)| vec![compare.as_str()])
+            .unwrap_or_default(),
+    }
 }
 
 fn reject_field_rules_inside_dive(rules: &[RuleAttr]) -> syn::Result<()> {
@@ -382,18 +411,27 @@ fn build_checks(
             }
             RuleAttr::FieldRule {
                 name,
-                target: field_name,
+                params,
             } => {
+                let inserts = params.iter().map(|(key, value)| {
+                    quote! {
+                        params.insert(#key, #value);
+                    }
+                });
                 checks.push(quote! {
                     if !skip_rest {
-                        let field_ref = ::validator::__private::Access::field(self, #field_name);
+                        let mut params = ::validator::Params::new();
+                        #(#inserts)*
                         validator.__validate_field_rule(
                             &mut errors,
                             #target,
                             #value,
-                            field_ref.as_ref().map(|field| field.value()),
                             #name,
-                            #field_name,
+                            params,
+                            |field| {
+                                ::validator::__private::Access::field(self, field)
+                                    .map(|field_ref| field_ref.value())
+                            },
                         );
                     }
                 });
@@ -557,7 +595,27 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
             let target: LitStr = value.parse()?;
             rules.push(RuleAttr::FieldRule {
                 name: (*name).to_owned(),
-                target: target.value(),
+                params: vec![("compare".to_owned(), target.value())],
+            });
+            return Ok(());
+        }
+    }
+
+    for name in CONDITIONAL_PAIR_RULES {
+        if meta.path.is_ident(*name) {
+            rules.push(RuleAttr::FieldRule {
+                name: (*name).to_owned(),
+                params: parse_conditional_pairs(meta, name)?,
+            });
+            return Ok(());
+        }
+    }
+
+    for name in CONDITIONAL_FIELD_LIST_RULES {
+        if meta.path.is_ident(*name) {
+            rules.push(RuleAttr::FieldRule {
+                name: (*name).to_owned(),
+                params: vec![("fields".to_owned(), parse_field_list(meta, name)?)],
             });
             return Ok(());
         }
@@ -722,6 +780,54 @@ fn parse_optional_value_param(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<(Str
 
     let value = meta.value()?;
     Ok(vec![("value".to_owned(), parse_param_value(value)?)])
+}
+
+fn parse_conditional_pairs(
+    meta: ParseNestedMeta<'_>,
+    rule: &str,
+) -> syn::Result<Vec<(String, String)>> {
+    let mut params = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    meta.parse_nested_meta(|nested| {
+        let Some(field) = nested.path.get_ident().map(ToString::to_string) else {
+            return Err(nested.error("conditional rule field must be a field identifier"));
+        };
+
+        if !seen.insert(field.clone()) {
+            return Err(nested.error(format!("duplicate field '{field}' in {rule}")));
+        }
+
+        params.push((field, parse_param_value(nested.value()?)?));
+        Ok(())
+    })?;
+
+    if params.is_empty() {
+        return Err(meta.error(format!("{rule} requires at least one field condition")));
+    }
+
+    Ok(params)
+}
+
+fn parse_field_list(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<String> {
+    let content;
+    parenthesized!(content in meta.input);
+
+    let mut fields = Vec::new();
+    while !content.is_empty() {
+        let field: LitStr = content.parse()?;
+        fields.push(field.value());
+
+        if content.peek(Token![,]) {
+            content.parse::<Token![,]>()?;
+        }
+    }
+
+    if fields.is_empty() {
+        return Err(meta.error(format!("{rule} requires at least one field")));
+    }
+
+    Ok(fields.join(","))
 }
 
 fn is_option_type(ty: &Type) -> bool {
@@ -934,6 +1040,10 @@ const FIELD_RULES: &[&str] = &[
     "fieldcontains",
     "fieldexcludes",
 ];
+
+const CONDITIONAL_PAIR_RULES: &[&str] = &["required_if", "required_unless"];
+
+const CONDITIONAL_FIELD_LIST_RULES: &[&str] = &["required_with", "required_without"];
 
 fn rule(name: impl Into<String>, params: Vec<(String, String)>) -> RuleAttr {
     RuleAttr::Rule {

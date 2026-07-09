@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value as JsonValue;
 
 use crate::core::{Aliases, Context, Expr, Group, Rules, Spec, parse_expression};
-use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, field_error, field_param};
+use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, field_error, field_targets};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -269,22 +269,25 @@ fn ensure_field_target(spec: &Spec, fields: &BTreeMap<String, FieldDef>) -> Resu
         return Ok(());
     }
 
-    let Some(compare) = field_param(spec.params()) else {
+    let targets = field_targets(spec.name(), spec.params());
+    if targets.is_empty() {
         return Err(invalid(format!(
-            "field rule '{}' must define compare target",
+            "field rule '{}' must define target field",
             spec.name()
         )));
-    };
-
-    if fields.contains_key(compare) {
-        Ok(())
-    } else {
-        Err(invalid(format!(
-            "field rule '{}' references undeclared field '{}'",
-            spec.name(),
-            compare
-        )))
     }
+
+    for target in targets {
+        if !fields.contains_key(target) {
+            return Err(invalid(format!(
+                "field rule '{}' references undeclared field '{}'",
+                spec.name(),
+                target
+            )));
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_fields(
@@ -420,6 +423,7 @@ fn default_param_name(rule: &str) -> &'static str {
         "oneof" => "values",
         "eq_field" | "ne_field" | "gt_field" | "gte_field" | "lt_field" | "lte_field"
         | "fieldcontains" | "fieldexcludes" => "compare",
+        "required_with" | "required_without" => "fields",
         _ => "value",
     }
 }

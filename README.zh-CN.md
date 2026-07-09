@@ -14,6 +14,7 @@
 - 支持显式嵌套结构体校验：`#[validate(nested)]`。
 - 支持 Vec、数组、切片引用和 map key/value 的集合校验：`dive(...)`。
 - 支持跨字段校验：`eq_field`、`ne_field`、`gt_field`、`gte_field`、`lt_field`、`lte_field`。
+- 支持条件必填校验：`required_if`、`required_unless`、`required_with`、`required_without`。
 - 支持结构体级校验：`#[validate(check = "...")]` 和 `validator::valid::Valid`。
 - 支持动态 Schema 校验：`Schema::from_yaml/json`、`Validator::with_schema(schema).validate_map(&data)`，以及用于 `serde::Serialize` 数据的 `validate_serde(&value)`。
 - 通过 `Error`、`FieldError`、`Namespace`、`Params` 提供稳定的错误结果。
@@ -176,6 +177,31 @@ struct Event {
 ```
 
 当前支持 `eq_field`、`ne_field`、`gt_field`、`gte_field`、`lt_field`、`lte_field`。目标字段必须是同级 sibling field。目标字段缺失或为 `None` 时校验失败；当前字段是 `Option::None` 时会跳过非 `required` 的跨字段规则。
+
+条件必填规则也使用同级字段：
+
+```rust
+#[derive(Debug, Validate)]
+struct Post {
+    status: String,
+    email: String,
+    phone: String,
+
+    #[validate(required_if(status = "published"))]
+    published_at: Option<String>,
+
+    #[validate(required_unless(status = "draft"))]
+    title: String,
+
+    #[validate(required_with("email", "phone"))]
+    contact_name: String,
+
+    #[validate(required_without("email", "phone"))]
+    fallback_contact: String,
+}
+```
+
+当前支持 `required_if`、`required_unless`、`required_with`、`required_without`，用于 derive 和 Schema 校验。`required_if` / `required_unless` 会按字段类型比较同级字段值；`required_with` / `required_without` 会判断同级字段是否存在且非空。
 
 ## SystemTime 校验
 
@@ -464,7 +490,7 @@ let messages = validator::i18n::new()
 - 必填/可选: `required`, `isdefault`, `omitempty`
 - Size: `length`, `min`, `max`, `range`
 - Compare: `eq`, `ne`, `eq_ignore_case`, `ne_ignore_case`, `gt`, `gte`, `lt`, `lte`
-- Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`, `fieldcontains`, `fieldexcludes`，用于 derive 和 Schema 校验
+- Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`, `fieldcontains`, `fieldexcludes`, `required_if`, `required_unless`, `required_with`, `required_without`，用于 derive 和 Schema 校验
 - Collection: `unique`
 - Choice: `oneof`, `oneofci`, `noneof`, `noneofci`
 - String: `contains`, `containsany`, `containsrune`, `excludes`, `excludesall`, `excludesrune`, `startswith`, `endswith`, `startsnotwith`, `endsnotwith`, `ascii`, `printascii`, `multibyte`, `alpha`, `alphaspace`, `alphaunicode`, `alphanum`, `alphanumspace`, `alphanumunicode`, `numeric`, `number`, `lowercase`, `uppercase`, `boolean`

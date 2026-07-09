@@ -464,6 +464,9 @@ fn zh_cn_locale() -> Locale {
         .rule("lte_field", "{field}必须小于或等于{compare}")
         .rule("fieldcontains", "{field}必须包含{compare}")
         .rule("fieldexcludes", "{field}不能包含{compare}")
+        .rule("required_if", "{field}不能为空")
+        .rule("required_unless", "{field}不能为空")
+        .rule("required_with", "{field}不能为空")
         .rule("required_without", "{field}不能为空")
         .rule_fn("length", zh_length)
         .rule_fn("min", |ctx| {
@@ -644,6 +647,9 @@ fn en_locale() -> Locale {
         )
         .rule("fieldcontains", "{field} must contain {compare}")
         .rule("fieldexcludes", "{field} must not contain {compare}")
+        .rule("required_if", "{field} is required")
+        .rule("required_unless", "{field} is required")
+        .rule("required_with", "{field} is required")
         .rule("required_without", "{field} is required")
         .rule_fn("length", en_length)
         .rule_fn("min", |ctx| en_size(ctx, "must be at least"))
@@ -812,6 +818,9 @@ mod tests {
         "lte_field",
         "fieldcontains",
         "fieldexcludes",
+        "required_if",
+        "required_unless",
+        "required_with",
         "required_without",
     ];
 

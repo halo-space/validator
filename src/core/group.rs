@@ -1,18 +1,14 @@
 use std::sync::Arc;
 
 use super::{
-    Aliases, Context, Error, Expr, Field, FieldError, Namespace, Params, Rule, Rules, Value,
+    Aliases, Context, Error, Expr, Field, FieldError, Fields, Namespace, Params, Rule, Rules, Value,
 };
-use crate::{
-    FieldTarget, field_error, field_param, field_rule_passes, is_field_rule, namespace_for,
-};
-
-type FieldResolver<'a> = dyn Fn(&str) -> Option<&'a dyn Value> + 'a;
+use crate::{FieldTarget, field_error, field_rule_passes, is_field_rule, namespace_for};
 
 struct Exec<'a, 'b> {
     context: &'a Context,
     display_rule: Option<&'a str>,
-    fields: Option<&'a FieldResolver<'b>>,
+    fields: Option<&'a Fields<'b>>,
 }
 
 #[derive(Clone)]
@@ -39,7 +35,7 @@ enum Check {
     },
     Field {
         name: String,
-        target: String,
+        params: Params,
     },
     OmitEmpty,
 }
@@ -166,7 +162,7 @@ impl Group {
         if matches!(mode, CompileMode::Field) && is_field_rule(name) {
             return Ok(Check::Field {
                 name: name.to_owned(),
-                target: field_param(params).unwrap_or_default().to_owned(),
+                params: params.clone(),
             });
         }
 
@@ -200,7 +196,7 @@ impl Group {
         value: &V,
         context: &Context,
         display_rule: Option<&str>,
-        fields: Option<&FieldResolver<'_>>,
+        fields: Option<&Fields<'_>>,
     ) -> Result<(), Error> {
         let exec = Exec {
             context,
@@ -289,15 +285,15 @@ impl Group {
                     exec.fields,
                 )?;
             }
-            Check::Field {
-                name,
-                target: field,
-            } => {
-                let field_value = exec.fields.and_then(|fields| fields(field));
-                if !field_rule_passes(value, field_value, name) {
-                    let mut params = Params::new();
-                    params.insert("compare", field);
-                    errors.push(field_error(target, value.kind(), name, name, params));
+            Check::Field { name, params } => {
+                if !field_rule_passes(value, params, exec.fields, name) {
+                    errors.push(field_error(
+                        target,
+                        value.kind(),
+                        name,
+                        name,
+                        params.clone(),
+                    ));
                 }
             }
         }
@@ -331,9 +327,8 @@ impl Group {
                 )?;
                 Ok(errors.is_empty())
             }
-            Check::Field { name, target } => {
-                let field_value = exec.fields.and_then(|fields| fields(target));
-                Ok(field_rule_passes(value, field_value, name))
+            Check::Field { name, params } => {
+                Ok(field_rule_passes(value, params, exec.fields, name))
             }
         }
     }

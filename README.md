@@ -19,6 +19,8 @@ The current implementation is centered on code-level validation and also support
   key/value pairs.
 - Cross-field validation with `eq_field`, `ne_field`, `gt_field`, `gte_field`,
   `lt_field`, and `lte_field`.
+- Conditional required validation with `required_if`, `required_unless`,
+  `required_with`, and `required_without`.
 - Struct-level validation with `#[validate(check = "...")]` and
   `validator::valid::Valid`.
 - Dynamic Schema validation with `Schema::from_yaml/json`,
@@ -210,6 +212,35 @@ Supported rules are `eq_field`, `ne_field`, `gt_field`, `gte_field`,
 `lt_field`, and `lte_field`. Target names are same-level sibling fields. Missing
 or `None` target values fail validation; a current `Option::None` skips the
 cross-field rule unless `required` is also present.
+
+Conditional required rules also use sibling fields:
+
+```rust
+#[derive(Debug, Validate)]
+struct Post {
+    status: String,
+    email: String,
+    phone: String,
+
+    #[validate(required_if(status = "published"))]
+    published_at: Option<String>,
+
+    #[validate(required_unless(status = "draft"))]
+    title: String,
+
+    #[validate(required_with("email", "phone"))]
+    contact_name: String,
+
+    #[validate(required_without("email", "phone"))]
+    fallback_contact: String,
+}
+```
+
+Supported conditional required rules are `required_if`, `required_unless`,
+`required_with`, and `required_without`. They are available for derive and
+Schema validation. `required_if` / `required_unless` compare sibling field
+values by type; `required_with` / `required_without` check whether sibling
+fields are present and non-empty.
 
 ## SystemTime Validation
 
@@ -516,7 +547,8 @@ Current built-in rules:
 - Compare: `eq`, `ne`, `eq_ignore_case`, `ne_ignore_case`, `gt`, `gte`,
   `lt`, `lte`
 - Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`,
-  `lte_field`, `fieldcontains`, `fieldexcludes` for derive and Schema
+  `lte_field`, `fieldcontains`, `fieldexcludes`, `required_if`,
+  `required_unless`, `required_with`, `required_without` for derive and Schema
   validation
 - Collection: `unique`
 - Choice: `oneof`, `oneofci`, `noneof`, `noneofci`

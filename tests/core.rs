@@ -640,6 +640,100 @@ fn field_string_rules_compare_sibling_fields() {
 }
 
 #[derive(Debug, Validate)]
+struct ConditionalRequired {
+    status: String,
+    email: String,
+    phone: Option<String>,
+
+    #[validate(required_if(status = "published"))]
+    published_at: Option<String>,
+
+    #[validate(required_unless(status = "draft"))]
+    title: String,
+
+    #[validate(required_with("email", "phone"))]
+    contact_name: String,
+
+    #[validate(required_without("email", "phone"))]
+    fallback_contact: String,
+}
+
+#[test]
+fn conditional_required_rules_validate_sibling_fields() {
+    Validator::new()
+        .validate(&ConditionalRequired {
+            status: "draft".to_owned(),
+            email: String::new(),
+            phone: None,
+            published_at: None,
+            title: String::new(),
+            contact_name: String::new(),
+            fallback_contact: "support".to_owned(),
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&ConditionalRequired {
+            status: "published".to_owned(),
+            email: "editor@example.com".to_owned(),
+            phone: None,
+            published_at: None,
+            title: String::new(),
+            contact_name: String::new(),
+            fallback_contact: String::new(),
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(
+        rules,
+        vec![
+            "required_if",
+            "required_unless",
+            "required_with",
+            "required_without"
+        ]
+    );
+    assert_eq!(fields[0].params().get("status"), Some("published"));
+    assert_eq!(fields[1].params().get("status"), Some("draft"));
+    assert_eq!(fields[2].params().get("fields"), Some("email,phone"));
+    assert_eq!(fields[3].params().get("fields"), Some("email,phone"));
+}
+
+#[derive(Debug, Validate)]
+struct NumericConditionalRequired {
+    level: u8,
+
+    #[validate(required_if(level = 3))]
+    badge: String,
+}
+
+#[test]
+fn conditional_required_if_compares_typed_values() {
+    Validator::new()
+        .validate(&NumericConditionalRequired {
+            level: 2,
+            badge: String::new(),
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&NumericConditionalRequired {
+            level: 3,
+            badge: String::new(),
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "required_if");
+    assert_eq!(fields[0].params().get("level"), Some("3"));
+}
+
+#[derive(Debug, Validate)]
 #[validate(check = "validate_name_or_title")]
 struct Draft {
     name: String,
@@ -1780,6 +1874,119 @@ fields:
     assert_eq!(rules, vec!["fieldcontains", "fieldexcludes"]);
     assert_eq!(fields[0].params().get("compare"), Some("needle"));
     assert_eq!(fields[1].params().get("compare"), Some("forbidden"));
+
+    Ok(())
+}
+
+#[test]
+fn schema_conditional_required_rules_validate_sibling_fields()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  status:
+    type: string
+  email:
+    type: string
+  phone:
+    type: string
+  published_at:
+    type: string
+    rules:
+      - required_if:
+          status: published
+  title:
+    type: string
+    rules:
+      - required_unless:
+          status: draft
+  contact_name:
+    type: string
+    rules:
+      - required_with: [email, phone]
+  fallback_contact:
+    type: string
+    rules:
+      - required_without: [email, phone]
+"#,
+    )?;
+
+    Validator::with_schema(schema.clone()).validate_map(&json!({
+        "status": "draft",
+        "email": "",
+        "fallback_contact": "support"
+    }))?;
+
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({
+                "status": "published",
+                "email": "editor@example.com"
+            }))
+            .unwrap_err(),
+    );
+    let mut rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+    rules.sort_unstable();
+
+    assert_eq!(
+        rules,
+        vec![
+            "required_if",
+            "required_unless",
+            "required_with",
+            "required_without"
+        ]
+    );
+    assert_eq!(
+        fields
+            .iter()
+            .find(|field| field.rule() == "required_if")
+            .and_then(|field| field.params().get("status")),
+        Some("published")
+    );
+    assert_eq!(
+        fields
+            .iter()
+            .find(|field| field.rule() == "required_unless")
+            .and_then(|field| field.params().get("status")),
+        Some("draft")
+    );
+    for rule in ["required_with", "required_without"] {
+        assert_eq!(
+            fields
+                .iter()
+                .find(|field| field.rule() == rule)
+                .and_then(|field| field.params().get("fields")),
+            Some("email,phone")
+        );
+    }
+
+    Ok(())
+}
+
+#[test]
+fn schema_conditional_required_undeclared_target_returns_config_error()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    rules:
+      - required_with: [missing]
+"#,
+    )?;
+    let error = Validator::with_schema(schema)
+        .validate_map(&json!({
+            "title": ""
+        }))
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidSchema { reason }
+            if reason.contains("references undeclared field 'missing'")
+    ));
 
     Ok(())
 }
