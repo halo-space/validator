@@ -547,6 +547,7 @@ pub(crate) fn field_targets<'a>(rule: &str, params: &'a Params) -> Vec<&'a str> 
         Some(
             FieldRule::RequiredIf
             | FieldRule::RequiredUnless
+            | FieldRule::SkipUnless
             | FieldRule::ExcludedIf
             | FieldRule::ExcludedUnless,
         ) => params.iter().map(|(field, _)| field).collect(),
@@ -571,6 +572,7 @@ enum FieldRule {
     Excludes,
     RequiredIf,
     RequiredUnless,
+    SkipUnless,
     RequiredWith,
     RequiredWithAll,
     RequiredWithout,
@@ -605,6 +607,7 @@ fn field_rule(rule: &str) -> Option<FieldRule> {
         "fieldexcludes" => Some(FieldRule::Excludes),
         "required_if" => Some(FieldRule::RequiredIf),
         "required_unless" => Some(FieldRule::RequiredUnless),
+        "skip_unless" => Some(FieldRule::SkipUnless),
         "required_with" => Some(FieldRule::RequiredWith),
         "required_with_all" => Some(FieldRule::RequiredWithAll),
         "required_without" => Some(FieldRule::RequiredWithout),
@@ -641,6 +644,7 @@ pub(crate) fn field_rule_passes<V: Value>(
         rule,
         FieldRule::RequiredIf
             | FieldRule::RequiredUnless
+            | FieldRule::SkipUnless
             | FieldRule::ExcludedIf
             | FieldRule::ExcludedUnless
     ) && params.is_empty()
@@ -670,6 +674,13 @@ pub(crate) fn field_rule_passes<V: Value>(
             compare_field_rule(value, field_value, FieldRule::Excludes)
         }
         FieldRule::RequiredIf => {
+            if pair_fields_match(params, fields) {
+                value.required()
+            } else {
+                true
+            }
+        }
+        FieldRule::SkipUnless => {
             if pair_fields_match(params, fields) {
                 value.required()
             } else {
@@ -794,6 +805,7 @@ fn compare_field_rule(value: &dyn Value, field_value: Option<&dyn Value>, rule: 
         FieldRule::Excludes => strings_contain(value, field_value).is_none_or(|contains| !contains),
         FieldRule::RequiredIf
         | FieldRule::RequiredUnless
+        | FieldRule::SkipUnless
         | FieldRule::RequiredWith
         | FieldRule::RequiredWithAll
         | FieldRule::RequiredWithout

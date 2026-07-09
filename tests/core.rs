@@ -654,6 +654,9 @@ struct ConditionalFieldRules {
     #[validate(required_unless(status = "draft"))]
     title: String,
 
+    #[validate(skip_unless(status = "archived"))]
+    reviewer: String,
+
     #[validate(required_with("email", "phone"))]
     contact_name: String,
 
@@ -700,6 +703,7 @@ fn conditional_field_rules_validate_sibling_fields() {
             backup_phone: Some("123".to_owned()),
             published_at: None,
             title: String::new(),
+            reviewer: String::new(),
             contact_name: String::new(),
             fallback_contact: "support".to_owned(),
             all_contact_name: String::new(),
@@ -724,6 +728,7 @@ fn conditional_field_rules_validate_sibling_fields() {
             backup_phone: None,
             published_at: None,
             title: String::new(),
+            reviewer: String::new(),
             contact_name: String::new(),
             fallback_contact: String::new(),
             all_contact_name: String::new(),
@@ -745,6 +750,7 @@ fn conditional_field_rules_validate_sibling_fields() {
         rules,
         vec![
             "required_unless",
+            "skip_unless",
             "required_with",
             "required_without",
             "excluded_if",
@@ -755,19 +761,20 @@ fn conditional_field_rules_validate_sibling_fields() {
         ]
     );
     assert_eq!(fields[0].params().get("status"), Some("draft"));
-    assert_eq!(fields[1].params().get("fields"), Some("email,phone"));
+    assert_eq!(fields[1].params().get("status"), Some("archived"));
     assert_eq!(fields[2].params().get("fields"), Some("email,phone"));
-    assert_eq!(fields[3].params().get("status"), Some("archived"));
-    assert_eq!(fields[4].params().get("status"), Some("draft"));
-    assert_eq!(
-        fields[5].params().get("fields"),
-        Some("backup_email,backup_phone")
-    );
+    assert_eq!(fields[3].params().get("fields"), Some("email,phone"));
+    assert_eq!(fields[4].params().get("status"), Some("archived"));
+    assert_eq!(fields[5].params().get("status"), Some("draft"));
     assert_eq!(
         fields[6].params().get("fields"),
         Some("backup_email,backup_phone")
     );
-    assert_eq!(fields[7].params().get("mode"), Some("private"));
+    assert_eq!(
+        fields[7].params().get("fields"),
+        Some("backup_email,backup_phone")
+    );
+    assert_eq!(fields[8].params().get("mode"), Some("private"));
 }
 
 #[derive(Debug, Validate)]
@@ -2053,6 +2060,11 @@ fields:
     rules:
       - required_unless:
           status: draft
+  reviewer:
+    type: string
+    rules:
+      - skip_unless:
+          status: published
   contact_name:
     type: string
     rules:
@@ -2087,7 +2099,8 @@ fields:
             "required_if",
             "required_unless",
             "required_with",
-            "required_without"
+            "required_without",
+            "skip_unless"
         ]
     );
     assert_eq!(
@@ -2113,6 +2126,13 @@ fields:
             Some("email,phone")
         );
     }
+    assert_eq!(
+        fields
+            .iter()
+            .find(|field| field.rule() == "skip_unless")
+            .and_then(|field| field.params().get("status")),
+        Some("published")
+    );
 
     Ok(())
 }

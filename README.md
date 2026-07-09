@@ -20,7 +20,7 @@ The current implementation is centered on code-level validation and also support
 - Cross-field validation with `eq_field`, `ne_field`, `gt_field`, `gte_field`,
   `lt_field`, and `lte_field`.
 - Conditional field validation with `required_if`, `required_unless`,
-  `required_with`, `required_with_all`, `required_without`,
+  `skip_unless`, `required_with`, `required_with_all`, `required_without`,
   `required_without_all`, and `excluded_*` rules.
 - Struct-level validation with `#[validate(check = "...")]` and
   `validator::valid::Valid`.
@@ -229,6 +229,9 @@ struct Post {
     #[validate(required_unless(status = "draft"))]
     title: String,
 
+    #[validate(skip_unless(status = "published"))]
+    reviewer: String,
+
     #[validate(required_with("email", "phone"))]
     contact_name: String,
 
@@ -247,7 +250,7 @@ struct Post {
 ```
 
 Supported conditional rules are `required_if`, `required_unless`,
-`required_with`, `required_with_all`, `required_without`,
+`skip_unless`, `required_with`, `required_with_all`, `required_without`,
 `required_without_all`, `excluded_if`, `excluded_unless`, `excluded_with`,
 `excluded_with_all`, `excluded_without`, and `excluded_without_all`. They are
 available for derive and Schema validation. `*_if` / `*_unless` compare sibling
@@ -255,7 +258,9 @@ field values by type; `*_with` / `*_without` check whether sibling fields are
 present and non-empty. The `_all` variants require all referenced fields to
 match the condition; the non-`_all` field-list variants trigger when any
 referenced field matches the condition. `excluded_*` rules require the current
-field to be empty when their condition is triggered.
+field to be empty when their condition is triggered. `skip_unless` follows Go's
+current behavior: when all keyed conditions match, the current field is
+required; otherwise the rule passes.
 
 ## SystemTime Validation
 
@@ -563,10 +568,10 @@ Current built-in rules:
   `lt`, `lte`
 - Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`,
   `lte_field`, `fieldcontains`, `fieldexcludes`, `required_if`,
-  `required_unless`, `required_with`, `required_with_all`, `required_without`,
-  `required_without_all`, `excluded_if`, `excluded_unless`, `excluded_with`,
-  `excluded_with_all`, `excluded_without`, `excluded_without_all` for derive
-  and Schema validation
+  `required_unless`, `skip_unless`, `required_with`, `required_with_all`,
+  `required_without`, `required_without_all`, `excluded_if`, `excluded_unless`,
+  `excluded_with`, `excluded_with_all`, `excluded_without`,
+  `excluded_without_all` for derive and Schema validation
 - Collection: `unique`
 - Choice: `oneof`, `oneofci`, `noneof`, `noneofci`
 - String: `contains`, `containsany`, `containsrune`, `excludes`,

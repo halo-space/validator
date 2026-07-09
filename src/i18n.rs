@@ -466,6 +466,7 @@ fn zh_cn_locale() -> Locale {
         .rule("fieldexcludes", "{field}不能包含{compare}")
         .rule("required_if", "{field}不能为空")
         .rule("required_unless", "{field}不能为空")
+        .rule("skip_unless", "{field}不能为空")
         .rule("required_with", "{field}不能为空")
         .rule("required_with_all", "{field}不能为空")
         .rule("required_without", "{field}不能为空")
@@ -657,6 +658,7 @@ fn en_locale() -> Locale {
         .rule("fieldexcludes", "{field} must not contain {compare}")
         .rule("required_if", "{field} is required")
         .rule("required_unless", "{field} is required")
+        .rule("skip_unless", "{field} is required")
         .rule("required_with", "{field} is required")
         .rule("required_with_all", "{field} is required")
         .rule("required_without", "{field} is required")
@@ -836,6 +838,7 @@ mod tests {
         "fieldexcludes",
         "required_if",
         "required_unless",
+        "skip_unless",
         "required_with",
         "required_with_all",
         "required_without",

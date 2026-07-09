@@ -14,7 +14,7 @@
 - 支持显式嵌套结构体校验：`#[validate(nested)]`。
 - 支持 Vec、数组、切片引用和 map key/value 的集合校验：`dive(...)`。
 - 支持跨字段校验：`eq_field`、`ne_field`、`gt_field`、`gte_field`、`lt_field`、`lte_field`。
-- 支持条件字段校验：`required_if`、`required_unless`、`required_with`、`required_with_all`、`required_without`、`required_without_all` 和 `excluded_*` 规则。
+- 支持条件字段校验：`required_if`、`required_unless`、`skip_unless`、`required_with`、`required_with_all`、`required_without`、`required_without_all` 和 `excluded_*` 规则。
 - 支持结构体级校验：`#[validate(check = "...")]` 和 `validator::valid::Valid`。
 - 支持动态 Schema 校验：`Schema::from_yaml/json`、`Validator::with_schema(schema).validate_map(&data)`，以及用于 `serde::Serialize` 数据的 `validate_serde(&value)`。
 - 通过 `Error`、`FieldError`、`Namespace`、`Params` 提供稳定的错误结果。
@@ -193,6 +193,9 @@ struct Post {
     #[validate(required_unless(status = "draft"))]
     title: String,
 
+    #[validate(skip_unless(status = "published"))]
+    reviewer: String,
+
     #[validate(required_with("email", "phone"))]
     contact_name: String,
 
@@ -210,7 +213,7 @@ struct Post {
 }
 ```
 
-当前支持 `required_if`、`required_unless`、`required_with`、`required_with_all`、`required_without`、`required_without_all`、`excluded_if`、`excluded_unless`、`excluded_with`、`excluded_with_all`、`excluded_without`、`excluded_without_all`，用于 derive 和 Schema 校验。`*_if` / `*_unless` 会按字段类型比较同级字段值；`*_with` / `*_without` 会判断同级字段是否存在且非空。带 `_all` 的变体要求所有引用字段都满足条件；不带 `_all` 的字段列表变体只要任一引用字段满足条件就会触发。`excluded_*` 规则在条件触发时要求当前字段为空。
+当前支持 `required_if`、`required_unless`、`skip_unless`、`required_with`、`required_with_all`、`required_without`、`required_without_all`、`excluded_if`、`excluded_unless`、`excluded_with`、`excluded_with_all`、`excluded_without`、`excluded_without_all`，用于 derive 和 Schema 校验。`*_if` / `*_unless` 会按字段类型比较同级字段值；`*_with` / `*_without` 会判断同级字段是否存在且非空。带 `_all` 的变体要求所有引用字段都满足条件；不带 `_all` 的字段列表变体只要任一引用字段满足条件就会触发。`excluded_*` 规则在条件触发时要求当前字段为空。`skip_unless` 按 Go 当前行为实现：所有键值条件都匹配时，当前字段必须有值；否则该规则通过。
 
 ## SystemTime 校验
 
@@ -499,7 +502,7 @@ let messages = validator::i18n::new()
 - 必填/可选: `required`, `isdefault`, `omitempty`
 - Size: `length`, `min`, `max`, `range`
 - Compare: `eq`, `ne`, `eq_ignore_case`, `ne_ignore_case`, `gt`, `gte`, `lt`, `lte`
-- Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`, `fieldcontains`, `fieldexcludes`, `required_if`, `required_unless`, `required_with`, `required_with_all`, `required_without`, `required_without_all`, `excluded_if`, `excluded_unless`, `excluded_with`, `excluded_with_all`, `excluded_without`, `excluded_without_all`，用于 derive 和 Schema 校验
+- Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`, `fieldcontains`, `fieldexcludes`, `required_if`, `required_unless`, `skip_unless`, `required_with`, `required_with_all`, `required_without`, `required_without_all`, `excluded_if`, `excluded_unless`, `excluded_with`, `excluded_with_all`, `excluded_without`, `excluded_without_all`，用于 derive 和 Schema 校验
 - Collection: `unique`
 - Choice: `oneof`, `oneofci`, `noneof`, `noneofci`
 - String: `contains`, `containsany`, `containsrune`, `excludes`, `excludesall`, `excludesrune`, `startswith`, `endswith`, `startsnotwith`, `endsnotwith`, `ascii`, `printascii`, `multibyte`, `alpha`, `alphaspace`, `alphaunicode`, `alphanum`, `alphanumspace`, `alphanumunicode`, `numeric`, `number`, `lowercase`, `uppercase`, `boolean`

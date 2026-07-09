@@ -284,10 +284,12 @@ fn field_targets<'a>(rule: &str, params: &'a [(String, String)]) -> Vec<&'a str>
             .map(str::trim)
             .filter(|field| !field.is_empty())
             .collect(),
-        "required_if" | "required_unless" | "excluded_if" | "excluded_unless" => params
-            .iter()
-            .map(|(field, _)| field.as_str())
-            .collect::<Vec<_>>(),
+        "required_if" | "required_unless" | "skip_unless" | "excluded_if" | "excluded_unless" => {
+            params
+                .iter()
+                .map(|(field, _)| field.as_str())
+                .collect::<Vec<_>>()
+        }
         _ => params
             .iter()
             .find(|(name, _)| name == "compare")
@@ -1051,6 +1053,7 @@ const FIELD_RULES: &[&str] = &[
 const CONDITIONAL_PAIR_RULES: &[&str] = &[
     "required_if",
     "required_unless",
+    "skip_unless",
     "excluded_if",
     "excluded_unless",
 ];
