@@ -234,16 +234,16 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_compare_field<V: Value>(
+    pub fn __validate_field_rule<V: Value>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        compare_value: Option<&dyn Value>,
+        field_value: Option<&dyn Value>,
         rule: &str,
         compare: &str,
     ) {
-        if compare_field_passes(value, compare_value, rule) {
+        if field_rule_passes(value, field_value, rule) {
             return;
         }
 
@@ -529,12 +529,19 @@ pub(crate) fn field_error(
     })
 }
 
-pub(crate) fn is_cross_field_rule(name: &str) -> bool {
-    compare_relation(name).is_some()
+pub(crate) fn is_field_rule(name: &str) -> bool {
+    field_rule(name).is_some()
 }
 
-pub(crate) fn compare_param(params: &Params) -> Option<&str> {
+pub(crate) fn field_param(params: &Params) -> Option<&str> {
     params.get("compare").or_else(|| params.get("value"))
+}
+
+#[derive(Clone, Copy)]
+enum FieldRule {
+    Relation(FieldRelation),
+    Contains,
+    Excludes,
 }
 
 #[derive(Clone, Copy)]
@@ -547,35 +554,49 @@ enum FieldRelation {
     Lte,
 }
 
-fn compare_relation(rule: &str) -> Option<FieldRelation> {
+fn field_rule(rule: &str) -> Option<FieldRule> {
     match rule {
-        "eq_field" => Some(FieldRelation::Eq),
-        "ne_field" => Some(FieldRelation::Ne),
-        "gt_field" => Some(FieldRelation::Gt),
-        "gte_field" => Some(FieldRelation::Gte),
-        "lt_field" => Some(FieldRelation::Lt),
-        "lte_field" => Some(FieldRelation::Lte),
+        "eq_field" => Some(FieldRule::Relation(FieldRelation::Eq)),
+        "ne_field" => Some(FieldRule::Relation(FieldRelation::Ne)),
+        "gt_field" => Some(FieldRule::Relation(FieldRelation::Gt)),
+        "gte_field" => Some(FieldRule::Relation(FieldRelation::Gte)),
+        "lt_field" => Some(FieldRule::Relation(FieldRelation::Lt)),
+        "lte_field" => Some(FieldRule::Relation(FieldRelation::Lte)),
+        "fieldcontains" => Some(FieldRule::Contains),
+        "fieldexcludes" => Some(FieldRule::Excludes),
         _ => None,
     }
 }
 
-pub(crate) fn compare_field_passes<V: Value>(
+pub(crate) fn field_rule_passes<V: Value>(
     value: &V,
-    compare_value: Option<&dyn Value>,
+    field_value: Option<&dyn Value>,
     rule: &str,
 ) -> bool {
     if value.is_none() {
         return true;
     }
 
-    let Some(compare_value) = compare_value else {
+    let Some(rule) = field_rule(rule) else {
         return false;
     };
-    if compare_value.is_none() {
-        return false;
+
+    let Some(field_value) = field_value else {
+        return matches!(rule, FieldRule::Excludes);
+    };
+    if field_value.is_none() {
+        return matches!(rule, FieldRule::Excludes);
     }
 
-    compare_relation(rule).is_some_and(|relation| values_satisfy(value, compare_value, relation))
+    match rule {
+        FieldRule::Relation(relation) => values_satisfy(value, field_value, relation),
+        FieldRule::Contains => strings_contain(value, field_value).unwrap_or(false),
+        FieldRule::Excludes => strings_contain(value, field_value).is_none_or(|contains| !contains),
+    }
+}
+
+fn strings_contain(left: &dyn Value, right: &dyn Value) -> Option<bool> {
+    Some(left.string()?.contains(right.string()?.as_ref()))
 }
 
 fn values_satisfy(left: &dyn Value, right: &dyn Value, relation: FieldRelation) -> bool {

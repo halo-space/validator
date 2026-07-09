@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value as JsonValue;
 
 use crate::core::{Aliases, Context, Expr, Group, Rules, Spec, parse_expression};
-use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, compare_param, field_error};
+use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, field_error, field_param};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -226,8 +226,8 @@ impl Node {
         rules: &Rules,
         aliases: &Aliases,
     ) -> Result<Self, Error> {
-        ensure_compare_targets(&field.exprs, siblings)?;
-        let group = Group::compile_with_compare(&field.exprs, rules, aliases)?;
+        ensure_field_targets(&field.exprs, siblings)?;
+        let group = Group::compile_with_fields(&field.exprs, rules, aliases)?;
         let children = &field.fields;
         let fields = children
             .iter()
@@ -247,19 +247,16 @@ impl Node {
     }
 }
 
-fn ensure_compare_targets(
-    exprs: &[Expr],
-    fields: &BTreeMap<String, FieldDef>,
-) -> Result<(), Error> {
+fn ensure_field_targets(exprs: &[Expr], fields: &BTreeMap<String, FieldDef>) -> Result<(), Error> {
     for expr in exprs {
         if let Some(spec) = expr.single() {
-            ensure_compare_target(spec, fields)?;
+            ensure_field_target(spec, fields)?;
             continue;
         }
 
         if let Some(alternatives) = expr.alternatives() {
             for spec in alternatives {
-                ensure_compare_target(spec, fields)?;
+                ensure_field_target(spec, fields)?;
             }
         }
     }
@@ -267,14 +264,14 @@ fn ensure_compare_targets(
     Ok(())
 }
 
-fn ensure_compare_target(spec: &Spec, fields: &BTreeMap<String, FieldDef>) -> Result<(), Error> {
-    if !crate::is_cross_field_rule(spec.name()) {
+fn ensure_field_target(spec: &Spec, fields: &BTreeMap<String, FieldDef>) -> Result<(), Error> {
+    if !crate::is_field_rule(spec.name()) {
         return Ok(());
     }
 
-    let Some(compare) = compare_param(spec.params()) else {
+    let Some(compare) = field_param(spec.params()) else {
         return Err(invalid(format!(
-            "cross-field rule '{}' must define compare target",
+            "field rule '{}' must define compare target",
             spec.name()
         )));
     };
@@ -283,7 +280,7 @@ fn ensure_compare_target(spec: &Spec, fields: &BTreeMap<String, FieldDef>) -> Re
         Ok(())
     } else {
         Err(invalid(format!(
-            "cross-field rule '{}' references undeclared field '{}'",
+            "field rule '{}' references undeclared field '{}'",
             spec.name(),
             compare
         )))
@@ -304,7 +301,7 @@ fn validate_fields(
         if value.is_null() {
             field
                 .group
-                .execute_with_compare(errors, target, value, context, |compare| {
+                .execute_with_fields(errors, target, value, context, |compare| {
                     object.get(compare).map(|value| value as &dyn Value)
                 })?;
             continue;
@@ -321,7 +318,7 @@ fn validate_fields(
 
         field
             .group
-            .execute_with_compare(errors, target.clone(), value, context, |compare| {
+            .execute_with_fields(errors, target.clone(), value, context, |compare| {
                 object.get(compare).map(|value| value as &dyn Value)
             })?;
 
@@ -421,7 +418,8 @@ fn default_param_name(rule: &str) -> &'static str {
         "max" => "max",
         "regex" => "pattern",
         "oneof" => "values",
-        "eq_field" | "ne_field" | "gt_field" | "gte_field" | "lt_field" | "lte_field" => "compare",
+        "eq_field" | "ne_field" | "gt_field" | "gte_field" | "lt_field" | "lte_field"
+        | "fieldcontains" | "fieldexcludes" => "compare",
         _ => "value",
     }
 }

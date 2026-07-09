@@ -4,16 +4,15 @@ use super::{
     Aliases, Context, Error, Expr, Field, FieldError, Namespace, Params, Rule, Rules, Value,
 };
 use crate::{
-    FieldTarget, compare_field_passes, compare_param, field_error, is_cross_field_rule,
-    namespace_for,
+    FieldTarget, field_error, field_param, field_rule_passes, is_field_rule, namespace_for,
 };
 
-type CompareResolver<'a> = dyn Fn(&str) -> Option<&'a dyn Value> + 'a;
+type FieldResolver<'a> = dyn Fn(&str) -> Option<&'a dyn Value> + 'a;
 
 struct Exec<'a, 'b> {
     context: &'a Context,
     display_rule: Option<&'a str>,
-    compare: Option<&'a CompareResolver<'b>>,
+    fields: Option<&'a FieldResolver<'b>>,
 }
 
 #[derive(Clone)]
@@ -38,7 +37,7 @@ enum Check {
         name: String,
         group: Arc<Group>,
     },
-    Compare {
+    Field {
         name: String,
         target: String,
     },
@@ -47,7 +46,7 @@ enum Check {
 
 enum CompileMode {
     Direct,
-    Compare,
+    Field,
     Alias,
 }
 
@@ -62,12 +61,12 @@ impl Group {
         Self::build(exprs, rules, aliases, CompileMode::Direct)
     }
 
-    pub(crate) fn compile_with_compare(
+    pub(crate) fn compile_with_fields(
         exprs: &[Expr],
         rules: &Rules,
         aliases: &Aliases,
     ) -> Result<Self, Error> {
-        Self::build(exprs, rules, aliases, CompileMode::Compare)
+        Self::build(exprs, rules, aliases, CompileMode::Field)
     }
 
     pub(crate) fn compile_alias(
@@ -88,19 +87,19 @@ impl Group {
         self.execute_with_display(errors, target, value, context, None, None)
     }
 
-    pub(crate) fn execute_with_compare<'a, V, F>(
+    pub(crate) fn execute_with_fields<'a, V, F>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
         context: &Context,
-        compare: F,
+        fields: F,
     ) -> Result<(), Error>
     where
         V: Value,
         F: Fn(&str) -> Option<&'a dyn Value> + 'a,
     {
-        self.execute_with_display(errors, target, value, context, None, Some(&compare))
+        self.execute_with_display(errors, target, value, context, None, Some(&fields))
     }
 
     pub(crate) fn execute_alias<V: Value>(
@@ -164,10 +163,10 @@ impl Group {
             return Ok(Check::OmitEmpty);
         }
 
-        if matches!(mode, CompileMode::Compare) && is_cross_field_rule(name) {
-            return Ok(Check::Compare {
+        if matches!(mode, CompileMode::Field) && is_field_rule(name) {
+            return Ok(Check::Field {
                 name: name.to_owned(),
-                target: compare_param(params).unwrap_or_default().to_owned(),
+                target: field_param(params).unwrap_or_default().to_owned(),
             });
         }
 
@@ -201,12 +200,12 @@ impl Group {
         value: &V,
         context: &Context,
         display_rule: Option<&str>,
-        compare: Option<&CompareResolver<'_>>,
+        fields: Option<&FieldResolver<'_>>,
     ) -> Result<(), Error> {
         let exec = Exec {
             context,
             display_rule,
-            compare,
+            fields,
         };
 
         for step in &self.steps {
@@ -287,15 +286,15 @@ impl Group {
                     value,
                     exec.context,
                     Some(name),
-                    exec.compare,
+                    exec.fields,
                 )?;
             }
-            Check::Compare {
+            Check::Field {
                 name,
                 target: field,
             } => {
-                let compare_value = exec.compare.and_then(|compare| compare(field));
-                if !compare_field_passes(value, compare_value, name) {
+                let field_value = exec.fields.and_then(|fields| fields(field));
+                if !field_rule_passes(value, field_value, name) {
                     let mut params = Params::new();
                     params.insert("compare", field);
                     errors.push(field_error(target, value.kind(), name, name, params));
@@ -328,13 +327,13 @@ impl Group {
                     value,
                     exec.context,
                     None,
-                    exec.compare,
+                    exec.fields,
                 )?;
                 Ok(errors.is_empty())
             }
-            Check::Compare { name, target } => {
-                let compare_value = exec.compare.and_then(|compare| compare(target));
-                Ok(compare_field_passes(value, compare_value, name))
+            Check::Field { name, target } => {
+                let field_value = exec.fields.and_then(|fields| fields(target));
+                Ok(field_rule_passes(value, field_value, name))
             }
         }
     }

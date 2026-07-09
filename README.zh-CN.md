@@ -461,15 +461,15 @@ let messages = validator::i18n::new()
 
 当前内置规则：
 
-- 必填/可选: `required`, `omitempty`
+- 必填/可选: `required`, `isdefault`, `omitempty`
 - Size: `length`, `min`, `max`, `range`
 - Compare: `eq`, `ne`, `eq_ignore_case`, `ne_ignore_case`, `gt`, `gte`, `lt`, `lte`
-- Cross-field: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`，用于 derive 和 Schema 校验
+- Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`, `lte_field`, `fieldcontains`, `fieldexcludes`，用于 derive 和 Schema 校验
 - Collection: `unique`
 - Choice: `oneof`, `oneofci`, `noneof`, `noneofci`
 - String: `contains`, `containsany`, `containsrune`, `excludes`, `excludesall`, `excludesrune`, `startswith`, `endswith`, `startsnotwith`, `endsnotwith`, `ascii`, `printascii`, `multibyte`, `alpha`, `alphaspace`, `alphaunicode`, `alphanum`, `alphanumspace`, `alphanumunicode`, `numeric`, `number`, `lowercase`, `uppercase`, `boolean`
 - Format: `email`, `regex`, `json`, `datetime`, `e164`, `base32`, `base64`, `base64url`, `base64rawurl`, `hexadecimal`, `url_encoded`, `html`, `html_encoded`, `jwt`, `mac`, `semver`, `origin`, `datauri`, `latitude`, `longitude`, `ssn`, `md4`, `md5`, `sha256`, `sha384`, `sha512`, `ripemd128`, `ripemd160`, `tiger128`, `tiger160`, `tiger192`, `eth_addr`, `mongodb`, `mongodb_connection_string`, `dns_rfc1035_label`, `cve`, `cron`, `ein`, `bic_iso_9362_2014`, `bic`, `isbn`, `isbn10`, `isbn13`, `issn`, `credit_card`, `luhn_checksum`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`, `cmyk`
-- Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`, `ip_addr`, `ip4_addr`, `ip6_addr`, `cidr`, `cidrv4`, `cidrv6`, `hostname`, `hostname_rfc1123`, `fqdn`, `port`, `uuid`, `uuid3`, `uuid4`, `uuid5`, `uuid_rfc4122`, `uuid3_rfc4122`, `uuid4_rfc4122`, `uuid5_rfc4122`, `ulid`, `tcp4_addr`, `tcp6_addr`, `tcp_addr`, `udp4_addr`, `udp6_addr`, `udp_addr`
+- Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`, `ip_addr`, `ip4_addr`, `ip6_addr`, `cidr`, `cidrv4`, `cidrv6`, `hostname`, `hostname_port`, `hostname_rfc1123`, `fqdn`, `port`, `uuid`, `uuid3`, `uuid4`, `uuid5`, `uuid_rfc4122`, `uuid3_rfc4122`, `uuid4_rfc4122`, `uuid5_rfc4122`, `ulid`, `tcp4_addr`, `tcp6_addr`, `tcp_addr`, `udp4_addr`, `udp6_addr`, `udp_addr`
 - Alias: `iscolor`
 
 比较和尺寸类规则会根据字段类型分派：

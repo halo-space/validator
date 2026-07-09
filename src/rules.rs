@@ -23,12 +23,12 @@ use format::{
     UrlEncoded,
 };
 use network::{
-    Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnameRfc1123, HttpUrl, HttpsUrl, Ip, Ip4Address,
-    Ip6Address, IpAddress, Ipv4, Ipv6, Port, Tcp4Address, Tcp6Address, TcpAddress, Udp4Address,
-    Udp6Address, UdpAddress, Ulid, Uri, Url, Uuid, Uuid3, Uuid3Rfc4122, Uuid4, Uuid4Rfc4122, Uuid5,
-    Uuid5Rfc4122, UuidRfc4122,
+    Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnamePort, HostnameRfc1123, HttpUrl, HttpsUrl, Ip,
+    Ip4Address, Ip6Address, IpAddress, Ipv4, Ipv6, Port, Tcp4Address, Tcp6Address, TcpAddress,
+    Udp4Address, Udp6Address, UdpAddress, Ulid, Uri, Url, Uuid, Uuid3, Uuid3Rfc4122, Uuid4,
+    Uuid4Rfc4122, Uuid5, Uuid5Rfc4122, UuidRfc4122,
 };
-use required::Required;
+use required::{IsDefault, Required};
 use size::{Length, Max, Min, Range};
 use string::{
     Alpha, AlphaSpace, AlphaUnicode, Alphanum, AlphanumSpace, AlphanumUnicode, Ascii, Boolean,
@@ -39,6 +39,7 @@ use string::{
 
 pub(crate) fn load(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("required", Required)?;
+    rules.insert("isdefault", IsDefault)?;
     rules.insert("length", Length)?;
     rules.insert("min", Min)?;
     rules.insert("max", Max)?;
@@ -66,6 +67,7 @@ pub(crate) fn load(rules: &mut Rules) -> Result<(), Error> {
     rules.insert("cidrv4", Cidrv4)?;
     rules.insert("cidrv6", Cidrv6)?;
     rules.insert("hostname", Hostname)?;
+    rules.insert("hostname_port", HostnamePort)?;
     rules.insert("hostname_rfc1123", HostnameRfc1123)?;
     rules.insert("fqdn", Fqdn)?;
     rules.insert("port", Port)?;

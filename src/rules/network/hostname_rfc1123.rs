@@ -12,7 +12,7 @@ impl Rule for HostnameRfc1123 {
     }
 }
 
-fn valid(value: &str) -> bool {
+pub(super) fn valid(value: &str) -> bool {
     if value.is_empty() || value.len() > 253 || value.starts_with('.') || value.ends_with('.') {
         return false;
     }

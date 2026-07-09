@@ -104,6 +104,56 @@ fn comparison_rules_report_type_specific_failures() {
 }
 
 #[derive(Debug, Validate)]
+struct Defaults {
+    #[validate(isdefault)]
+    name: String,
+
+    #[validate(isdefault)]
+    count: u32,
+
+    #[validate(isdefault)]
+    enabled: bool,
+
+    #[validate(isdefault)]
+    tags: Vec<String>,
+}
+
+#[test]
+fn isdefault_accepts_default_values() {
+    let value = Defaults {
+        name: String::new(),
+        count: 0,
+        enabled: false,
+        tags: Vec::new(),
+    };
+
+    Validator::new().validate(&value).unwrap();
+    Validator::new().value(&0_u32, "isdefault").unwrap();
+}
+
+#[test]
+fn isdefault_rejects_non_default_values() {
+    let value = Defaults {
+        name: "rust".to_owned(),
+        count: 1,
+        enabled: true,
+        tags: vec!["rust".to_owned()],
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(
+        rules,
+        vec!["isdefault", "isdefault", "isdefault", "isdefault"]
+    );
+}
+
+#[derive(Debug, Validate)]
 struct Formats {
     #[validate(email)]
     email: String,
@@ -187,6 +237,9 @@ struct NetworkFormats {
     #[validate(hostname)]
     hostname: String,
 
+    #[validate(hostname_port)]
+    hostname_port: String,
+
     #[validate(hostname_rfc1123)]
     hostname_rfc1123: String,
 
@@ -216,6 +269,7 @@ fn expanded_network_rules_pass() {
         cidrv4: "10.0.0.0/8".to_owned(),
         cidrv6: "2001:db8::/32".to_owned(),
         hostname: "api".to_owned(),
+        hostname_port: "api.example.com:443".to_owned(),
         hostname_rfc1123: "1.foo.com".to_owned(),
         fqdn: "api.example.com".to_owned(),
         port: "443".to_owned(),
@@ -235,6 +289,7 @@ fn expanded_network_rules_fail() {
         cidrv4: "2001:db8::/32".to_owned(),
         cidrv6: "10.0.0.0/8".to_owned(),
         hostname: "-api".to_owned(),
+        hostname_port: "[::1]:443".to_owned(),
         hostname_rfc1123: "foo_bar.example.com".to_owned(),
         fqdn: "api".to_owned(),
         port: "0".to_owned(),
@@ -258,6 +313,7 @@ fn expanded_network_rules_fail() {
             "cidrv4",
             "cidrv6",
             "hostname",
+            "hostname_port",
             "hostname_rfc1123",
             "fqdn",
             "port",
@@ -267,6 +323,33 @@ fn expanded_network_rules_fail() {
             "ulid",
         ]
     );
+}
+
+#[test]
+fn hostname_port_matches_go_split_host_port_semantics() {
+    let validator = Validator::new();
+
+    validator.value(&":8080", "hostname_port").unwrap();
+    validator
+        .value(&"api.example.com:443", "hostname_port")
+        .unwrap();
+    validator.value(&"127.0.0.1:443", "hostname_port").unwrap();
+
+    for value in [
+        "api.example.com",
+        "api.example.com:0",
+        "api.example.com:65536",
+        "api_example.com:443",
+        "[::1]:443",
+    ] {
+        let fields = validator
+            .value(&value, "hostname_port")
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), "hostname_port");
+    }
 }
 
 #[test]

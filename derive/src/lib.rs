@@ -73,7 +73,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
         };
         let field_name = field_ident.to_string();
         let rules = parse_rules(&field.attrs)?;
-        validate_compare_targets(&rules, &field_names)?;
+        validate_field_targets(&rules, &field_names)?;
         collect_access_fields(&rules, &field_name, &mut access_fields);
         let target = quote! {
             ::validator::FieldTarget::new(
@@ -82,7 +82,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                 #field_name,
             )
         };
-        reject_compare_fields_inside_dive(&rules)?;
+        reject_field_rules_inside_dive(&rules)?;
         let field_checks = build_checks(
             rules,
             quote!(&self.#field_ident),
@@ -184,7 +184,7 @@ enum RuleAttr {
         params: Vec<(String, String)>,
     },
     Alias(String),
-    CompareField { name: String, target: String },
+    FieldRule { name: String, target: String },
     OmitEmpty,
     Nested,
     Dive(DiveAttr),
@@ -227,7 +227,7 @@ fn exposes_value_access(rules: &[RuleAttr]) -> bool {
     rules.iter().any(|rule| match rule {
         RuleAttr::Rule { name, .. } => !(has_nested && name == "required") && name != "unique",
         RuleAttr::Alias(_) => true,
-        RuleAttr::CompareField { .. } => true,
+        RuleAttr::FieldRule { .. } => true,
         RuleAttr::OmitEmpty => !has_nested,
         RuleAttr::Nested | RuleAttr::Dive(_) => false,
     })
@@ -239,15 +239,15 @@ fn collect_access_fields(rules: &[RuleAttr], current: &str, access_fields: &mut 
     }
 
     for rule in rules {
-        if let RuleAttr::CompareField { target, .. } = rule {
+        if let RuleAttr::FieldRule { target, .. } = rule {
             access_fields.insert(target.clone());
         }
     }
 }
 
-fn validate_compare_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) -> syn::Result<()> {
+fn validate_field_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) -> syn::Result<()> {
     for rule in rules {
-        if let RuleAttr::CompareField { name, target } = rule
+        if let RuleAttr::FieldRule { name, target } = rule
             && !field_names.contains(target)
         {
             return Err(syn::Error::new(
@@ -260,17 +260,17 @@ fn validate_compare_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) 
     Ok(())
 }
 
-fn reject_compare_fields_inside_dive(rules: &[RuleAttr]) -> syn::Result<()> {
+fn reject_field_rules_inside_dive(rules: &[RuleAttr]) -> syn::Result<()> {
     for rule in rules {
         match rule {
-            RuleAttr::Dive(DiveAttr::Values(rules)) => reject_compare_fields(rules)?,
+            RuleAttr::Dive(DiveAttr::Values(rules)) => reject_field_rules(rules)?,
             RuleAttr::Dive(DiveAttr::Map { keys, values }) => {
-                reject_compare_fields(keys)?;
-                reject_compare_fields(values)?;
+                reject_field_rules(keys)?;
+                reject_field_rules(values)?;
             }
             RuleAttr::Rule { .. }
             | RuleAttr::Alias(_)
-            | RuleAttr::CompareField { .. }
+            | RuleAttr::FieldRule { .. }
             | RuleAttr::OmitEmpty
             | RuleAttr::Nested => {}
         }
@@ -279,19 +279,19 @@ fn reject_compare_fields_inside_dive(rules: &[RuleAttr]) -> syn::Result<()> {
     Ok(())
 }
 
-fn reject_compare_fields(rules: &[RuleAttr]) -> syn::Result<()> {
+fn reject_field_rules(rules: &[RuleAttr]) -> syn::Result<()> {
     for rule in rules {
         match rule {
-            RuleAttr::CompareField { name, .. } => {
+            RuleAttr::FieldRule { name, .. } => {
                 return Err(syn::Error::new(
                     proc_macro2::Span::call_site(),
                     format!("validate rule '{name}' is not supported inside dive"),
                 ));
             }
-            RuleAttr::Dive(DiveAttr::Values(rules)) => reject_compare_fields(rules)?,
+            RuleAttr::Dive(DiveAttr::Values(rules)) => reject_field_rules(rules)?,
             RuleAttr::Dive(DiveAttr::Map { keys, values }) => {
-                reject_compare_fields(keys)?;
-                reject_compare_fields(values)?;
+                reject_field_rules(keys)?;
+                reject_field_rules(values)?;
             }
             RuleAttr::Rule { .. } | RuleAttr::Alias(_) | RuleAttr::OmitEmpty | RuleAttr::Nested => {}
         }
@@ -380,20 +380,20 @@ fn build_checks(
                     }
                 });
             }
-            RuleAttr::CompareField {
+            RuleAttr::FieldRule {
                 name,
-                target: compare_name,
+                target: field_name,
             } => {
                 checks.push(quote! {
                     if !skip_rest {
-                        let compare_field = ::validator::__private::Access::field(self, #compare_name);
-                        validator.__validate_compare_field(
+                        let field_ref = ::validator::__private::Access::field(self, #field_name);
+                        validator.__validate_field_rule(
                             &mut errors,
                             #target,
                             #value,
-                            compare_field.as_ref().map(|field| field.value()),
+                            field_ref.as_ref().map(|field| field.value()),
                             #name,
-                            #compare_name,
+                            #field_name,
                         );
                     }
                 });
@@ -551,11 +551,11 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
         return Ok(());
     }
 
-    for name in COMPARE_FIELD_RULES {
+    for name in FIELD_RULES {
         if meta.path.is_ident(*name) {
             let value = meta.value()?;
             let target: LitStr = value.parse()?;
-            rules.push(RuleAttr::CompareField {
+            rules.push(RuleAttr::FieldRule {
                 name: (*name).to_owned(),
                 target: target.value(),
             });
@@ -807,6 +807,7 @@ fn map_value_type(ty: &Type) -> Option<&Type> {
 }
 
 const MARKER_RULES: &[&str] = &[
+    "isdefault",
     "email",
     "url",
     "uri",
@@ -822,6 +823,7 @@ const MARKER_RULES: &[&str] = &[
     "cidrv4",
     "cidrv6",
     "hostname",
+    "hostname_port",
     "hostname_rfc1123",
     "fqdn",
     "port",
@@ -922,13 +924,15 @@ const STRING_PARAM_RULES: &[&str] = &[
     "endsnotwith",
 ];
 
-const COMPARE_FIELD_RULES: &[&str] = &[
+const FIELD_RULES: &[&str] = &[
     "eq_field",
     "ne_field",
     "gt_field",
     "gte_field",
     "lt_field",
     "lte_field",
+    "fieldcontains",
+    "fieldexcludes",
 ];
 
 fn rule(name: impl Into<String>, params: Vec<(String, String)>) -> RuleAttr {

@@ -1,5 +1,6 @@
 mod cidr;
 mod host;
+mod hostname_port;
 mod hostname_rfc1123;
 mod http_url;
 mod ip;
@@ -12,6 +13,7 @@ mod uuid;
 
 pub(super) use cidr::{Cidr, Cidrv4, Cidrv6};
 pub(super) use host::{Fqdn, Hostname};
+pub(super) use hostname_port::HostnamePort;
 pub(super) use hostname_rfc1123::HostnameRfc1123;
 pub(super) use http_url::{HttpUrl, HttpsUrl};
 pub(super) use ip::{Ip, Ip4Address, Ip6Address, IpAddress, Ipv4, Ipv6};

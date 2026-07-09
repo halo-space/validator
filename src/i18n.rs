@@ -332,6 +332,7 @@ fn kind_name(kind: Kind) -> &'static str {
 fn zh_cn_locale() -> Locale {
     Locale::new("zh-CN")
         .rule("required", "{field}不能为空")
+        .rule("isdefault", "{field}必须是默认值")
         .rule("eq", "{field}必须等于{value}")
         .rule("ne", "{field}不能等于{value}")
         .rule("eq_ignore_case", "{field}必须等于{value}")
@@ -351,6 +352,7 @@ fn zh_cn_locale() -> Locale {
         .rule("cidrv4", "{field}必须是有效的IPv4 CIDR")
         .rule("cidrv6", "{field}必须是有效的IPv6 CIDR")
         .rule("hostname", "{field}必须是有效的主机名")
+        .rule("hostname_port", "{field}必须是有效的主机名和端口")
         .rule("hostname_rfc1123", "{field}必须是有效的RFC1123主机名")
         .rule("fqdn", "{field}必须是有效的完整域名")
         .rule("port", "{field}必须是有效端口")
@@ -460,6 +462,8 @@ fn zh_cn_locale() -> Locale {
         .rule("gte_field", "{field}必须大于或等于{compare}")
         .rule("lt_field", "{field}必须小于{compare}")
         .rule("lte_field", "{field}必须小于或等于{compare}")
+        .rule("fieldcontains", "{field}必须包含{compare}")
+        .rule("fieldexcludes", "{field}不能包含{compare}")
         .rule("required_without", "{field}不能为空")
         .rule_fn("length", zh_length)
         .rule_fn("min", |ctx| {
@@ -478,6 +482,7 @@ fn zh_cn_locale() -> Locale {
 fn en_locale() -> Locale {
     Locale::new("en")
         .rule("required", "{field} is required")
+        .rule("isdefault", "{field} must be the default value")
         .rule("eq", "{field} must be equal to {value}")
         .rule("ne", "{field} must not be equal to {value}")
         .rule("eq_ignore_case", "{field} must be equal to {value}")
@@ -497,6 +502,7 @@ fn en_locale() -> Locale {
         .rule("cidrv4", "{field} must be a valid IPv4 CIDR block")
         .rule("cidrv6", "{field} must be a valid IPv6 CIDR block")
         .rule("hostname", "{field} must be a valid hostname")
+        .rule("hostname_port", "{field} must be a valid hostname and port")
         .rule(
             "hostname_rfc1123",
             "{field} must be a valid RFC1123 hostname",
@@ -636,6 +642,8 @@ fn en_locale() -> Locale {
             "lte_field",
             "{field} must be less than or equal to {compare}",
         )
+        .rule("fieldcontains", "{field} must contain {compare}")
+        .rule("fieldexcludes", "{field} must not contain {compare}")
         .rule("required_without", "{field} is required")
         .rule_fn("length", en_length)
         .rule_fn("min", |ctx| en_size(ctx, "must be at least"))
@@ -802,6 +810,8 @@ mod tests {
         "gte_field",
         "lt_field",
         "lte_field",
+        "fieldcontains",
+        "fieldexcludes",
         "required_without",
     ];
 

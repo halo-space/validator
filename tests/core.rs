@@ -605,6 +605,41 @@ fn ordered_string_cross_field_rules_compare_length() {
 }
 
 #[derive(Debug, Validate)]
+struct FieldText {
+    needle: String,
+    forbidden: String,
+
+    #[validate(fieldcontains = "needle", fieldexcludes = "forbidden")]
+    body: String,
+}
+
+#[test]
+fn field_string_rules_compare_sibling_fields() {
+    Validator::new()
+        .validate(&FieldText {
+            needle: "rust".to_owned(),
+            forbidden: "go".to_owned(),
+            body: "hello rust".to_owned(),
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&FieldText {
+            needle: "rust".to_owned(),
+            forbidden: "go".to_owned(),
+            body: "hello go".to_owned(),
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(rules, vec!["fieldcontains", "fieldexcludes"]);
+    assert_eq!(fields[0].params().get("compare"), Some("needle"));
+    assert_eq!(fields[1].params().get("compare"), Some("forbidden"));
+}
+
+#[derive(Debug, Validate)]
 #[validate(check = "validate_name_or_title")]
 struct Draft {
     name: String,
@@ -1711,6 +1746,61 @@ fields:
     });
 
     Validator::with_schema(schema).validate_map(&data)?;
+
+    Ok(())
+}
+
+#[test]
+fn schema_field_string_rules_compare_sibling_fields() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  needle:
+    type: string
+  forbidden:
+    type: string
+  body:
+    type: string
+    rules:
+      - fieldcontains: needle
+      - fieldexcludes: forbidden
+"#,
+    )?;
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({
+                "needle": "rust",
+                "forbidden": "go",
+                "body": "hello go"
+            }))
+            .unwrap_err(),
+    );
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(rules, vec!["fieldcontains", "fieldexcludes"]);
+    assert_eq!(fields[0].params().get("compare"), Some("needle"));
+    assert_eq!(fields[1].params().get("compare"), Some("forbidden"));
+
+    Ok(())
+}
+
+#[test]
+fn schema_fieldexcludes_missing_target_value_passes() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  forbidden:
+    type: string
+  body:
+    type: string
+    rules:
+      - fieldexcludes: forbidden
+"#,
+    )?;
+
+    Validator::with_schema(schema).validate_map(&json!({
+        "body": "hello go"
+    }))?;
 
     Ok(())
 }

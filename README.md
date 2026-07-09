@@ -511,12 +511,13 @@ let messages = validator::i18n::new()
 
 Current built-in rules:
 
-- Required/Optional: `required`, `omitempty`
+- Required/Optional: `required`, `isdefault`, `omitempty`
 - Size: `length`, `min`, `max`, `range`
 - Compare: `eq`, `ne`, `eq_ignore_case`, `ne_ignore_case`, `gt`, `gte`,
   `lt`, `lte`
-- Cross-field: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`,
-  `lte_field` for derive and Schema validation
+- Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`,
+  `lte_field`, `fieldcontains`, `fieldexcludes` for derive and Schema
+  validation
 - Collection: `unique`
 - Choice: `oneof`, `oneofci`, `noneof`, `noneofci`
 - String: `contains`, `containsany`, `containsrune`, `excludes`,
@@ -535,9 +536,10 @@ Current built-in rules:
   `cmyk`
 - Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`,
   `ip_addr`, `ip4_addr`, `ip6_addr`, `cidr`, `cidrv4`, `cidrv6`, `hostname`,
-  `hostname_rfc1123`, `fqdn`, `port`, `uuid`, `uuid3`, `uuid4`, `uuid5`,
-  `uuid_rfc4122`, `uuid3_rfc4122`, `uuid4_rfc4122`, `uuid5_rfc4122`, `ulid`,
-  `tcp4_addr`, `tcp6_addr`, `tcp_addr`, `udp4_addr`, `udp6_addr`, `udp_addr`
+  `hostname_port`, `hostname_rfc1123`, `fqdn`, `port`, `uuid`, `uuid3`,
+  `uuid4`, `uuid5`, `uuid_rfc4122`, `uuid3_rfc4122`, `uuid4_rfc4122`,
+  `uuid5_rfc4122`, `ulid`, `tcp4_addr`, `tcp6_addr`, `tcp_addr`,
+  `udp4_addr`, `udp6_addr`, `udp_addr`
 - Alias: `iscolor`
 
 Comparison and size rules dispatch by field type:
