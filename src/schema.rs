@@ -423,7 +423,14 @@ fn default_param_name(rule: &str) -> &'static str {
         "oneof" => "values",
         "eq_field" | "ne_field" | "gt_field" | "gte_field" | "lt_field" | "lte_field"
         | "fieldcontains" | "fieldexcludes" => "compare",
-        "required_with" | "required_without" => "fields",
+        "required_with"
+        | "required_with_all"
+        | "required_without"
+        | "required_without_all"
+        | "excluded_with"
+        | "excluded_with_all"
+        | "excluded_without"
+        | "excluded_without_all" => "fields",
         _ => "value",
     }
 }

@@ -19,8 +19,9 @@ The current implementation is centered on code-level validation and also support
   key/value pairs.
 - Cross-field validation with `eq_field`, `ne_field`, `gt_field`, `gte_field`,
   `lt_field`, and `lte_field`.
-- Conditional required validation with `required_if`, `required_unless`,
-  `required_with`, and `required_without`.
+- Conditional field validation with `required_if`, `required_unless`,
+  `required_with`, `required_with_all`, `required_without`,
+  `required_without_all`, and `excluded_*` rules.
 - Struct-level validation with `#[validate(check = "...")]` and
   `validator::valid::Valid`.
 - Dynamic Schema validation with `Schema::from_yaml/json`,
@@ -213,7 +214,7 @@ Supported rules are `eq_field`, `ne_field`, `gt_field`, `gte_field`,
 or `None` target values fail validation; a current `Option::None` skips the
 cross-field rule unless `required` is also present.
 
-Conditional required rules also use sibling fields:
+Conditional field rules also use sibling fields:
 
 ```rust
 #[derive(Debug, Validate)]
@@ -231,16 +232,30 @@ struct Post {
     #[validate(required_with("email", "phone"))]
     contact_name: String,
 
+    #[validate(required_with_all("email", "phone"))]
+    all_contact_name: String,
+
     #[validate(required_without("email", "phone"))]
     fallback_contact: String,
+
+    #[validate(required_without_all("email", "phone"))]
+    all_fallback_contact: String,
+
+    #[validate(excluded_if(status = "archived"))]
+    archive_note: String,
 }
 ```
 
-Supported conditional required rules are `required_if`, `required_unless`,
-`required_with`, and `required_without`. They are available for derive and
-Schema validation. `required_if` / `required_unless` compare sibling field
-values by type; `required_with` / `required_without` check whether sibling
-fields are present and non-empty.
+Supported conditional rules are `required_if`, `required_unless`,
+`required_with`, `required_with_all`, `required_without`,
+`required_without_all`, `excluded_if`, `excluded_unless`, `excluded_with`,
+`excluded_with_all`, `excluded_without`, and `excluded_without_all`. They are
+available for derive and Schema validation. `*_if` / `*_unless` compare sibling
+field values by type; `*_with` / `*_without` check whether sibling fields are
+present and non-empty. The `_all` variants require all referenced fields to
+match the condition; the non-`_all` field-list variants trigger when any
+referenced field matches the condition. `excluded_*` rules require the current
+field to be empty when their condition is triggered.
 
 ## SystemTime Validation
 
@@ -548,8 +563,10 @@ Current built-in rules:
   `lt`, `lte`
 - Field-aware: `eq_field`, `ne_field`, `gt_field`, `gte_field`, `lt_field`,
   `lte_field`, `fieldcontains`, `fieldexcludes`, `required_if`,
-  `required_unless`, `required_with`, `required_without` for derive and Schema
-  validation
+  `required_unless`, `required_with`, `required_with_all`, `required_without`,
+  `required_without_all`, `excluded_if`, `excluded_unless`, `excluded_with`,
+  `excluded_with_all`, `excluded_without`, `excluded_without_all` for derive
+  and Schema validation
 - Collection: `unique`
 - Choice: `oneof`, `oneofci`, `noneof`, `noneofci`
 - String: `contains`, `containsany`, `containsrune`, `excludes`,

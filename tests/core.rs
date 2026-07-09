@@ -640,10 +640,13 @@ fn field_string_rules_compare_sibling_fields() {
 }
 
 #[derive(Debug, Validate)]
-struct ConditionalRequired {
+struct ConditionalFieldRules {
     status: String,
+    mode: String,
     email: String,
     phone: Option<String>,
+    backup_email: String,
+    backup_phone: Option<String>,
 
     #[validate(required_if(status = "published"))]
     published_at: Option<String>,
@@ -656,31 +659,82 @@ struct ConditionalRequired {
 
     #[validate(required_without("email", "phone"))]
     fallback_contact: String,
+
+    #[validate(required_with_all("email", "phone"))]
+    all_contact_name: String,
+
+    #[validate(required_without_all("email", "phone"))]
+    all_fallback_contact: String,
+
+    #[validate(excluded_if(status = "archived"))]
+    archive_note: String,
+
+    #[validate(excluded_unless(status = "draft"))]
+    draft_only_note: String,
+
+    #[validate(excluded_with("backup_email", "backup_phone"))]
+    backup_override: String,
+
+    #[validate(excluded_with_all("backup_email", "backup_phone"))]
+    backup_all_override: String,
+
+    #[validate(excluded_without("backup_email", "backup_phone"))]
+    backup_missing_override: String,
+
+    #[validate(excluded_without_all("backup_email", "backup_phone"))]
+    backup_all_missing_override: String,
+
+    #[validate(excluded_if(mode = "private"))]
+    private_note: Option<String>,
 }
 
 #[test]
-fn conditional_required_rules_validate_sibling_fields() {
+fn conditional_field_rules_validate_sibling_fields() {
     Validator::new()
-        .validate(&ConditionalRequired {
+        .validate(&ConditionalFieldRules {
             status: "draft".to_owned(),
+            mode: "public".to_owned(),
             email: String::new(),
             phone: None,
+            backup_email: "backup@example.com".to_owned(),
+            backup_phone: Some("123".to_owned()),
             published_at: None,
             title: String::new(),
             contact_name: String::new(),
             fallback_contact: "support".to_owned(),
+            all_contact_name: String::new(),
+            all_fallback_contact: "support".to_owned(),
+            archive_note: String::new(),
+            draft_only_note: "draft note".to_owned(),
+            backup_override: String::new(),
+            backup_all_override: String::new(),
+            backup_missing_override: String::new(),
+            backup_all_missing_override: String::new(),
+            private_note: None,
         })
         .unwrap();
 
     let fields = Validator::new()
-        .validate(&ConditionalRequired {
-            status: "published".to_owned(),
+        .validate(&ConditionalFieldRules {
+            status: "archived".to_owned(),
+            mode: "private".to_owned(),
             email: "editor@example.com".to_owned(),
             phone: None,
+            backup_email: String::new(),
+            backup_phone: None,
             published_at: None,
             title: String::new(),
             contact_name: String::new(),
             fallback_contact: String::new(),
+            all_contact_name: String::new(),
+            all_fallback_contact: String::new(),
+            archive_note: "archived".to_owned(),
+            draft_only_note: "draft only".to_owned(),
+            backup_override: "override".to_owned(),
+            backup_all_override: String::new(),
+            backup_missing_override: "missing".to_owned(),
+            backup_all_missing_override: "all missing".to_owned(),
+            private_note: Some("secret".to_owned()),
         })
         .unwrap_err()
         .into_fields()
@@ -690,20 +744,119 @@ fn conditional_required_rules_validate_sibling_fields() {
     assert_eq!(
         rules,
         vec![
-            "required_if",
             "required_unless",
             "required_with",
-            "required_without"
+            "required_without",
+            "excluded_if",
+            "excluded_unless",
+            "excluded_without",
+            "excluded_without_all",
+            "excluded_if"
         ]
     );
-    assert_eq!(fields[0].params().get("status"), Some("published"));
-    assert_eq!(fields[1].params().get("status"), Some("draft"));
+    assert_eq!(fields[0].params().get("status"), Some("draft"));
+    assert_eq!(fields[1].params().get("fields"), Some("email,phone"));
     assert_eq!(fields[2].params().get("fields"), Some("email,phone"));
-    assert_eq!(fields[3].params().get("fields"), Some("email,phone"));
+    assert_eq!(fields[3].params().get("status"), Some("archived"));
+    assert_eq!(fields[4].params().get("status"), Some("draft"));
+    assert_eq!(
+        fields[5].params().get("fields"),
+        Some("backup_email,backup_phone")
+    );
+    assert_eq!(
+        fields[6].params().get("fields"),
+        Some("backup_email,backup_phone")
+    );
+    assert_eq!(fields[7].params().get("mode"), Some("private"));
 }
 
 #[derive(Debug, Validate)]
-struct NumericConditionalRequired {
+struct ConditionalAllFieldRules {
+    email: String,
+    phone: Option<String>,
+    backup_email: String,
+    backup_phone: Option<String>,
+
+    #[validate(required_with_all("email", "phone"))]
+    contact_name: String,
+
+    #[validate(required_without_all("backup_email", "backup_phone"))]
+    fallback_contact: String,
+
+    #[validate(excluded_with("email", "phone"))]
+    contact_override: String,
+
+    #[validate(excluded_with_all("email", "phone"))]
+    all_contact_override: String,
+
+    #[validate(excluded_without("backup_email", "backup_phone"))]
+    missing_backup_override: String,
+
+    #[validate(excluded_without_all("backup_email", "backup_phone"))]
+    all_missing_backup_override: String,
+}
+
+#[test]
+fn conditional_all_rules_distinguish_any_and_all_fields() {
+    Validator::new()
+        .validate(&ConditionalAllFieldRules {
+            email: "editor@example.com".to_owned(),
+            phone: None,
+            backup_email: "backup@example.com".to_owned(),
+            backup_phone: None,
+            contact_name: String::new(),
+            fallback_contact: String::new(),
+            contact_override: String::new(),
+            all_contact_override: String::new(),
+            missing_backup_override: String::new(),
+            all_missing_backup_override: String::new(),
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&ConditionalAllFieldRules {
+            email: "editor@example.com".to_owned(),
+            phone: Some("123".to_owned()),
+            backup_email: String::new(),
+            backup_phone: None,
+            contact_name: String::new(),
+            fallback_contact: String::new(),
+            contact_override: "override".to_owned(),
+            all_contact_override: "all override".to_owned(),
+            missing_backup_override: "missing".to_owned(),
+            all_missing_backup_override: "all missing".to_owned(),
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
+
+    assert_eq!(
+        rules,
+        vec![
+            "required_with_all",
+            "required_without_all",
+            "excluded_with",
+            "excluded_with_all",
+            "excluded_without",
+            "excluded_without_all"
+        ]
+    );
+    for field in fields {
+        let expected = match field.rule() {
+            "required_with_all" | "excluded_with" | "excluded_with_all" => "email,phone",
+            "required_without_all" | "excluded_without" | "excluded_without_all" => {
+                "backup_email,backup_phone"
+            }
+            rule => panic!("unexpected rule {rule}"),
+        };
+
+        assert_eq!(field.params().get("fields"), Some(expected));
+    }
+}
+
+#[derive(Debug, Validate)]
+struct NumericConditionalFieldRule {
     level: u8,
 
     #[validate(required_if(level = 3))]
@@ -711,16 +864,16 @@ struct NumericConditionalRequired {
 }
 
 #[test]
-fn conditional_required_if_compares_typed_values() {
+fn conditional_pair_rule_compares_typed_values() {
     Validator::new()
-        .validate(&NumericConditionalRequired {
+        .validate(&NumericConditionalFieldRule {
             level: 2,
             badge: String::new(),
         })
         .unwrap();
 
     let fields = Validator::new()
-        .validate(&NumericConditionalRequired {
+        .validate(&NumericConditionalFieldRule {
             level: 3,
             badge: String::new(),
         })
@@ -1879,8 +2032,8 @@ fields:
 }
 
 #[test]
-fn schema_conditional_required_rules_validate_sibling_fields()
--> Result<(), Box<dyn std::error::Error>> {
+fn schema_conditional_field_rules_validate_sibling_fields() -> Result<(), Box<dyn std::error::Error>>
+{
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -1965,7 +2118,127 @@ fields:
 }
 
 #[test]
-fn schema_conditional_required_undeclared_target_returns_config_error()
+fn schema_conditional_all_and_excluded_rules_validate_sibling_fields()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  status:
+    type: string
+  mode:
+    type: string
+  email:
+    type: string
+  phone:
+    type: string
+  backup_email:
+    type: string
+  backup_phone:
+    type: string
+  contact_name:
+    type: string
+    rules:
+      - required_with_all: [email, phone]
+  fallback_contact:
+    type: string
+    rules:
+      - required_without_all: [backup_email, backup_phone]
+  archive_note:
+    type: string
+    rules:
+      - excluded_if:
+          status: archived
+  draft_only_note:
+    type: string
+    rules:
+      - excluded_unless:
+          status: draft
+  contact_override:
+    type: string
+    rules:
+      - excluded_with: [email, phone]
+  all_contact_override:
+    type: string
+    rules:
+      - excluded_with_all: [email, phone]
+  backup_missing_override:
+    type: string
+    rules:
+      - excluded_without: [backup_email, backup_phone]
+  backup_all_missing_override:
+    type: string
+    rules:
+      - excluded_without_all: [backup_email, backup_phone]
+  private_note:
+    type: string
+    rules:
+      - excluded_if:
+          mode: private
+"#,
+    )?;
+
+    Validator::with_schema(schema.clone()).validate_map(&json!({
+        "status": "draft",
+        "mode": "public",
+        "email": "editor@example.com",
+        "backup_email": "backup@example.com",
+        "contact_name": "",
+        "fallback_contact": "",
+        "archive_note": "",
+        "draft_only_note": "draft note",
+        "contact_override": "",
+        "all_contact_override": "",
+        "backup_missing_override": "",
+        "backup_all_missing_override": "",
+        "private_note": ""
+    }))?;
+
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({
+                "status": "archived",
+                "mode": "private",
+                "email": "editor@example.com",
+                "phone": "123",
+                "backup_email": "",
+                "contact_name": "",
+                "fallback_contact": "",
+                "archive_note": "archived",
+                "draft_only_note": "draft only",
+                "contact_override": "override",
+                "all_contact_override": "all override",
+                "backup_missing_override": "missing",
+                "backup_all_missing_override": "all missing",
+                "private_note": "secret"
+            }))
+            .unwrap_err(),
+    );
+    let mut failures = fields
+        .iter()
+        .map(|field| (field.rule(), field.params().get("fields")))
+        .collect::<Vec<_>>();
+    failures.sort_unstable();
+
+    assert_eq!(
+        failures,
+        vec![
+            ("excluded_if", None),
+            ("excluded_if", None),
+            ("excluded_unless", None),
+            ("excluded_with", Some("email,phone")),
+            ("excluded_with_all", Some("email,phone")),
+            ("excluded_without", Some("backup_email,backup_phone")),
+            ("excluded_without_all", Some("backup_email,backup_phone")),
+            ("required_with_all", Some("email,phone")),
+            ("required_without_all", Some("backup_email,backup_phone")),
+        ]
+    );
+
+    Ok(())
+}
+
+#[test]
+fn schema_conditional_field_rule_undeclared_target_returns_config_error()
 -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"

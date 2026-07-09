@@ -269,7 +269,14 @@ fn validate_field_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) ->
 
 fn field_targets<'a>(rule: &str, params: &'a [(String, String)]) -> Vec<&'a str> {
     match rule {
-        "required_with" | "required_without" => params
+        "required_with"
+        | "required_with_all"
+        | "required_without"
+        | "required_without_all"
+        | "excluded_with"
+        | "excluded_with_all"
+        | "excluded_without"
+        | "excluded_without_all" => params
             .iter()
             .find(|(name, _)| name == "fields")
             .into_iter()
@@ -277,7 +284,7 @@ fn field_targets<'a>(rule: &str, params: &'a [(String, String)]) -> Vec<&'a str>
             .map(str::trim)
             .filter(|field| !field.is_empty())
             .collect(),
-        "required_if" | "required_unless" => params
+        "required_if" | "required_unless" | "excluded_if" | "excluded_unless" => params
             .iter()
             .map(|(field, _)| field.as_str())
             .collect::<Vec<_>>(),
@@ -1041,9 +1048,23 @@ const FIELD_RULES: &[&str] = &[
     "fieldexcludes",
 ];
 
-const CONDITIONAL_PAIR_RULES: &[&str] = &["required_if", "required_unless"];
+const CONDITIONAL_PAIR_RULES: &[&str] = &[
+    "required_if",
+    "required_unless",
+    "excluded_if",
+    "excluded_unless",
+];
 
-const CONDITIONAL_FIELD_LIST_RULES: &[&str] = &["required_with", "required_without"];
+const CONDITIONAL_FIELD_LIST_RULES: &[&str] = &[
+    "required_with",
+    "required_with_all",
+    "required_without",
+    "required_without_all",
+    "excluded_with",
+    "excluded_with_all",
+    "excluded_without",
+    "excluded_without_all",
+];
 
 fn rule(name: impl Into<String>, params: Vec<(String, String)>) -> RuleAttr {
     RuleAttr::Rule {

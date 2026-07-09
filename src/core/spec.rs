@@ -105,7 +105,14 @@ fn parse_rule(item: &str) -> Result<Spec, Error> {
         if !positional.is_empty() {
             let param = match name {
                 "oneof" | "oneofci" | "noneof" | "noneofci" => "values",
-                "required_with" | "required_without" => "fields",
+                "required_with"
+                | "required_with_all"
+                | "required_without"
+                | "required_without_all"
+                | "excluded_with"
+                | "excluded_with_all"
+                | "excluded_without"
+                | "excluded_without_all" => "fields",
                 _ => {
                     return Err(invalid_rule_expression(
                         item,
@@ -128,7 +135,14 @@ fn parse_rule(item: &str) -> Result<Spec, Error> {
             "oneof" | "oneofci" | "noneof" | "noneofci" => "values",
             "eq_field" | "ne_field" | "gt_field" | "gte_field" | "lt_field" | "lte_field"
             | "fieldcontains" | "fieldexcludes" => "compare",
-            "required_with" | "required_without" => "fields",
+            "required_with"
+            | "required_with_all"
+            | "required_without"
+            | "required_without_all"
+            | "excluded_with"
+            | "excluded_with_all"
+            | "excluded_without"
+            | "excluded_without_all" => "fields",
             _ => "value",
         };
         return Ok(Spec::new(name).param(param, trim_quotes(value.trim())));
@@ -222,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_conditional_required_field_lists() {
+    fn parses_conditional_field_lists() {
         let exprs = parse_expression(r#"required_with("email","phone")"#).unwrap();
         let spec = exprs[0].single().unwrap();
 
@@ -235,6 +249,20 @@ mod tests {
 
         assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "required_without");
+        assert_eq!(spec.params().get("fields"), Some("email"));
+
+        let exprs = parse_expression(r#"excluded_with_all("email","phone")"#).unwrap();
+        let spec = exprs[0].single().unwrap();
+
+        assert_eq!(exprs.len(), 1);
+        assert_eq!(spec.name(), "excluded_with_all");
+        assert_eq!(spec.params().get("fields"), Some("email,phone"));
+
+        let exprs = parse_expression("required_without_all=email").unwrap();
+        let spec = exprs[0].single().unwrap();
+
+        assert_eq!(exprs.len(), 1);
+        assert_eq!(spec.name(), "required_without_all");
         assert_eq!(spec.params().get("fields"), Some("email"));
     }
 

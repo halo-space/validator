@@ -467,7 +467,15 @@ fn zh_cn_locale() -> Locale {
         .rule("required_if", "{field}不能为空")
         .rule("required_unless", "{field}不能为空")
         .rule("required_with", "{field}不能为空")
+        .rule("required_with_all", "{field}不能为空")
         .rule("required_without", "{field}不能为空")
+        .rule("required_without_all", "{field}不能为空")
+        .rule("excluded_if", "{field}必须为空")
+        .rule("excluded_unless", "{field}必须为空")
+        .rule("excluded_with", "{field}必须为空")
+        .rule("excluded_with_all", "{field}必须为空")
+        .rule("excluded_without", "{field}必须为空")
+        .rule("excluded_without_all", "{field}必须为空")
         .rule_fn("length", zh_length)
         .rule_fn("min", |ctx| {
             zh_size(ctx, "长度不能小于", "数量不能小于", "不能小于")
@@ -650,7 +658,15 @@ fn en_locale() -> Locale {
         .rule("required_if", "{field} is required")
         .rule("required_unless", "{field} is required")
         .rule("required_with", "{field} is required")
+        .rule("required_with_all", "{field} is required")
         .rule("required_without", "{field} is required")
+        .rule("required_without_all", "{field} is required")
+        .rule("excluded_if", "{field} must be empty")
+        .rule("excluded_unless", "{field} must be empty")
+        .rule("excluded_with", "{field} must be empty")
+        .rule("excluded_with_all", "{field} must be empty")
+        .rule("excluded_without", "{field} must be empty")
+        .rule("excluded_without_all", "{field} must be empty")
         .rule_fn("length", en_length)
         .rule_fn("min", |ctx| en_size(ctx, "must be at least"))
         .rule_fn("max", |ctx| en_size(ctx, "must be at most"))
@@ -821,7 +837,15 @@ mod tests {
         "required_if",
         "required_unless",
         "required_with",
+        "required_with_all",
         "required_without",
+        "required_without_all",
+        "excluded_if",
+        "excluded_unless",
+        "excluded_with",
+        "excluded_with_all",
+        "excluded_without",
+        "excluded_without_all",
     ];
 
     #[test]
