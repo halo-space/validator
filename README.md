@@ -556,7 +556,8 @@ These are intentional limits in the current API surface:
 
 All public validation entry points return `Error`. Validation failures use
 `Error::Failed(Vec<FieldError>)`; configuration errors use other `Error`
-variants such as `UnknownRule`, `InvalidSchema`, or `InvalidData`.
+variants such as `UnknownRule`, `UnknownAlias`, `InvalidSchema`, or
+`InvalidData`.
 
 ```rust
 let error = Validator::new().validate(&value).unwrap_err();

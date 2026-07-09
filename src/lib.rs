@@ -10,14 +10,13 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 
-use self::core::{
-    Aliases, Context, FieldErrorParts, Group, RuleGroup, Rules, parse_rule_expression,
-};
+use self::core::{Aliases, Context, Expr, FieldErrorParts, Group, Rules, parse_expression};
 pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Params, Rule, UintKind,
     Value,
 };
 pub use self::schema::Schema;
+use self::schema::Tree;
 pub use validator_derive::Validate;
 
 #[doc(hidden)]
@@ -37,9 +36,9 @@ pub struct Validator {
     aliases: Aliases,
     schema: Option<Schema>,
     generation: u64,
-    expression_cache: RwLock<BTreeMap<String, Arc<Vec<RuleGroup>>>>,
+    expression_cache: RwLock<BTreeMap<String, Arc<Vec<Expr>>>>,
     compiled_cache: RwLock<BTreeMap<(u64, String), Arc<Group>>>,
-    schema_checked_generation: RwLock<Option<u64>>,
+    schema_cache: RwLock<BTreeMap<(schema::SchemaId, u64), Arc<Tree>>>,
 }
 
 impl Validator {
@@ -57,7 +56,7 @@ impl Validator {
             generation: 0,
             expression_cache: RwLock::new(BTreeMap::new()),
             compiled_cache: RwLock::new(BTreeMap::new()),
-            schema_checked_generation: RwLock::new(None),
+            schema_cache: RwLock::new(BTreeMap::new()),
         }
     }
 
@@ -103,12 +102,11 @@ impl Validator {
 
     pub fn validate_map(&self, value: &serde_json::Value) -> Result<(), Error> {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
-
-        self.ensure_schema(schema)?;
+        let tree = self.schema_tree(schema)?;
 
         let mut errors = Vec::new();
         let context = Context::new();
-        schema.validate(self, &context, &mut errors, value)?;
+        tree.validate(&context, &mut errors, value)?;
 
         if errors.is_empty() {
             Ok(())
@@ -130,38 +128,38 @@ impl Validator {
 
     fn bump_generation(&mut self) {
         self.generation = self.generation.wrapping_add(1);
-        *self
-            .schema_checked_generation
-            .write()
-            .expect("schema verification cache lock must not be poisoned") = None;
         self.compiled_cache
             .write()
             .expect("compiled cache lock must not be poisoned")
             .clear();
+        self.schema_cache
+            .write()
+            .expect("schema cache lock must not be poisoned")
+            .clear();
     }
 
-    fn parse(&self, expression: &str) -> Result<Arc<Vec<RuleGroup>>, Error> {
-        if let Some(groups) = self
+    fn parse(&self, expression: &str) -> Result<Arc<Vec<Expr>>, Error> {
+        if let Some(exprs) = self
             .expression_cache
             .read()
             .expect("expression cache lock must not be poisoned")
             .get(expression)
             .cloned()
         {
-            return Ok(groups);
+            return Ok(exprs);
         }
 
-        let groups = Arc::new(parse_rule_expression(expression)?);
+        let exprs = Arc::new(parse_expression(expression)?);
         let mut cache = self
             .expression_cache
             .write()
             .expect("expression cache lock must not be poisoned");
-        if let Some(groups) = cache.get(expression).cloned() {
-            return Ok(groups);
+        if let Some(exprs) = cache.get(expression).cloned() {
+            return Ok(exprs);
         }
 
-        cache.insert(expression.to_owned(), groups.clone());
-        Ok(groups)
+        cache.insert(expression.to_owned(), exprs.clone());
+        Ok(exprs)
     }
 
     fn compile(&self, expression: &str) -> Result<Arc<Group>, Error> {
@@ -176,8 +174,8 @@ impl Validator {
             return Ok(group);
         }
 
-        let groups = self.parse(expression)?;
-        let group = Arc::new(Group::compile(groups.as_ref(), &self.rules, &self.aliases)?);
+        let exprs = self.parse(expression)?;
+        let group = Arc::new(Group::compile(exprs.as_ref(), &self.rules, &self.aliases)?);
         let mut cache = self
             .compiled_cache
             .write()
@@ -190,174 +188,29 @@ impl Validator {
         Ok(group)
     }
 
-    fn ensure_schema(&self, schema: &Schema) -> Result<(), Error> {
-        let checked_generation = *self
-            .schema_checked_generation
+    fn schema_tree(&self, schema: &Schema) -> Result<Arc<Tree>, Error> {
+        let key = (schema.id(), self.generation);
+        if let Some(tree) = self
+            .schema_cache
             .read()
-            .expect("schema verification cache lock must not be poisoned");
-        if checked_generation == Some(self.generation) {
-            return Ok(());
+            .expect("schema cache lock must not be poisoned")
+            .get(&key)
+            .cloned()
+        {
+            return Ok(tree);
         }
 
-        schema.ensure_rules(self)?;
-
-        *self
-            .schema_checked_generation
+        let tree = Arc::new(schema.compile(&self.rules, &self.aliases)?);
+        let mut cache = self
+            .schema_cache
             .write()
-            .expect("schema verification cache lock must not be poisoned") = Some(self.generation);
-        Ok(())
-    }
-
-    pub(crate) fn ensure_rule_groups(&self, groups: &[RuleGroup]) -> Result<(), Error> {
-        for group in groups {
-            if let Some(spec) = group.single() {
-                self.ensure_rule(spec.name())?;
-                continue;
-            }
-
-            if let Some(alternatives) = group.alternatives() {
-                for spec in alternatives {
-                    self.ensure_rule(spec.name())?;
-                }
-            }
+            .expect("schema cache lock must not be poisoned");
+        if let Some(tree) = cache.get(&key).cloned() {
+            return Ok(tree);
         }
 
-        Ok(())
-    }
-
-    fn ensure_rule(&self, name: &str) -> Result<(), Error> {
-        if name == "omitempty" || self.rules.contains(name) {
-            return Ok(());
-        }
-
-        if self.aliases.contains(name) {
-            return self.ensure_alias_rules(name);
-        }
-
-        Err(Error::UnknownRule {
-            name: name.to_owned(),
-        })
-    }
-
-    fn ensure_alias_rules(&self, alias: &str) -> Result<(), Error> {
-        let Some(groups) = self.aliases.get(alias) else {
-            return Err(Error::UnknownAlias {
-                name: alias.to_owned(),
-            });
-        };
-
-        for group in groups {
-            if let Some(spec) = group.single() {
-                self.ensure_alias_rule(spec.name())?;
-                continue;
-            }
-
-            if let Some(alternatives) = group.alternatives() {
-                for spec in alternatives {
-                    self.ensure_alias_rule(spec.name())?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-
-    fn ensure_alias_rule(&self, name: &str) -> Result<(), Error> {
-        if name == "omitempty" || self.rules.contains(name) {
-            return Ok(());
-        }
-
-        Err(Error::UnknownRule {
-            name: name.to_owned(),
-        })
-    }
-
-    pub(crate) fn validate_rule_groups_with_compare<'a, V, F>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        groups: &[RuleGroup],
-        compare_field: F,
-        context: &Context,
-    ) -> Result<(), Error>
-    where
-        V: Value,
-        F: Fn(&str) -> Option<&'a dyn Value>,
-    {
-        for group in groups {
-            if let Some(spec) = group.single() {
-                if spec.name() == "omitempty" {
-                    if self.__skip_empty(value) {
-                        return Ok(());
-                    }
-                    continue;
-                }
-
-                if is_cross_field_rule(spec.name()) {
-                    let compare = compare_param(spec.params()).unwrap_or_default();
-                    self.__validate_compare_field(
-                        errors,
-                        target.clone(),
-                        value,
-                        compare_field(compare),
-                        spec.name(),
-                        compare,
-                    );
-                    continue;
-                }
-
-                if !self.rules.contains(spec.name()) && self.aliases.contains(spec.name()) {
-                    self.__validate_alias(errors, target.clone(), value, spec.name(), context)?;
-                    continue;
-                }
-
-                self.__validate_rule_with_display(
-                    errors,
-                    target.clone(),
-                    value,
-                    RuleDisplay::same(spec.name()),
-                    spec.params().clone(),
-                    context,
-                )?;
-                continue;
-            }
-
-            if let Some(alternatives) = group.alternatives() {
-                let mut passes = false;
-                for spec in alternatives {
-                    if self.spec_passes_with_compare(
-                        target.clone(),
-                        value,
-                        spec.name(),
-                        spec.params(),
-                        &compare_field,
-                        context,
-                    )? {
-                        passes = true;
-                        break;
-                    }
-                }
-                if passes {
-                    continue;
-                }
-
-                let reason = alternatives
-                    .iter()
-                    .map(|spec| spec.name())
-                    .collect::<Vec<_>>()
-                    .join("|");
-                errors.push(field_error(
-                    target.clone(),
-                    value.kind(),
-                    &reason,
-                    &reason,
-                    Params::new(),
-                ));
-            }
-        }
-
-        Ok(())
+        cache.insert(key, tree.clone());
+        Ok(tree)
     }
 
     #[doc(hidden)]
@@ -431,71 +284,13 @@ impl Validator {
         alias: &str,
         context: &Context,
     ) -> Result<(), Error> {
-        let Some(specs) = self.aliases.get(alias) else {
-            errors.push(field_error(
-                target.clone(),
-                value.kind(),
-                alias,
-                "alias",
-                Params::new(),
-            ));
-            return Ok(());
+        let Some(exprs) = self.aliases.get(alias) else {
+            return Err(Error::UnknownAlias {
+                name: alias.to_owned(),
+            });
         };
-
-        for group in specs {
-            if let Some(spec) = group.single() {
-                if spec.name() == "omitempty" {
-                    if self.__skip_empty(value) {
-                        return Ok(());
-                    }
-                    continue;
-                }
-
-                self.__validate_rule_with_display(
-                    errors,
-                    target.clone(),
-                    value,
-                    RuleDisplay::new(alias, spec.name()),
-                    spec.params().clone(),
-                    context,
-                )?;
-                continue;
-            }
-
-            if let Some(alternatives) = group.alternatives() {
-                let mut passes = false;
-                for spec in alternatives {
-                    if self.__rule_passes(
-                        target.clone(),
-                        value,
-                        spec.name(),
-                        spec.params(),
-                        context,
-                    )? {
-                        passes = true;
-                        break;
-                    }
-                }
-                if passes {
-                    continue;
-                }
-
-                let reason = alternatives
-                    .iter()
-                    .map(|spec| spec.name())
-                    .collect::<Vec<_>>()
-                    .join("|");
-                errors.push(field_error(
-                    target.clone(),
-                    value.kind(),
-                    alias,
-                    &reason,
-                    Params::new(),
-                ));
-            }
-        }
-
-        Ok(())
+        let group = Group::compile_alias(exprs, &self.rules, &self.aliases)?;
+        group.execute_alias(errors, target, value, alias, context)
     }
 
     #[doc(hidden)]
@@ -615,48 +410,6 @@ impl Validator {
         );
 
         handler.check(&field)
-    }
-
-    fn direct_spec_passes<V: Value>(
-        &self,
-        target: FieldTarget<'_>,
-        value: &V,
-        name: &str,
-        params: &Params,
-        context: &Context,
-    ) -> Result<bool, Error> {
-        if self.rules.contains(name) || name == "omitempty" {
-            return self.__rule_passes(target.clone(), value, name, params, context);
-        }
-
-        if self.aliases.contains(name) {
-            let mut errors = Vec::new();
-            self.__validate_alias(&mut errors, target.clone(), value, name, context)?;
-            return Ok(errors.is_empty());
-        }
-
-        Ok(false)
-    }
-
-    fn spec_passes_with_compare<'a, V, F>(
-        &self,
-        target: FieldTarget<'_>,
-        value: &V,
-        name: &str,
-        params: &Params,
-        compare_field: &F,
-        context: &Context,
-    ) -> Result<bool, Error>
-    where
-        V: Value,
-        F: Fn(&str) -> Option<&'a dyn Value>,
-    {
-        if is_cross_field_rule(name) {
-            let compare = compare_param(params).unwrap_or_default();
-            return Ok(compare_field_passes(value, compare_field(compare), name));
-        }
-
-        self.direct_spec_passes(target, value, name, params, context)
     }
 }
 
@@ -780,7 +533,7 @@ pub(crate) fn is_cross_field_rule(name: &str) -> bool {
     compare_relation(name).is_some()
 }
 
-fn compare_param(params: &Params) -> Option<&str> {
+pub(crate) fn compare_param(params: &Params) -> Option<&str> {
     params.get("compare").or_else(|| params.get("value"))
 }
 
@@ -806,7 +559,7 @@ fn compare_relation(rule: &str) -> Option<FieldRelation> {
     }
 }
 
-fn compare_field_passes<V: Value>(
+pub(crate) fn compare_field_passes<V: Value>(
     value: &V,
     compare_value: Option<&dyn Value>,
     rule: &str,

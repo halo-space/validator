@@ -1,9 +1,20 @@
 use std::sync::Arc;
 
 use super::{
-    Aliases, Context, Error, Field, FieldError, Namespace, Params, Rule, RuleGroup, Rules, Value,
+    Aliases, Context, Error, Expr, Field, FieldError, Namespace, Params, Rule, Rules, Value,
 };
-use crate::{FieldTarget, field_error, namespace_for};
+use crate::{
+    FieldTarget, compare_field_passes, compare_param, field_error, is_cross_field_rule,
+    namespace_for,
+};
+
+type CompareResolver<'a> = dyn Fn(&str) -> Option<&'a dyn Value> + 'a;
+
+struct Exec<'a, 'b> {
+    context: &'a Context,
+    display_rule: Option<&'a str>,
+    compare: Option<&'a CompareResolver<'b>>,
+}
 
 #[derive(Clone)]
 pub(crate) struct Group {
@@ -27,11 +38,16 @@ enum Check {
         name: String,
         group: Arc<Group>,
     },
+    Compare {
+        name: String,
+        target: String,
+    },
     OmitEmpty,
 }
 
 enum CompileMode {
     Direct,
+    Compare,
     Alias,
 }
 
@@ -42,12 +58,24 @@ enum Flow {
 }
 
 impl Group {
-    pub(crate) fn compile(
-        groups: &[RuleGroup],
+    pub(crate) fn compile(exprs: &[Expr], rules: &Rules, aliases: &Aliases) -> Result<Self, Error> {
+        Self::build(exprs, rules, aliases, CompileMode::Direct)
+    }
+
+    pub(crate) fn compile_with_compare(
+        exprs: &[Expr],
         rules: &Rules,
         aliases: &Aliases,
     ) -> Result<Self, Error> {
-        Self::build(groups, rules, aliases, CompileMode::Direct)
+        Self::build(exprs, rules, aliases, CompileMode::Compare)
+    }
+
+    pub(crate) fn compile_alias(
+        exprs: &[Expr],
+        rules: &Rules,
+        aliases: &Aliases,
+    ) -> Result<Self, Error> {
+        Self::build(exprs, rules, aliases, CompileMode::Alias)
     }
 
     pub(crate) fn execute<V: Value>(
@@ -57,19 +85,45 @@ impl Group {
         value: &V,
         context: &Context,
     ) -> Result<(), Error> {
-        self.execute_with_display(errors, target, value, context, None)
+        self.execute_with_display(errors, target, value, context, None, None)
+    }
+
+    pub(crate) fn execute_with_compare<'a, V, F>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        compare: F,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        F: Fn(&str) -> Option<&'a dyn Value> + 'a,
+    {
+        self.execute_with_display(errors, target, value, context, None, Some(&compare))
+    }
+
+    pub(crate) fn execute_alias<V: Value>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        alias: &str,
+        context: &Context,
+    ) -> Result<(), Error> {
+        self.execute_with_display(errors, target, value, context, Some(alias), None)
     }
 
     fn build(
-        groups: &[RuleGroup],
+        exprs: &[Expr],
         rules: &Rules,
         aliases: &Aliases,
         mode: CompileMode,
     ) -> Result<Self, Error> {
         let mut steps = Vec::new();
 
-        for group in groups {
-            if let Some(spec) = group.single() {
+        for expr in exprs {
+            if let Some(spec) = expr.single() {
                 steps.push(Step::Check(Self::build_check(
                     spec.name(),
                     spec.params(),
@@ -80,7 +134,7 @@ impl Group {
                 continue;
             }
 
-            if let Some(alternatives) = group.alternatives() {
+            if let Some(alternatives) = expr.alternatives() {
                 let checks = alternatives
                     .iter()
                     .map(|spec| {
@@ -110,6 +164,13 @@ impl Group {
             return Ok(Check::OmitEmpty);
         }
 
+        if matches!(mode, CompileMode::Compare) && is_cross_field_rule(name) {
+            return Ok(Check::Compare {
+                name: name.to_owned(),
+                target: compare_param(params).unwrap_or_default().to_owned(),
+            });
+        }
+
         if let Some(handler) = rules.get(name) {
             return Ok(Check::Rule {
                 name: name.to_owned(),
@@ -118,10 +179,10 @@ impl Group {
             });
         }
 
-        if matches!(mode, CompileMode::Direct)
-            && let Some(groups) = aliases.get(name)
+        if !matches!(mode, CompileMode::Alias)
+            && let Some(exprs) = aliases.get(name)
         {
-            let group = Self::build(groups, rules, aliases, CompileMode::Alias)?;
+            let group = Self::build(exprs, rules, aliases, CompileMode::Alias)?;
             return Ok(Check::Alias {
                 name: name.to_owned(),
                 group: Arc::new(group),
@@ -140,18 +201,19 @@ impl Group {
         value: &V,
         context: &Context,
         display_rule: Option<&str>,
+        compare: Option<&CompareResolver<'_>>,
     ) -> Result<(), Error> {
+        let exec = Exec {
+            context,
+            display_rule,
+            compare,
+        };
+
         for step in &self.steps {
             match step {
                 Step::Check(check) => {
-                    if self.execute_check(
-                        errors,
-                        target.clone(),
-                        value,
-                        context,
-                        display_rule,
-                        check,
-                    )? == Flow::Stop
+                    if self.execute_check(errors, target.clone(), value, check, &exec)?
+                        == Flow::Stop
                     {
                         return Ok(());
                     }
@@ -159,14 +221,14 @@ impl Group {
                 Step::Any { checks, reason } => {
                     let mut passes = false;
                     for check in checks {
-                        if self.check_passes(target.clone(), value, context, check)? {
+                        if self.check_passes(target.clone(), value, check, &exec)? {
                             passes = true;
                             break;
                         }
                     }
 
                     if !passes {
-                        let rule = display_rule.unwrap_or(reason);
+                        let rule = exec.display_rule.unwrap_or(reason);
                         errors.push(field_error(
                             target.clone(),
                             value.kind(),
@@ -187,9 +249,8 @@ impl Group {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
-        display_rule: Option<&str>,
         check: &Check,
+        exec: &Exec<'_, '_>,
     ) -> Result<Flow, Error> {
         match check {
             Check::OmitEmpty => {
@@ -205,7 +266,7 @@ impl Group {
                 if !self.rule_passes(
                     target.clone(),
                     value,
-                    context,
+                    exec.context,
                     name,
                     params,
                     handler.clone(),
@@ -213,14 +274,32 @@ impl Group {
                     errors.push(field_error(
                         target,
                         value.kind(),
-                        display_rule.unwrap_or(name),
+                        exec.display_rule.unwrap_or(name),
                         name,
                         params.clone(),
                     ));
                 }
             }
             Check::Alias { name, group } => {
-                group.execute_with_display(errors, target, value, context, Some(name))?;
+                group.execute_with_display(
+                    errors,
+                    target,
+                    value,
+                    exec.context,
+                    Some(name),
+                    exec.compare,
+                )?;
+            }
+            Check::Compare {
+                name,
+                target: field,
+            } => {
+                let compare_value = exec.compare.and_then(|compare| compare(field));
+                if !compare_field_passes(value, compare_value, name) {
+                    let mut params = Params::new();
+                    params.insert("compare", field);
+                    errors.push(field_error(target, value.kind(), name, name, params));
+                }
             }
         }
 
@@ -231,8 +310,8 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
         check: &Check,
+        exec: &Exec<'_, '_>,
     ) -> Result<bool, Error> {
         match check {
             Check::OmitEmpty => Ok(true),
@@ -240,11 +319,22 @@ impl Group {
                 name,
                 params,
                 handler,
-            } => self.rule_passes(target, value, context, name, params, handler.clone()),
+            } => self.rule_passes(target, value, exec.context, name, params, handler.clone()),
             Check::Alias { name: _, group } => {
                 let mut errors = Vec::new();
-                group.execute_with_display(&mut errors, target, value, context, None)?;
+                group.execute_with_display(
+                    &mut errors,
+                    target,
+                    value,
+                    exec.context,
+                    None,
+                    exec.compare,
+                )?;
                 Ok(errors.is_empty())
+            }
+            Check::Compare { name, target } => {
+                let compare_value = exec.compare.and_then(|compare| compare(target));
+                Ok(compare_field_passes(value, compare_value, name))
             }
         }
     }

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use super::spec::{RuleGroup, parse_rule_expression};
+use super::spec::{Expr, parse_expression};
 use super::{Error, Rule};
 
 #[derive(Clone, Default)]
@@ -28,10 +28,6 @@ impl Rules {
         self.values.get(name).cloned()
     }
 
-    pub(crate) fn contains(&self, name: &str) -> bool {
-        self.values.contains_key(name)
-    }
-
     #[cfg(test)]
     pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
         self.values.keys().map(String::as_str)
@@ -40,7 +36,7 @@ impl Rules {
 
 #[derive(Clone, Default)]
 pub(crate) struct Aliases {
-    values: BTreeMap<String, Vec<RuleGroup>>,
+    values: BTreeMap<String, Vec<Expr>>,
 }
 
 impl Aliases {
@@ -55,17 +51,13 @@ impl Aliases {
     ) -> Result<(), Error> {
         let name = name.into();
         validate_name(&name).map_err(|name| Error::InvalidAliasName { name })?;
-        let specs = parse_rule_expression(expr.as_ref())?;
+        let specs = parse_expression(expr.as_ref())?;
         self.values.insert(name, specs);
         Ok(())
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<&[RuleGroup]> {
+    pub(crate) fn get(&self, name: &str) -> Option<&[Expr]> {
         self.values.get(name).map(Vec::as_slice)
-    }
-
-    pub(crate) fn contains(&self, name: &str) -> bool {
-        self.values.contains_key(name)
     }
 
     #[cfg(test)]

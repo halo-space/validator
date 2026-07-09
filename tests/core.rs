@@ -674,6 +674,37 @@ fn alias_expands_to_rules() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn derive_alias_with_unknown_rule_returns_error() -> Result<(), Box<dyn std::error::Error>> {
+    let user = AliasUser {
+        name: "alice".to_owned(),
+    };
+    let error = Validator::new()
+        .alias("username", "missing_rule")?
+        .validate(&user)
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::UnknownRule { name } if name == "missing_rule"
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn derive_unknown_alias_returns_error() {
+    let user = AliasUser {
+        name: "alice".to_owned(),
+    };
+    let error = Validator::new().validate(&user).unwrap_err();
+
+    assert!(matches!(
+        error,
+        validator::Error::UnknownAlias { name } if name == "username"
+    ));
+}
+
 #[derive(Debug, Validate)]
 struct SlugPost {
     #[validate(alias = "slug_alias")]
@@ -1058,6 +1089,66 @@ fields:
 }
 
 #[test]
+fn schema_cache_is_generation_scoped_after_rule_registration()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  slug:
+    type: string
+    rules:
+      - slug
+"#,
+    )?;
+    let validator = Validator::with_schema(schema).alias("slug", "required")?;
+    let first = fields(validator.validate_map(&json!({ "slug": "" })).unwrap_err());
+
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].rule(), "slug");
+    assert_eq!(first[0].reason(), "required");
+
+    let validator = validator.rule("slug", Slug)?;
+    validator.validate_map(&json!({ "slug": "" }))?;
+
+    let second = fields(
+        validator
+            .validate_map(&json!({ "slug": "Hello World" }))
+            .unwrap_err(),
+    );
+    assert_eq!(second.len(), 1);
+    assert_eq!(second[0].rule(), "slug");
+    assert_eq!(second[0].reason(), "slug");
+
+    Ok(())
+}
+
+#[test]
+fn schema_cache_is_generation_scoped_after_alias_update() -> Result<(), Box<dyn std::error::Error>>
+{
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  email:
+    type: string
+    rules:
+      - contact
+"#,
+    )?;
+    let validator = Validator::with_schema(schema).alias("contact", "required,email")?;
+    let first = fields(validator.validate_map(&json!({ "email": "" })).unwrap_err());
+
+    assert_eq!(first.len(), 2);
+    assert!(first.iter().all(|field| field.rule() == "contact"));
+    assert_eq!(first[0].reason(), "required");
+    assert_eq!(first[1].reason(), "email");
+
+    let validator = validator.alias("contact", "omitempty,email")?;
+    validator.validate_map(&json!({ "email": "" }))?;
+
+    Ok(())
+}
+
+#[test]
 fn schema_does_not_accept_types_alias() -> Result<(), Box<dyn std::error::Error>> {
     let error = Schema::from_yaml(
         r#"
@@ -1086,6 +1177,62 @@ fn validate_map_without_schema_returns_error() {
         .unwrap_err();
 
     assert!(matches!(error, validator::Error::MissingSchema));
+}
+
+#[test]
+fn schema_null_required_field_reports_required_only() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  email:
+    type: string
+    rules:
+      - required
+      - email
+"#,
+    )?;
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({ "email": null }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "email");
+    assert_eq!(fields[0].rule(), "required");
+
+    Ok(())
+}
+
+#[test]
+fn schema_type_mismatch_skips_rule_group_and_nested_fields()
+-> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  profile:
+    type: object
+    rules:
+      - required
+    fields:
+      email:
+        type: string
+        rules:
+          - required
+          - email
+"#,
+    )?;
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({ "profile": "not-object" }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "profile");
+    assert_eq!(fields[0].rule(), "type");
+
+    Ok(())
 }
 
 #[derive(Serialize)]

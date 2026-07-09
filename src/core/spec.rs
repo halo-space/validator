@@ -1,12 +1,12 @@
 use super::{Error, Params};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct RuleSpec {
+pub(crate) struct Spec {
     name: String,
     params: Params,
 }
 
-impl RuleSpec {
+impl Spec {
     pub(crate) fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -29,20 +29,20 @@ impl RuleSpec {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum RuleGroup {
-    Single(RuleSpec),
-    Any(Vec<RuleSpec>),
+pub(crate) enum Expr {
+    Single(Spec),
+    Any(Vec<Spec>),
 }
 
-impl RuleGroup {
-    pub(crate) fn single(&self) -> Option<&RuleSpec> {
+impl Expr {
+    pub(crate) fn single(&self) -> Option<&Spec> {
         match self {
             Self::Single(spec) => Some(spec),
             Self::Any(_) => None,
         }
     }
 
-    pub(crate) fn alternatives(&self) -> Option<&[RuleSpec]> {
+    pub(crate) fn alternatives(&self) -> Option<&[Spec]> {
         match self {
             Self::Single(_) => None,
             Self::Any(specs) => Some(specs),
@@ -50,8 +50,8 @@ impl RuleGroup {
     }
 }
 
-pub(crate) fn parse_rule_expression(expr: &str) -> Result<Vec<RuleGroup>, Error> {
-    let mut groups = Vec::new();
+pub(crate) fn parse_expression(expr: &str) -> Result<Vec<Expr>, Error> {
+    let mut exprs = Vec::new();
 
     for item in split_top_level(expr, ',') {
         let item = item.trim();
@@ -68,26 +68,26 @@ pub(crate) fn parse_rule_expression(expr: &str) -> Result<Vec<RuleGroup>, Error>
 
         match alternatives.as_slice() {
             [] => {}
-            [_] => groups.push(RuleGroup::Single(
+            [_] => exprs.push(Expr::Single(
                 alternatives
                     .into_iter()
                     .next()
                     .expect("single alternative must exist"),
             )),
-            _ => groups.push(RuleGroup::Any(alternatives)),
+            _ => exprs.push(Expr::Any(alternatives)),
         }
     }
 
-    Ok(groups)
+    Ok(exprs)
 }
 
-fn parse_rule(item: &str) -> Result<RuleSpec, Error> {
+fn parse_rule(item: &str) -> Result<Spec, Error> {
     if let Some((name, rest)) = item.split_once('(') {
         let name = name.trim();
         let params = rest
             .strip_suffix(')')
             .ok_or_else(|| invalid_rule_expression(item, "missing closing ')'"))?;
-        let mut spec = RuleSpec::new(name);
+        let mut spec = Spec::new(name);
         let mut positional = Vec::new();
 
         for pair in split_top_level(params, ',') {
@@ -124,10 +124,10 @@ fn parse_rule(item: &str) -> Result<RuleSpec, Error> {
             "oneof" | "noneof" => "values",
             _ => "value",
         };
-        return Ok(RuleSpec::new(name).param(param, trim_quotes(value.trim())));
+        return Ok(Spec::new(name).param(param, trim_quotes(value.trim())));
     }
 
-    Ok(RuleSpec::new(item.trim()))
+    Ok(Spec::new(item.trim()))
 }
 
 fn split_top_level(input: &str, separator: char) -> Vec<&str> {
@@ -188,15 +188,15 @@ fn invalid_rule_expression(item: &str, reason: &str) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{RuleGroup, parse_rule_expression};
+    use super::{Expr, parse_expression};
 
     #[test]
     fn parses_rule_expression() {
-        let groups = parse_rule_expression("required,length(min=3,max=20)").unwrap();
+        let exprs = parse_expression("required,length(min=3,max=20)").unwrap();
 
-        assert_eq!(groups.len(), 2);
-        let required = groups[0].single().unwrap();
-        let length = groups[1].single().unwrap();
+        assert_eq!(exprs.len(), 2);
+        let required = exprs[0].single().unwrap();
+        let length = exprs[1].single().unwrap();
 
         assert_eq!(required.name(), "required");
         assert_eq!(length.name(), "length");
@@ -206,22 +206,22 @@ mod tests {
 
     #[test]
     fn parses_oneof_with_quoted_values() {
-        let groups = parse_rule_expression(r#"oneof("draft","published")"#).unwrap();
-        let spec = groups[0].single().unwrap();
+        let exprs = parse_expression(r#"oneof("draft","published")"#).unwrap();
+        let spec = exprs[0].single().unwrap();
 
-        assert_eq!(groups.len(), 1);
+        assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "oneof");
         assert_eq!(spec.params().get("values"), Some("draft,published"));
     }
 
     #[test]
     fn parses_rule_alternatives() {
-        let groups = parse_rule_expression("required,hexcolor|rgb|rgba").unwrap();
+        let exprs = parse_expression("required,hexcolor|rgb|rgba").unwrap();
 
-        assert_eq!(groups.len(), 2);
-        assert!(matches!(groups[0], RuleGroup::Single(_)));
+        assert_eq!(exprs.len(), 2);
+        assert!(matches!(exprs[0], Expr::Single(_)));
 
-        let alternatives = groups[1].alternatives().unwrap();
+        let alternatives = exprs[1].alternatives().unwrap();
         let names = alternatives
             .iter()
             .map(|spec| spec.name())

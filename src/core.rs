@@ -21,7 +21,7 @@ pub use value::{FloatKind, IntKind, Kind, Number, UintKind, Value};
 pub(crate) use error::FieldErrorParts;
 pub(crate) use group::Group;
 pub(crate) use registry::{Aliases, Rules};
-pub(crate) use spec::{RuleGroup, RuleSpec, parse_rule_expression};
+pub(crate) use spec::{Expr, Spec, parse_expression};
 
 pub trait Rule: Send + Sync {
     fn check(&self, field: &Field<'_>) -> Result<bool, Error>;

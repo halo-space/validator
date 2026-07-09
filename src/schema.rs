@@ -1,15 +1,31 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value as JsonValue;
 
-use crate::core::{Context, RuleGroup, RuleSpec, parse_rule_expression};
-use crate::{
-    Error, FieldError, FieldTarget, Kind, Params, Validator, Value, field_error,
-    is_cross_field_rule,
-};
+use crate::core::{Aliases, Context, Expr, Group, Rules, Spec, parse_expression};
+use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, compare_param, field_error};
+
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct SchemaId(u64);
+
+impl SchemaId {
+    fn next() -> Self {
+        Self(NEXT_ID.fetch_add(1, Ordering::Relaxed))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Schema {
+    inner: Arc<Inner>,
+}
+
+#[derive(Debug)]
+struct Inner {
+    id: SchemaId,
     fields: BTreeMap<String, FieldDef>,
 }
 
@@ -34,31 +50,12 @@ impl Schema {
         Self::from_value(value)
     }
 
-    pub(crate) fn ensure_rules(&self, validator: &Validator) -> Result<(), Error> {
-        ensure_field_rules(validator, &self.fields)
+    pub(crate) fn id(&self) -> SchemaId {
+        self.inner.id
     }
 
-    pub(crate) fn validate(
-        &self,
-        validator: &Validator,
-        context: &Context,
-        errors: &mut Vec<FieldError>,
-        data: &JsonValue,
-    ) -> Result<(), Error> {
-        let Some(object) = data.as_object() else {
-            let mut params = Params::new();
-            params.insert("expected", "object");
-            errors.push(field_error(
-                FieldTarget::value(),
-                Kind::Other,
-                "type",
-                "type",
-                params,
-            ));
-            return Ok(());
-        };
-
-        validate_fields(validator, context, errors, "", &self.fields, object)
+    pub(crate) fn compile(&self, rules: &Rules, aliases: &Aliases) -> Result<Tree, Error> {
+        Tree::compile(&self.inner.fields, rules, aliases)
     }
 
     fn from_value(value: JsonValue) -> Result<Self, Error> {
@@ -67,14 +64,19 @@ impl Schema {
             .map(|(name, field)| Ok((name.clone(), FieldDef::from_value(name, field)?)))
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
 
-        Ok(Self { fields })
+        Ok(Self {
+            inner: Arc::new(Inner {
+                id: SchemaId::next(),
+                fields,
+            }),
+        })
     }
 }
 
 #[derive(Clone, Debug)]
 struct FieldDef {
     ty: Option<Type>,
-    rules: Vec<RuleGroup>,
+    exprs: Vec<Expr>,
     fields: BTreeMap<String, FieldDef>,
 }
 
@@ -104,13 +106,13 @@ impl FieldDef {
                     Some(Type::Object)
                 }
             });
-        let rules = object
+        let exprs = object
             .get("rules")
             .map(|rules| parse_rules(name, rules))
             .transpose()?
             .unwrap_or_default();
 
-        Ok(Self { ty, rules, fields })
+        Ok(Self { ty, exprs, fields })
     }
 }
 
@@ -170,55 +172,92 @@ impl Type {
     }
 }
 
-fn ensure_field_rules(
-    validator: &Validator,
-    fields: &BTreeMap<String, FieldDef>,
-) -> Result<(), Error> {
-    for field in fields.values() {
-        ensure_rule_groups(validator, &field.rules)?;
-        ensure_compare_targets(&field.rules, fields)?;
-        ensure_field_rules(validator, &field.fields)?;
-    }
-
-    Ok(())
+pub(crate) struct Tree {
+    fields: BTreeMap<String, Node>,
 }
 
-fn ensure_rule_groups(validator: &Validator, groups: &[RuleGroup]) -> Result<(), Error> {
-    for group in groups {
-        if let Some(spec) = group.single() {
-            ensure_rule(validator, spec)?;
-            continue;
-        }
+impl Tree {
+    fn compile(
+        fields: &BTreeMap<String, FieldDef>,
+        rules: &Rules,
+        aliases: &Aliases,
+    ) -> Result<Self, Error> {
+        let fields = fields
+            .iter()
+            .map(|(name, field)| Ok((name.clone(), Node::compile(field, fields, rules, aliases)?)))
+            .collect::<Result<BTreeMap<_, _>, Error>>()?;
 
-        if let Some(alternatives) = group.alternatives() {
-            for spec in alternatives {
-                ensure_rule(validator, spec)?;
-            }
-        }
+        Ok(Self { fields })
     }
 
-    Ok(())
+    pub(crate) fn validate(
+        &self,
+        context: &Context,
+        errors: &mut Vec<FieldError>,
+        data: &JsonValue,
+    ) -> Result<(), Error> {
+        let Some(object) = data.as_object() else {
+            let mut params = Params::new();
+            params.insert("expected", "object");
+            errors.push(field_error(
+                FieldTarget::value(),
+                Kind::Other,
+                "type",
+                "type",
+                params,
+            ));
+            return Ok(());
+        };
+
+        validate_fields(context, errors, "", &self.fields, object)
+    }
 }
 
-fn ensure_rule(validator: &Validator, spec: &RuleSpec) -> Result<(), Error> {
-    if is_cross_field_rule(spec.name()) {
-        return Ok(());
-    }
+struct Node {
+    ty: Option<Type>,
+    group: Group,
+    fields: BTreeMap<String, Node>,
+}
 
-    validator.ensure_rule_groups(&[RuleGroup::Single(spec.clone())])
+impl Node {
+    fn compile(
+        field: &FieldDef,
+        siblings: &BTreeMap<String, FieldDef>,
+        rules: &Rules,
+        aliases: &Aliases,
+    ) -> Result<Self, Error> {
+        ensure_compare_targets(&field.exprs, siblings)?;
+        let group = Group::compile_with_compare(&field.exprs, rules, aliases)?;
+        let children = &field.fields;
+        let fields = children
+            .iter()
+            .map(|(name, field)| {
+                Ok((
+                    name.clone(),
+                    Self::compile(field, children, rules, aliases)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>, Error>>()?;
+
+        Ok(Self {
+            ty: field.ty,
+            group,
+            fields,
+        })
+    }
 }
 
 fn ensure_compare_targets(
-    rules: &[RuleGroup],
+    exprs: &[Expr],
     fields: &BTreeMap<String, FieldDef>,
 ) -> Result<(), Error> {
-    for group in rules {
-        if let Some(spec) = group.single() {
+    for expr in exprs {
+        if let Some(spec) = expr.single() {
             ensure_compare_target(spec, fields)?;
             continue;
         }
 
-        if let Some(alternatives) = group.alternatives() {
+        if let Some(alternatives) = expr.alternatives() {
             for spec in alternatives {
                 ensure_compare_target(spec, fields)?;
             }
@@ -228,11 +267,8 @@ fn ensure_compare_targets(
     Ok(())
 }
 
-fn ensure_compare_target(
-    spec: &RuleSpec,
-    fields: &BTreeMap<String, FieldDef>,
-) -> Result<(), Error> {
-    if !is_cross_field_rule(spec.name()) {
+fn ensure_compare_target(spec: &Spec, fields: &BTreeMap<String, FieldDef>) -> Result<(), Error> {
+    if !crate::is_cross_field_rule(spec.name()) {
         return Ok(());
     }
 
@@ -255,11 +291,10 @@ fn ensure_compare_target(
 }
 
 fn validate_fields(
-    validator: &Validator,
     context: &Context,
     errors: &mut Vec<FieldError>,
     parent: &str,
-    fields: &BTreeMap<String, FieldDef>,
+    fields: &BTreeMap<String, Node>,
     object: &serde_json::Map<String, JsonValue>,
 ) -> Result<(), Error> {
     for (name, field) in fields {
@@ -267,14 +302,11 @@ fn validate_fields(
         let value = object.get(name).unwrap_or(&JsonValue::Null);
 
         if value.is_null() {
-            validator.validate_rule_groups_with_compare(
-                errors,
-                target,
-                value,
-                &field.rules,
-                |compare| object.get(compare).map(|value| value as &dyn Value),
-                context,
-            )?;
+            field
+                .group
+                .execute_with_compare(errors, target, value, context, |compare| {
+                    object.get(compare).map(|value| value as &dyn Value)
+                })?;
             continue;
         }
 
@@ -287,20 +319,17 @@ fn validate_fields(
             continue;
         }
 
-        validator.validate_rule_groups_with_compare(
-            errors,
-            target.clone(),
-            value,
-            &field.rules,
-            |compare| object.get(compare).map(|value| value as &dyn Value),
-            context,
-        )?;
+        field
+            .group
+            .execute_with_compare(errors, target.clone(), value, context, |compare| {
+                object.get(compare).map(|value| value as &dyn Value)
+            })?;
 
         if !field.fields.is_empty()
             && let Some(child) = value.as_object()
         {
             let parent = namespace(parent, name);
-            validate_fields(validator, context, errors, &parent, &field.fields, child)?;
+            validate_fields(context, errors, &parent, &field.fields, child)?;
         }
     }
 
@@ -318,23 +347,23 @@ fn parse_fields(parent: &str, value: &JsonValue) -> Result<BTreeMap<String, Fiel
         .collect()
 }
 
-fn parse_rules(field: &str, value: &JsonValue) -> Result<Vec<RuleGroup>, Error> {
+fn parse_rules(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
     match value {
         JsonValue::Array(rules) => rules
             .iter()
             .map(|rule| parse_rule_item(field, rule))
             .collect::<Result<Vec<_>, _>>()
-            .map(|groups| groups.into_iter().flatten().collect()),
-        JsonValue::String(expr) => parse_rule_expression(expr),
+            .map(|exprs| exprs.into_iter().flatten().collect()),
+        JsonValue::String(expr) => parse_expression(expr),
         _ => Err(invalid(format!(
             "field '{field}' rules must be a string or array"
         ))),
     }
 }
 
-fn parse_rule_item(field: &str, value: &JsonValue) -> Result<Vec<RuleGroup>, Error> {
+fn parse_rule_item(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
     match value {
-        JsonValue::String(expr) => parse_rule_expression(expr),
+        JsonValue::String(expr) => parse_expression(expr),
         JsonValue::Object(object) => {
             if object.len() != 1 {
                 return Err(invalid(format!(
@@ -346,7 +375,7 @@ fn parse_rule_item(field: &str, value: &JsonValue) -> Result<Vec<RuleGroup>, Err
                 .iter()
                 .next()
                 .expect("rule object must contain one entry");
-            Ok(vec![RuleGroup::Single(parse_rule_object(name, params)?)])
+            Ok(vec![Expr::Single(parse_rule_object(name, params)?)])
         }
         _ => Err(invalid(format!(
             "field '{field}' rule item must be a string or object"
@@ -354,20 +383,20 @@ fn parse_rule_item(field: &str, value: &JsonValue) -> Result<Vec<RuleGroup>, Err
     }
 }
 
-fn parse_rule_object(name: &str, params: &JsonValue) -> Result<RuleSpec, Error> {
+fn parse_rule_object(name: &str, params: &JsonValue) -> Result<Spec, Error> {
     if params.is_null() {
-        return Ok(RuleSpec::new(name));
+        return Ok(Spec::new(name));
     }
 
     if let Some(object) = params.as_object() {
-        let mut spec = RuleSpec::new(name);
+        let mut spec = Spec::new(name);
         for (key, value) in object {
             spec = spec.param(key, param_value(value)?);
         }
         return Ok(spec);
     }
 
-    Ok(RuleSpec::new(name).param(default_param_name(name), param_value(params)?))
+    Ok(Spec::new(name).param(default_param_name(name), param_value(params)?))
 }
 
 fn param_value(value: &JsonValue) -> Result<String, Error> {
@@ -397,10 +426,6 @@ fn default_param_name(rule: &str) -> &'static str {
     }
 }
 
-fn compare_param(params: &Params) -> Option<&str> {
-    params.get("compare").or_else(|| params.get("value"))
-}
-
 fn required_object<'a>(
     value: &'a JsonValue,
     field: &'static str,
@@ -422,5 +447,25 @@ fn namespace(parent: &str, field: &str) -> String {
 fn invalid(reason: impl Into<String>) -> Error {
     Error::InvalidSchema {
         reason: reason.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Schema;
+
+    #[test]
+    fn cloned_schema_keeps_identity() {
+        let schema = Schema::from_yaml(
+            r#"
+fields:
+  title:
+    type: string
+"#,
+        )
+        .unwrap();
+        let cloned = schema.clone();
+
+        assert_eq!(schema.id(), cloned.id());
     }
 }
