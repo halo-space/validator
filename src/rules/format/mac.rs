@@ -13,17 +13,19 @@ impl Rule for Mac {
 }
 
 fn valid(value: &str) -> bool {
-    valid_split(value, ':', 6, 2) || valid_split(value, '-', 6, 2) || valid_split(value, '.', 3, 4)
+    valid_split(value, ':', &[6, 8, 20], 2)
+        || valid_split(value, '-', &[6, 8, 20], 2)
+        || valid_split(value, '.', &[3, 4, 10], 4)
 }
 
-fn valid_split(value: &str, separator: char, expected_parts: usize, width: usize) -> bool {
-    let parts = value.split(separator).collect::<Vec<_>>();
-    parts.len() == expected_parts
-        && parts.len()
-            == parts
-                .iter()
-                .filter(|part| {
-                    part.len() == width && part.bytes().all(|byte| byte.is_ascii_hexdigit())
-                })
-                .count()
+fn valid_split(value: &str, separator: char, expected_parts: &[usize], width: usize) -> bool {
+    let mut count = 0;
+    for part in value.split(separator) {
+        if part.len() != width || !part.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return false;
+        }
+        count += 1;
+    }
+
+    expected_parts.contains(&count)
 }

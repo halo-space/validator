@@ -299,6 +299,27 @@ fn alias_falls_back_to_reason_template() -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+#[test]
+fn nested_alias_uses_outer_template_and_actual_reason() -> Result<(), Box<dyn std::error::Error>> {
+    let fields = fields(
+        Validator::new()
+            .alias("inner", "email")?
+            .alias("outer", "inner")?
+            .value(&"invalid", "outer")
+            .unwrap_err(),
+    );
+    let locale = validator::i18n::Locale::new("en").rule("outer", "outer failed {reason}");
+    let messages = validator::i18n::new()
+        .use_locale(locale)
+        .locale("en")
+        .render(&fields);
+
+    assert_eq!(messages[0].rule, "outer");
+    assert_eq!(messages[0].reason, "email");
+    assert_eq!(messages[0].text, "outer failed email");
+    Ok(())
+}
+
 #[derive(Debug, Validate)]
 struct ColorAlias {
     #[validate(alias = "iscolor")]

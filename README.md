@@ -129,6 +129,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 Direct value failures use `$value` as their namespace and field name.
+Runtime expressions are strict: empty rules, empty alternatives, unbalanced
+parentheses, unclosed quotes, and dangling escapes return
+`Error::InvalidRuleExpression`. Inside quoted parameters, `\\` escapes the next
+character, so use `\\\\` when the parameter itself needs one backslash.
 
 ## Nested Structs
 
@@ -170,6 +174,8 @@ struct Form {
 
 Element errors include the collection index, such as `Form.tags[1]`. `dive(...)`
 supports Vec, arrays, slice references, and map key/value validation.
+Element rule parameters are preflighted from their declared `Value` kind before
+iteration, so an empty collection cannot hide an invalid rule configuration.
 
 ```rust
 use std::collections::HashMap;
@@ -184,11 +190,38 @@ struct Labels {
 
 Map entry errors include the key, such as `Labels.labels["source"]`.
 For maps, `unique` checks map values because map keys are already unique.
+Floating-point uniqueness follows equality semantics: repeated NaN values are
+not duplicates, while `0.0` and `-0.0` are duplicates. A known scalar Kind is
+rejected during parameter preflight, so `omitempty` cannot hide invalid use of
+`unique`.
+
+Struct collections can be unique by a direct element field:
+
+```rust
+use validator::prelude::*;
+
+#[derive(Debug)]
+struct Member {
+    email: String,
+}
+
+#[derive(Debug, Validate)]
+struct Team {
+    #[validate(unique = "email")]
+    members: Vec<Member>,
+}
+```
+
+`unique = "email"` supports Vec, arrays, and slice references. `Member` itself
+does not need to implement `Value`, but the projected `email` field does.
+Duplicate errors stay on `Team.members` and retain `field = "email"`. Maps,
+nested paths, and native `Validator::value(&members, "unique=email")` do not
+provide this projection; the direct entry returns `MissingFieldContext`.
 
 Native collections participate in rules outside `dive(...)` through `Value`.
 Built-in scalar elements such as strings and numbers already implement it. A
-custom element type must implement `Value` before its collection can use
-generic collection rules such as `required`, `min`, or `unique`:
+custom element type must implement `Value` before its collection can use rules
+that read the elements themselves, such as no-parameter `unique`:
 
 ```rust
 use validator::prelude::*;
@@ -201,6 +234,10 @@ struct Item {
 impl Value for Item {
     fn kind(&self) -> Kind {
         Kind::Uint(UintKind::U64)
+    }
+
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Uint(UintKind::U64))
     }
 
     fn required(&self) -> bool {
@@ -223,6 +260,11 @@ This bound comes from the current static `Value` dispatch model; no runtime
 reflection or hidden fallback is used. A collection field that only uses
 `dive(nested)` is independent from this bound: its elements only need to
 implement `Validate`.
+
+`Value::declared_kind()` defaults to `None` for values whose kind is genuinely
+dynamic, such as JSON. Custom statically typed values should return their kind
+when they can appear inside `Option` or `dive(...)`; this lets parameter
+preflight work even when no concrete value is present.
 
 ## Cross-Field Validation
 
@@ -252,6 +294,13 @@ Supported rules are `eq_field`, `ne_field`, `gt_field`, `gte_field`,
 `lt_field`, and `lte_field`. Target names are same-level sibling fields. Missing
 or `None` target values fail validation; a current `Option::None` skips the
 cross-field rule unless `required` is also present.
+
+Equality and ordering are separate: string equality compares content, while
+ordered string rules compare Unicode character count. Collections compare item
+count, numeric and `SystemTime` values use their own families, and bool supports
+only `eq_field` / `ne_field`. Float NaN is unequal and unordered. Raw Rust field
+names use their canonical spelling in string targets and errors, so a field
+declared as `r#type` is referenced as `"type"`.
 
 Conditional field rules also use sibling fields:
 
@@ -300,6 +349,8 @@ referenced field matches the condition. `excluded_*` rules require the current
 field to be empty when their condition is triggered. `skip_unless` follows Go's
 current behavior: when all keyed conditions match, the current field is
 required; otherwise the rule passes.
+Use the quoted string `"null"` when an `*_if` or `*_unless` condition should
+match a missing or `Option::None` sibling, including typed numeric fields.
 
 ## SystemTime Validation
 
@@ -419,7 +470,14 @@ struct Theme {
 Rules and aliases share one name namespace. `.rule(...)` and `.alias(...)` only
 add new names; they cannot replace built-ins or existing entries. A collision
 returns `Error::DuplicateName`. Aliases may reference other aliases, but direct
-or indirect cycles return `Error::RecursiveAlias`.
+or indirect cycles return `Error::RecursiveAlias`; empty aliases are rejected.
+Nested alias failures keep the outermost alias as `rule` and the actual failed
+validation as `reason`.
+
+Runtime alias contents are not visible to the derive macro. A derive alias must
+not hide `*_field` or other field-dependent rules; use the explicit derive rule
+instead. Schema aliases can contain field-dependent rules because Schema fields
+are available when its execution tree is compiled.
 
 ## Custom Rules
 
@@ -469,12 +527,30 @@ rules declare a `Signature`; derive, direct value, and Schema validation all
 bind against it before `check(...)` runs. Unknown, missing, extra, or
 wrong-shaped parameters return `Error::InvalidRuleExpression`.
 
+Rules with semantic parameter constraints override
+`validate_params(&Field) -> Result<(), Error>`. Every entry calls it for every
+rule, alias branch, and alternative before `omitempty`, `Option::None`, an
+alternative success, or an earlier rule can stop execution. It must inspect
+`Params`, the declared kind, and field metadata only; it must not depend on the
+current data value. `check(...)` remains the only data pass/fail operation.
+
 ```rust
 struct StartsWith;
 
 impl Rule for StartsWith {
     fn signature(&self) -> Signature {
         Signature::text("prefix")
+    }
+
+    fn validate_params(&self, field: &Field<'_>) -> Result<(), Error> {
+        let prefix = field.params().text("prefix").expect("Signature binds prefix");
+        if prefix.is_empty() {
+            return Err(Error::InvalidRuleExpression {
+                expression: "starts_with".to_owned(),
+                reason: "prefix must not be empty".to_owned(),
+            });
+        }
+        Ok(())
     }
 
     fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
@@ -498,6 +574,35 @@ shape is valid.
 parameters, and field-condition pairs. Bound `Params` preserve those shapes
 and expose them through `text(...)`, `list(...)`, and `pairs(...)`; rules do not
 split comma-encoded strings.
+
+Custom single-target cross-field rules use the `*_field` suffix and an explicit
+field Signature:
+
+```rust
+struct SameField;
+
+impl Rule for SameField {
+    fn signature(&self) -> Signature {
+        Signature::field("compare")
+    }
+
+    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+        let target = field.params().text("compare").unwrap();
+        Ok(field.sibling(target).and_then(Value::string) == field.value().string())
+    }
+}
+
+#[derive(Validate)]
+struct Pair {
+    left: String,
+    #[validate(same_field = "left")]
+    right: String,
+}
+```
+
+Register it with `.rule("same_field", SameField)?`. Direct value validation
+returns `MissingFieldContext`; derive and Schema provide the declared sibling.
+For custom logic involving several fields, use a struct-level `check`.
 
 ## Dynamic Schema Validation
 
@@ -542,17 +647,51 @@ and `Namespace` model as code-level validation.
 Schema resources are strict. The top level accepts only `fields`, and each
 field definition accepts only `type`, `rules`, and `fields`. The only type names
 are `string`, `boolean`, `integer`, `uint`, `number`, `array`, and `object`.
+Nested `fields` are valid only for `object` and `array` types.
+The presence of the key is structural even when it is empty: `fields: {}`
+infers `object` when `type` is omitted, is rejected for scalar types, and makes
+every item of an array an object. An array without `fields` has no item object
+constraint.
 Unknown keys and unknown types return `Error::InvalidSchema`. Parameters that
 violate a Rule `Signature` return `Error::InvalidRuleExpression` when the
 Schema is compiled.
+Semantic parameters are also preflighted when the cached Schema tree is built,
+before root or field input type checks can short-circuit rule execution.
 
 Schema validation is JSON/YAML-data oriented. It supports `datetime` as a string
 rule, but does not support native `SystemTime` values or `type: time`.
+Numeric rules follow the declared Schema family: `integer` is signed, `uint` is
+unsigned, and `number` is floating-point even when the JSON token is written as
+an integer.
+
+For `type: array`, `fields` describes object elements and supports field
+uniqueness directly:
+
+```yaml
+fields:
+  users:
+    type: array
+    rules:
+      - unique: email
+    fields:
+      email:
+        type: string
+        rules: email
+```
+
+Element field errors use namespaces such as `users[0].email`. Non-object items
+including `null` produce a `type` error at a namespace such as `users[0]`.
+If a value projected by `unique: email` violates the child field type, unique
+skips that projection and the child reports its indexed `type` error; malformed
+input is not reclassified as invalid rule configuration.
 
 If the data already implements `serde::Serialize`, use `validate_serde(...)`.
 Schema field names follow the serialized data shape, including
 `serde(rename)`, `serde(rename_all)`, `serde(skip_serializing_if)`, and
 `serde(flatten)`.
+The Schema is resolved and compiled before user serialization, so
+`MissingSchema` or invalid Schema configuration cannot be hidden by a custom
+serializer failure.
 
 ```rust
 use serde::Serialize;
@@ -686,7 +825,7 @@ Current built-in rules:
   `udp4_addr`, `udp6_addr`, `udp_addr`
 - Alias: `iscolor`
 
-Comparison and size rules dispatch by field type:
+Ordered comparison and size rules dispatch by field type:
 
 - Strings use character count.
 - Vectors, arrays, slices, and maps use item count.
@@ -695,15 +834,27 @@ Comparison and size rules dispatch by field type:
   captured `now` and same-kind `*_field` comparison.
 - `Option::None` skips non-`required` rules and fails `required`.
 
+Equality rules compare string content instead of length. `length` rejects an
+empty configuration and does not allow `exact` together with `min` or `max`;
+`length` and `range` reject reversed bounds during parameter preflight.
+
 Choice rules dispatch by field type for strings, signed integers, and unsigned integers.
 URL and URI rules use structured parsers. `hostname` follows RFC952, while
 `hostname_rfc1123` permits a leading digit and `fqdn` requires a non-numeric TLD.
+`cidr` accepts IPv4 or IPv6 address-prefix notation, while `cidrv4` additionally
+requires a canonical network address. `mac` accepts 6-, 8-, and 20-octet link
+addresses, and lowercase `uuid4` / `uuid5` check both version and RFC variant.
 
 ## Current Limits
 
 These are intentional limits in the current API surface:
 
-- `unique` supports whole collections and map values, but not `unique=field`.
+- `unique=field` supports only direct element fields in Vec, arrays, slice
+  references, and Schema object arrays; it does not support maps, nested paths,
+  native direct values, or use inside `dive(...)`.
+- Derive code must spell `#[validate(unique = "field")]` explicitly because a
+  runtime alias cannot generate Rust field access. Schema aliases can contain
+  `unique=field` because Schema fields are available at runtime.
 - Native collections using generic rules outside `dive(...)` require their
   element or map value type to implement `Value`; pure `dive(nested)` only
   requires `Validate`.
@@ -721,6 +872,9 @@ All public validation entry points return `Error`. Validation failures use
 `Error::Failed(Vec<FieldError>)`; configuration errors use other `Error`
 variants for unknown rules, duplicate names, invalid parameters, missing field
 context, recursive aliases, invalid schemas, or invalid data.
+Configuration preflight always completes before data-dependent rule flow, so
+invalid parameters are returned even for absent, empty, or otherwise skipped
+values.
 
 ```rust
 let error = Validator::new().validate(&value).unwrap_err();

@@ -1,11 +1,16 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value as JsonValue;
 
-use crate::core::{Context, Entry, Expr, Group, Registry, Spec, parse_expression};
-use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, field_error};
+use crate::core::{
+    Access, Context, Entry, Expr, FieldRef, Group, Items, Registry, Spec, parse_expression,
+};
+use crate::{
+    Error, FieldError, FieldTarget, FloatKind, IntKind, Kind, Params, UintKind, Value, field_error,
+};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 pub(crate) const TYPE_RULE: &str = "type";
@@ -91,6 +96,7 @@ struct FieldDef {
     ty: Option<Type>,
     exprs: Vec<Expr>,
     fields: BTreeMap<String, FieldDef>,
+    has_fields: bool,
 }
 
 impl FieldDef {
@@ -108,6 +114,7 @@ impl FieldDef {
             &["type", "rules", "fields"],
             &format!("field '{name}'"),
         )?;
+        let has_fields = object.contains_key("fields");
         let fields = object
             .get("fields")
             .map(|fields| parse_fields(name, fields))
@@ -117,20 +124,24 @@ impl FieldDef {
             .get("type")
             .map(|value| Type::from_value(name, value))
             .transpose()?
-            .or({
-                if fields.is_empty() {
-                    None
-                } else {
-                    Some(Type::Object)
-                }
-            });
+            .or(has_fields.then_some(Type::Object));
+        if has_fields && !matches!(ty, Some(Type::Array | Type::Object)) {
+            return Err(invalid(format!(
+                "field '{name}' can define nested fields only for type 'object' or 'array'"
+            )));
+        }
         let exprs = object
             .get("rules")
             .map(|rules| parse_rules(name, rules))
             .transpose()?
             .unwrap_or_default();
 
-        Ok(Self { ty, exprs, fields })
+        Ok(Self {
+            ty,
+            exprs,
+            fields,
+            has_fields,
+        })
     }
 }
 
@@ -188,6 +199,18 @@ impl Type {
             Self::Object => value.is_object(),
         }
     }
+
+    fn kind(self) -> Kind {
+        match self {
+            Self::String => Kind::String,
+            Self::Bool => Kind::Bool,
+            Self::Int => Kind::Int(IntKind::I64),
+            Self::Uint => Kind::Uint(UintKind::U64),
+            Self::Float => Kind::Float(FloatKind::F64),
+            Self::Array => Kind::Vec,
+            Self::Object => Kind::Map,
+        }
+    }
 }
 
 pub(crate) struct Tree {
@@ -200,8 +223,9 @@ impl Tree {
             .iter()
             .map(|(name, field)| Ok((name.clone(), Node::compile(field, fields, registry)?)))
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
-
-        Ok(Self { fields })
+        let tree = Self { fields };
+        preflight_fields(&Context::new(), "", &tree.fields)?;
+        Ok(tree)
     }
 
     pub(crate) fn validate(
@@ -215,7 +239,7 @@ impl Tree {
             params.insert("expected", "object");
             errors.push(field_error(
                 FieldTarget::value(),
-                Kind::Other,
+                data.kind(),
                 TYPE_RULE,
                 TYPE_RULE,
                 params,
@@ -231,6 +255,7 @@ struct Node {
     ty: Option<Type>,
     group: Group,
     fields: BTreeMap<String, Node>,
+    has_fields: bool,
 }
 
 impl Node {
@@ -239,8 +264,19 @@ impl Node {
         siblings: &BTreeMap<String, FieldDef>,
         registry: &Registry,
     ) -> Result<Self, Error> {
-        ensure_field_targets(&field.exprs, siblings, registry, &mut Vec::new())?;
-        let group = Group::compile_with_fields(&field.exprs, registry)?;
+        let item_fields = (field.ty == Some(Type::Array)).then_some(&field.fields);
+        ensure_field_targets(
+            &field.exprs,
+            siblings,
+            item_fields,
+            registry,
+            &mut Vec::new(),
+        )?;
+        let group = if item_fields.is_some() {
+            Group::compile_with_fields_and_items(&field.exprs, registry)?
+        } else {
+            Group::compile_with_fields(&field.exprs, registry)?
+        };
         let children = &field.fields;
         let fields = children
             .iter()
@@ -251,6 +287,7 @@ impl Node {
             ty: field.ty,
             group,
             fields,
+            has_fields: field.has_fields,
         })
     }
 }
@@ -258,18 +295,19 @@ impl Node {
 fn ensure_field_targets(
     exprs: &[Expr],
     fields: &BTreeMap<String, FieldDef>,
+    item_fields: Option<&BTreeMap<String, FieldDef>>,
     registry: &Registry,
     aliases: &mut Vec<String>,
 ) -> Result<(), Error> {
     for expr in exprs {
         if let Some(spec) = expr.single() {
-            ensure_field_target(spec, fields, registry, aliases)?;
+            ensure_field_target(spec, fields, item_fields, registry, aliases)?;
             continue;
         }
 
         if let Some(alternatives) = expr.alternatives() {
             for spec in alternatives {
-                ensure_field_target(spec, fields, registry, aliases)?;
+                ensure_field_target(spec, fields, item_fields, registry, aliases)?;
             }
         }
     }
@@ -280,14 +318,17 @@ fn ensure_field_targets(
 fn ensure_field_target(
     spec: &Spec,
     fields: &BTreeMap<String, FieldDef>,
+    item_fields: Option<&BTreeMap<String, FieldDef>>,
     registry: &Registry,
     aliases: &mut Vec<String>,
 ) -> Result<(), Error> {
-    let params = match registry.get(spec.name()) {
-        Some(Entry::Rule(rule)) if rule.signature().requires_fields() => {
-            rule.signature().bind(spec.name(), spec.params())?
+    let (signature, params) = match registry.get(spec.name()) {
+        Some(Entry::Rule(rule)) => {
+            let signature = rule.signature();
+            let params = signature.bind(spec.name(), spec.params())?;
+            (signature, params)
         }
-        Some(Entry::Rule(_)) | None => return Ok(()),
+        None => return Ok(()),
         Some(Entry::Alias(exprs)) => {
             if aliases.iter().any(|name| name == spec.name()) {
                 return Err(Error::RecursiveAlias {
@@ -295,40 +336,51 @@ fn ensure_field_target(
                 });
             }
             aliases.push(spec.name().to_owned());
-            ensure_field_targets(exprs, fields, registry, aliases)?;
+            ensure_field_targets(exprs, fields, item_fields, registry, aliases)?;
             aliases.pop();
             return Ok(());
         }
     };
-    let targets = params
-        .text("compare")
-        .into_iter()
-        .chain(
-            params
-                .list("fields")
-                .into_iter()
-                .flatten()
-                .map(String::as_str),
-        )
-        .chain(
-            params
-                .pairs("conditions")
-                .into_iter()
-                .flatten()
-                .map(|(name, _)| name.as_str()),
-        )
-        .collect::<Vec<_>>();
-    if targets.is_empty() {
-        return Err(invalid(format!(
-            "field rule '{}' must define target field",
-            spec.name()
-        )));
+    if signature.requires_fields() {
+        let targets = signature.field_targets(&params);
+        if targets.is_empty() {
+            return Err(invalid(format!(
+                "field rule '{}' must define target field",
+                spec.name()
+            )));
+        }
+
+        for target in targets {
+            if !fields.contains_key(target) {
+                return Err(invalid(format!(
+                    "field rule '{}' references undeclared field '{}'",
+                    spec.name(),
+                    target
+                )));
+            }
+        }
     }
 
-    for target in targets {
-        if !fields.contains_key(target) {
+    if let Some(target) = signature.item_field(&params) {
+        let item_fields = item_fields.ok_or_else(|| {
+            invalid(format!(
+                "rule '{}' requires an array with object fields",
+                spec.name()
+            ))
+        })?;
+        if !item_fields.contains_key(target) {
             return Err(invalid(format!(
-                "field rule '{}' references undeclared field '{}'",
+                "rule '{}' references undeclared item field '{}'",
+                spec.name(),
+                target
+            )));
+        }
+        if matches!(
+            item_fields.get(target).and_then(|field| field.ty),
+            Some(Type::Array | Type::Object)
+        ) {
+            return Err(invalid(format!(
+                "rule '{}' item field '{}' cannot be used as a unique key",
                 spec.name(),
                 target
             )));
@@ -338,32 +390,196 @@ fn ensure_field_target(
     Ok(())
 }
 
-fn validate_fields(
+struct SchemaValue<'a> {
+    value: Option<&'a JsonValue>,
+    ty: Option<Type>,
+}
+
+impl<'a> SchemaValue<'a> {
+    fn new(value: Option<&'a JsonValue>, ty: Option<Type>) -> Self {
+        Self { value, ty }
+    }
+
+    fn raw(&self) -> Option<&'a JsonValue> {
+        self.value
+    }
+}
+
+impl Value for SchemaValue<'_> {
+    fn kind(&self) -> Kind {
+        self.ty
+            .map(Type::kind)
+            .or_else(|| self.value.map(Value::kind))
+            .unwrap_or(Kind::Option)
+    }
+
+    fn is_none(&self) -> bool {
+        self.value.is_none_or(JsonValue::is_null)
+    }
+
+    fn required(&self) -> bool {
+        self.value.is_some_and(Value::required)
+    }
+
+    fn string(&self) -> Option<Cow<'_, str>> {
+        self.value.and_then(Value::string)
+    }
+
+    fn len(&self) -> Option<usize> {
+        self.value.and_then(Value::len)
+    }
+
+    fn int(&self) -> Option<i128> {
+        self.value.and_then(Value::int)
+    }
+
+    fn uint(&self) -> Option<u128> {
+        self.value.and_then(Value::uint)
+    }
+
+    fn float(&self) -> Option<f64> {
+        self.value.and_then(Value::float)
+    }
+
+    fn boolean(&self) -> Option<bool> {
+        self.value.and_then(Value::boolean)
+    }
+
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        self.value.and_then(Value::array_items)
+    }
+
+    fn map_values(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        self.value.and_then(Value::map_values)
+    }
+}
+
+struct SchemaAccess<'a> {
+    values: BTreeMap<&'a str, SchemaValue<'a>>,
+}
+
+impl<'a> SchemaAccess<'a> {
+    fn new(
+        fields: &'a BTreeMap<String, Node>,
+        object: &'a serde_json::Map<String, JsonValue>,
+    ) -> Self {
+        let values = fields
+            .iter()
+            .map(|(name, field)| (name.as_str(), SchemaValue::new(object.get(name), field.ty)))
+            .collect();
+        Self { values }
+    }
+
+    fn get(&self, name: &str) -> Option<&SchemaValue<'a>> {
+        self.values.get(name)
+    }
+}
+
+impl Access for SchemaAccess<'_> {
+    fn field<'a>(&'a self, name: &'a str) -> Option<FieldRef<'a>> {
+        self.values
+            .get(name)
+            .map(|value| FieldRef::new(name, value))
+    }
+}
+
+enum JsonItem<'a> {
+    Null,
+    Object(SchemaAccess<'a>),
+    Invalid,
+}
+
+struct JsonItems<'a> {
+    values: Vec<JsonItem<'a>>,
+    fields: &'a BTreeMap<String, Node>,
+}
+
+impl<'a> JsonItems<'a> {
+    fn new(values: &'a [JsonValue], fields: &'a BTreeMap<String, Node>) -> Self {
+        let values = values
+            .iter()
+            .map(|value| {
+                if value.is_null() {
+                    JsonItem::Null
+                } else if let Some(object) = value.as_object() {
+                    JsonItem::Object(SchemaAccess::new(fields, object))
+                } else {
+                    JsonItem::Invalid
+                }
+            })
+            .collect();
+        Self { values, fields }
+    }
+}
+
+impl Items for JsonItems<'_> {
+    fn visit<'a>(
+        &'a self,
+        field: &str,
+        visitor: &mut dyn FnMut(Option<&'a dyn Value>) -> bool,
+    ) -> Result<(), Error> {
+        if !self.fields.contains_key(field) {
+            return Err(invalid(format!("undeclared array item field '{field}'")));
+        }
+
+        let definition = self
+            .fields
+            .get(field)
+            .expect("projected field is checked above");
+        for value in &self.values {
+            let projected = match value {
+                JsonItem::Null => None,
+                JsonItem::Invalid => continue,
+                JsonItem::Object(access) => {
+                    let value = access.get(field).expect("projected field is checked above");
+                    if let Some(raw) = value.raw()
+                        && !raw.is_null()
+                        && definition.ty.is_some_and(|ty| !ty.matches(raw))
+                    {
+                        continue;
+                    }
+                    (!value.is_none()).then_some(value as &dyn Value)
+                }
+            };
+            if !visitor(projected) {
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_fields<'a>(
     context: &Context,
     errors: &mut Vec<FieldError>,
     parent: &str,
-    fields: &BTreeMap<String, Node>,
-    object: &serde_json::Map<String, JsonValue>,
+    fields: &'a BTreeMap<String, Node>,
+    object: &'a serde_json::Map<String, JsonValue>,
 ) -> Result<(), Error> {
+    let access = SchemaAccess::new(fields, object);
     for (name, field) in fields {
         let target = FieldTarget::schema_field(parent, name);
-        let value = object.get(name).unwrap_or(&JsonValue::Null);
+        let value = access
+            .get(name)
+            .expect("Schema access contains every declared field");
 
-        if value.is_null() {
+        if value.is_none() {
             field
                 .group
-                .execute_with_fields(errors, target, value, context, object)?;
+                .run_with_fields(errors, target, value, context, &access)?;
             continue;
         }
 
+        let raw = value.raw().expect("non-null Schema value has raw data");
+
         if let Some(ty) = field.ty
-            && !ty.matches(value)
+            && !ty.matches(raw)
         {
             let mut params = Params::new();
             params.insert("expected", ty.name());
             errors.push(field_error(
                 target,
-                value.kind(),
+                raw.kind(),
                 TYPE_RULE,
                 TYPE_RULE,
                 params,
@@ -371,16 +587,105 @@ fn validate_fields(
             continue;
         }
 
+        if field.ty == Some(Type::Array) {
+            let values = raw
+                .as_array()
+                .expect("array type is checked before rule execution");
+            let items = JsonItems::new(values, &field.fields);
+            field.group.run_with_fields_and_items(
+                errors,
+                target.clone(),
+                value,
+                context,
+                &access,
+                &items,
+            )?;
+            validate_array_fields(
+                context,
+                errors,
+                parent,
+                name,
+                &field.fields,
+                field.has_fields,
+                values,
+            )?;
+        } else {
+            field
+                .group
+                .run_with_fields(errors, target.clone(), value, context, &access)?;
+
+            if !field.fields.is_empty()
+                && let Some(child) = raw.as_object()
+            {
+                let parent = namespace(parent, name);
+                validate_fields(context, errors, &parent, &field.fields, child)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn preflight_fields(
+    context: &Context,
+    parent: &str,
+    fields: &BTreeMap<String, Node>,
+) -> Result<(), Error> {
+    let object = serde_json::Map::new();
+    let access = SchemaAccess::new(fields, &object);
+
+    for (name, field) in fields {
+        let target = FieldTarget::schema_field(parent, name);
+        let value = access
+            .get(name)
+            .expect("Schema access contains every declared field");
         field
             .group
-            .execute_with_fields(errors, target.clone(), value, context, object)?;
+            .validate_with_fields(target, value, context, &access)?;
 
-        if !field.fields.is_empty()
-            && let Some(child) = value.as_object()
-        {
-            let parent = namespace(parent, name);
-            validate_fields(context, errors, &parent, &field.fields, child)?;
+        if !field.fields.is_empty() {
+            preflight_fields(context, &namespace(parent, name), &field.fields)?;
         }
+    }
+
+    Ok(())
+}
+
+fn validate_array_fields(
+    context: &Context,
+    errors: &mut Vec<FieldError>,
+    parent: &str,
+    name: &str,
+    fields: &BTreeMap<String, Node>,
+    has_fields: bool,
+    values: &[JsonValue],
+) -> Result<(), Error> {
+    if !has_fields {
+        return Ok(());
+    }
+
+    let array = namespace(parent, name);
+    for (index, value) in values.iter().enumerate() {
+        let Some(object) = value.as_object() else {
+            let mut params = Params::new();
+            params.insert("expected", "object");
+            errors.push(field_error(
+                FieldTarget::schema(format!("{array}[{index}]")),
+                value.kind(),
+                TYPE_RULE,
+                TYPE_RULE,
+                params,
+            ));
+            continue;
+        };
+
+        validate_fields(
+            context,
+            errors,
+            &format!("{array}[{index}]"),
+            fields,
+            object,
+        )?;
     }
 
     Ok(())
@@ -519,5 +824,22 @@ fields:
         let cloned = schema.clone();
 
         assert_eq!(schema.id(), cloned.id());
+    }
+
+    #[test]
+    fn scalar_schema_field_rejects_nested_fields() {
+        let error = Schema::from_yaml(
+            r#"
+fields:
+  title:
+    type: string
+    fields:
+      value:
+        type: string
+"#,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, crate::Error::InvalidSchema { .. }));
     }
 }

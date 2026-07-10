@@ -96,7 +96,7 @@ pub enum Error {
     InvalidRuleExpression { expression: String, reason: String },
     #[error("unknown rule '{name}'")]
     UnknownRule { name: String },
-    #[error("rule '{name}' requires sibling field context")]
+    #[error("rule '{name}' requires field context")]
     MissingFieldContext { name: String },
     #[error("recursive alias '{name}'")]
     RecursiveAlias { name: String },
@@ -104,7 +104,7 @@ pub enum Error {
     InvalidData { reason: String },
     #[error("invalid schema: {reason}")]
     InvalidSchema { reason: String },
-    #[error("schema is required for validate_map")]
+    #[error("schema is required for Schema validation")]
     MissingSchema,
     #[error("validation failed")]
     Failed(Vec<FieldError>),

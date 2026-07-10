@@ -1,15 +1,21 @@
 use std::sync::Arc;
 
 use super::{
-    Access, Context, Entry, Error, Expr, Field, FieldError, Namespace, Params, Registry, Rule,
-    Value,
+    Access, Context, Entry, Error, Expr, Field, FieldError, Items, Kind, Namespace, Params,
+    Registry, Rule, Value,
 };
 use crate::{FieldTarget, field_error, namespace_for};
 
 struct Exec<'a, 'b> {
     context: &'a Context,
     display_rule: Option<&'a str>,
-    access: Option<&'b dyn Access>,
+    scope: Scope<'b>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct Scope<'a> {
+    access: Option<&'a dyn Access>,
+    items: Option<&'a dyn Items>,
 }
 
 #[derive(Clone)]
@@ -40,6 +46,8 @@ enum Check {
 #[derive(Clone, Copy)]
 struct CompileMode {
     fields: bool,
+    items: bool,
+    alias_context: bool,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -54,12 +62,30 @@ enum CheckResult {
     Stop,
 }
 
+struct TypeValue {
+    kind: Kind,
+}
+
+impl Value for TypeValue {
+    fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    fn required(&self) -> bool {
+        false
+    }
+}
+
 impl Group {
     pub(crate) fn compile(exprs: &[Expr], registry: &Registry) -> Result<Self, Error> {
         Self::build(
             exprs,
             registry,
-            CompileMode { fields: false },
+            CompileMode {
+                fields: false,
+                items: false,
+                alias_context: false,
+            },
             &mut Vec::new(),
         )
     }
@@ -68,7 +94,11 @@ impl Group {
         Self::build(
             exprs,
             registry,
-            CompileMode { fields: true },
+            CompileMode {
+                fields: true,
+                items: false,
+                alias_context: true,
+            },
             &mut Vec::new(),
         )
     }
@@ -77,7 +107,43 @@ impl Group {
         Self::build(
             &[Expr::Single(spec.clone())],
             registry,
-            CompileMode { fields: true },
+            CompileMode {
+                fields: true,
+                items: false,
+                alias_context: false,
+            },
+            &mut Vec::new(),
+        )
+    }
+
+    pub(crate) fn compile_spec_with_items(
+        spec: &super::Spec,
+        registry: &Registry,
+    ) -> Result<Self, Error> {
+        Self::build(
+            &[Expr::Single(spec.clone())],
+            registry,
+            CompileMode {
+                fields: true,
+                items: true,
+                alias_context: false,
+            },
+            &mut Vec::new(),
+        )
+    }
+
+    pub(crate) fn compile_with_fields_and_items(
+        exprs: &[Expr],
+        registry: &Registry,
+    ) -> Result<Self, Error> {
+        Self::build(
+            exprs,
+            registry,
+            CompileMode {
+                fields: true,
+                items: true,
+                alias_context: true,
+            },
             &mut Vec::new(),
         )
     }
@@ -89,11 +155,56 @@ impl Group {
         value: &V,
         context: &Context,
     ) -> Result<(), Error> {
-        self.execute_with_display(errors, target, value, context, None, None)
+        let scope = Scope::default();
+        self.validate_declared_params::<V>(target.clone(), Some(value), context, scope)?;
+        self.run(errors, target, value, context, None, scope)
             .map(|_| ())
     }
 
-    pub(crate) fn execute_spec<V, A>(
+    pub(crate) fn validate_spec<V, A>(
+        &self,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        access: &A,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        A: Access,
+    {
+        self.validate_declared_params::<V>(
+            target,
+            Some(value),
+            context,
+            Scope {
+                access: Some(access),
+                items: None,
+            },
+        )
+    }
+
+    pub(crate) fn validate_type_spec<V, A>(
+        &self,
+        target: FieldTarget<'_>,
+        context: &Context,
+        access: &A,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        A: Access,
+    {
+        self.validate_declared_params::<V>(
+            target,
+            None,
+            context,
+            Scope {
+                access: Some(access),
+                items: None,
+            },
+        )
+    }
+
+    pub(crate) fn run_spec<V, A>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
@@ -105,10 +216,93 @@ impl Group {
         V: Value,
         A: Access,
     {
-        self.execute_with_display(errors, target, value, context, None, Some(access))
+        self.run(
+            errors,
+            target,
+            value,
+            context,
+            None,
+            Scope {
+                access: Some(access),
+                items: None,
+            },
+        )
     }
 
-    pub(crate) fn execute_with_fields<V, A>(
+    pub(crate) fn validate_spec_with_items<V, A, I>(
+        &self,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        access: &A,
+        items: &I,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        A: Access,
+        I: Items,
+    {
+        self.validate_params(
+            target,
+            value,
+            context,
+            Scope {
+                access: Some(access),
+                items: Some(items),
+            },
+        )
+    }
+
+    pub(crate) fn run_spec_with_items<V, A, I>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        access: &A,
+        items: &I,
+    ) -> Result<Flow, Error>
+    where
+        V: Value,
+        A: Access,
+        I: Items,
+    {
+        self.run(
+            errors,
+            target,
+            value,
+            context,
+            None,
+            Scope {
+                access: Some(access),
+                items: Some(items),
+            },
+        )
+    }
+
+    pub(crate) fn validate_with_fields<V, A>(
+        &self,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        access: &A,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        A: Access,
+    {
+        self.validate_params(
+            target,
+            value,
+            context,
+            Scope {
+                access: Some(access),
+                items: None,
+            },
+        )
+    }
+
+    pub(crate) fn run_with_fields<V, A>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
@@ -120,8 +314,46 @@ impl Group {
         V: Value,
         A: Access,
     {
-        self.execute_with_display(errors, target, value, context, None, Some(access))
-            .map(|_| ())
+        self.run(
+            errors,
+            target,
+            value,
+            context,
+            None,
+            Scope {
+                access: Some(access),
+                items: None,
+            },
+        )
+        .map(|_| ())
+    }
+
+    pub(crate) fn run_with_fields_and_items<V, A, I>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        access: &A,
+        items: &I,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        A: Access,
+        I: Items,
+    {
+        self.run(
+            errors,
+            target,
+            value,
+            context,
+            None,
+            Scope {
+                access: Some(access),
+                items: Some(items),
+            },
+        )
+        .map(|_| ())
     }
 
     fn build(
@@ -183,6 +415,11 @@ impl Group {
                         name: name.to_owned(),
                     });
                 }
+                if signature.requires_items(&params) && !mode.items {
+                    return Err(Error::MissingFieldContext {
+                        name: name.to_owned(),
+                    });
+                }
                 Ok(Check::Rule {
                     name: name.to_owned(),
                     params,
@@ -202,7 +439,12 @@ impl Group {
                     });
                 }
                 aliases.push(name.to_owned());
-                let group = Self::build(exprs, registry, *mode, aliases)?;
+                let alias_mode = CompileMode {
+                    fields: mode.fields && mode.alias_context,
+                    items: mode.items && mode.alias_context,
+                    alias_context: mode.alias_context,
+                };
+                let group = Self::build(exprs, registry, alias_mode, aliases)?;
                 aliases.pop();
                 Ok(Check::Alias {
                     name: name.to_owned(),
@@ -215,19 +457,78 @@ impl Group {
         }
     }
 
-    fn execute_with_display<V: Value>(
+    fn validate_params<V: Value>(
+        &self,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        scope: Scope<'_>,
+    ) -> Result<(), Error> {
+        for step in &self.steps {
+            match step {
+                Step::Check(check) => {
+                    self.validate_check(target.clone(), value, context, check, scope)?;
+                }
+                Step::Any { checks, .. } => {
+                    for check in checks {
+                        self.validate_check(target.clone(), value, context, check, scope)?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_declared_params<V: Value>(
+        &self,
+        target: FieldTarget<'_>,
+        value: Option<&V>,
+        context: &Context,
+        scope: Scope<'_>,
+    ) -> Result<(), Error> {
+        if let Some(kind) = V::declared_kind() {
+            return self.validate_params(target, &TypeValue { kind }, context, scope);
+        }
+
+        match value {
+            Some(value) => self.validate_params(target, value, context, scope),
+            None => self.validate_params(target, &TypeValue { kind: Kind::Other }, context, scope),
+        }
+    }
+
+    fn validate_check<V: Value>(
+        &self,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        check: &Check,
+        scope: Scope<'_>,
+    ) -> Result<(), Error> {
+        match check {
+            Check::Rule {
+                params, handler, ..
+            } => Self::with_field(target, value, context, params, scope, |field| {
+                handler.validate_params(field)
+            }),
+            Check::Alias { group, .. } => group.validate_params(target, value, context, scope),
+            Check::OmitEmpty => Ok(()),
+        }
+    }
+
+    fn run<V: Value>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
         context: &Context,
         display_rule: Option<&str>,
-        access: Option<&dyn Access>,
+        scope: Scope<'_>,
     ) -> Result<Flow, Error> {
         let exec = Exec {
             context,
             display_rule,
-            access,
+            scope,
         };
 
         for step in &self.steps {
@@ -294,7 +595,7 @@ impl Group {
                     exec.context,
                     params,
                     handler.clone(),
-                    exec.access,
+                    exec.scope,
                 )? {
                     errors.push(field_error(
                         target,
@@ -306,13 +607,13 @@ impl Group {
                 }
             }
             Check::Alias { name, group } => {
-                return group.execute_with_display(
+                return group.run(
                     errors,
                     target,
                     value,
                     exec.context,
-                    Some(name),
-                    exec.access,
+                    Some(exec.display_rule.unwrap_or(name)),
+                    exec.scope,
                 );
             }
         }
@@ -344,7 +645,7 @@ impl Group {
                     exec.context,
                     params,
                     handler.clone(),
-                    exec.access,
+                    exec.scope,
                 )
                 .map(|passes| {
                     if passes {
@@ -355,14 +656,7 @@ impl Group {
                 }),
             Check::Alias { name: _, group } => {
                 let mut errors = Vec::new();
-                let flow = group.execute_with_display(
-                    &mut errors,
-                    target,
-                    value,
-                    exec.context,
-                    None,
-                    exec.access,
-                )?;
+                let flow = group.run(&mut errors, target, value, exec.context, None, exec.scope)?;
                 if flow == Flow::Stop && errors.is_empty() {
                     Ok(CheckResult::Stop)
                 } else if errors.is_empty() {
@@ -381,12 +675,28 @@ impl Group {
         context: &Context,
         params: &Params,
         handler: Arc<dyn Rule>,
-        access: Option<&dyn Access>,
+        scope: Scope<'_>,
     ) -> Result<bool, Error> {
         if value.is_none() && !handler.validates_none() {
             return Ok(true);
         }
 
+        Self::with_field(target, value, context, params, scope, |field| {
+            handler.check(field)
+        })
+    }
+
+    fn with_field<V, T>(
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        params: &Params,
+        scope: Scope<'_>,
+        call: impl FnOnce(&Field<'_>) -> Result<T, Error>,
+    ) -> Result<T, Error>
+    where
+        V: Value,
+    {
         let namespace = Namespace::new(namespace_for(&target.type_name, &target.field_name));
         let struct_namespace =
             Namespace::new(namespace_for(&target.type_name, &target.struct_field_name));
@@ -398,8 +708,8 @@ impl Group {
             params,
             value,
         )
-        .with_context(context, access);
+        .with_context(context, scope.access, scope.items);
 
-        handler.check(&field)
+        call(&field)
     }
 }

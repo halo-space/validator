@@ -58,6 +58,14 @@ pub enum Number {
 pub trait Value {
     fn kind(&self) -> Kind;
 
+    /// Returns the type's stable Kind, or `None` when Kind depends on the value.
+    fn declared_kind() -> Option<Kind>
+    where
+        Self: Sized,
+    {
+        None
+    }
+
     fn is_none(&self) -> bool {
         false
     }
@@ -117,6 +125,10 @@ impl<T: Value> Value for Option<T> {
         self.as_ref().map_or(Kind::Option, Value::kind)
     }
 
+    fn declared_kind() -> Option<Kind> {
+        T::declared_kind()
+    }
+
     fn is_none(&self) -> bool {
         self.is_none()
     }
@@ -167,6 +179,10 @@ impl Value for String {
         Kind::String
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::String)
+    }
+
     fn required(&self) -> bool {
         !self.as_str().is_empty()
     }
@@ -203,6 +219,10 @@ impl Value for &str {
         Kind::String
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::String)
+    }
+
     fn required(&self) -> bool {
         !str::is_empty(self)
     }
@@ -221,6 +241,10 @@ impl Value for bool {
         Kind::Bool
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Bool)
+    }
+
     fn required(&self) -> bool {
         *self
     }
@@ -236,6 +260,10 @@ macro_rules! impl_signed_value {
             impl Value for $ty {
                 fn kind(&self) -> Kind {
                     Kind::Int(IntKind::$kind)
+                }
+
+                fn declared_kind() -> Option<Kind> {
+                    Some(Kind::Int(IntKind::$kind))
                 }
 
                 fn required(&self) -> bool {
@@ -256,6 +284,10 @@ macro_rules! impl_unsigned_value {
             impl Value for $ty {
                 fn kind(&self) -> Kind {
                     Kind::Uint(UintKind::$kind)
+                }
+
+                fn declared_kind() -> Option<Kind> {
+                    Some(Kind::Uint(UintKind::$kind))
                 }
 
                 fn required(&self) -> bool {
@@ -293,6 +325,10 @@ impl Value for f32 {
         Kind::Float(FloatKind::F32)
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Float(FloatKind::F32))
+    }
+
     fn required(&self) -> bool {
         *self != 0.0
     }
@@ -305,6 +341,10 @@ impl Value for f32 {
 impl Value for f64 {
     fn kind(&self) -> Kind {
         Kind::Float(FloatKind::F64)
+    }
+
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Float(FloatKind::F64))
     }
 
     fn required(&self) -> bool {
@@ -321,6 +361,10 @@ impl Value for SystemTime {
         Kind::Time
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Time)
+    }
+
     fn required(&self) -> bool {
         true
     }
@@ -333,6 +377,10 @@ impl Value for SystemTime {
 impl<T: Value> Value for Vec<T> {
     fn kind(&self) -> Kind {
         Kind::Vec
+    }
+
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Vec)
     }
 
     fn required(&self) -> bool {
@@ -351,6 +399,10 @@ impl<T: Value> Value for Vec<T> {
 impl<T: Value, const N: usize> Value for [T; N] {
     fn kind(&self) -> Kind {
         Kind::Array
+    }
+
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Array)
     }
 
     fn required(&self) -> bool {
@@ -389,6 +441,10 @@ impl<T: Value> Value for &[T] {
         Kind::Slice
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Slice)
+    }
+
     fn required(&self) -> bool {
         !<[T]>::is_empty(self)
     }
@@ -405,6 +461,10 @@ impl<T: Value> Value for &[T] {
 impl<K, V: Value> Value for BTreeMap<K, V> {
     fn kind(&self) -> Kind {
         Kind::Map
+    }
+
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Map)
     }
 
     fn required(&self) -> bool {
@@ -425,6 +485,10 @@ impl<K: Eq + Hash, V: Value> Value for HashMap<K, V> {
         Kind::Map
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Map)
+    }
+
     fn required(&self) -> bool {
         !self.is_empty()
     }
@@ -443,6 +507,10 @@ impl Value for IpAddr {
         Kind::Other
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Other)
+    }
+
     fn required(&self) -> bool {
         true
     }
@@ -457,6 +525,10 @@ impl Value for Ipv4Addr {
         Kind::Other
     }
 
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Other)
+    }
+
     fn required(&self) -> bool {
         true
     }
@@ -469,6 +541,10 @@ impl Value for Ipv4Addr {
 impl Value for Ipv6Addr {
     fn kind(&self) -> Kind {
         Kind::Other
+    }
+
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::Other)
     }
 
     fn required(&self) -> bool {

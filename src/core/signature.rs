@@ -22,16 +22,26 @@ enum Shape {
 }
 
 #[derive(Clone, Copy, Debug)]
+enum Fields {
+    None,
+    Text(&'static str),
+    List(&'static str),
+    Pairs(&'static str),
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct Signature {
     shape: Shape,
-    fields: bool,
+    fields: Fields,
+    items: bool,
 }
 
 impl Signature {
     pub const fn none() -> Self {
         Self {
             shape: Shape::None,
-            fields: false,
+            fields: Fields::None,
+            items: false,
         }
     }
 
@@ -41,7 +51,8 @@ impl Signature {
                 name,
                 optional: false,
             },
-            fields: false,
+            fields: Fields::None,
+            items: false,
         }
     }
 
@@ -51,38 +62,103 @@ impl Signature {
                 name,
                 optional: true,
             },
-            fields: false,
+            fields: Fields::None,
+            items: false,
         }
     }
 
     pub const fn list(name: &'static str) -> Self {
         Self {
             shape: Shape::List { name },
-            fields: false,
+            fields: Fields::None,
+            items: false,
         }
     }
 
     pub const fn named(names: &'static [&'static str], required: &'static [&'static str]) -> Self {
         Self {
             shape: Shape::Named { names, required },
-            fields: false,
+            fields: Fields::None,
+            items: false,
         }
     }
 
     pub const fn pairs(name: &'static str) -> Self {
         Self {
             shape: Shape::Pairs { name },
-            fields: false,
+            fields: Fields::None,
+            items: false,
         }
     }
 
-    pub const fn with_fields(mut self) -> Self {
-        self.fields = true;
+    pub const fn field(name: &'static str) -> Self {
+        Self {
+            shape: Shape::Text {
+                name,
+                optional: false,
+            },
+            fields: Fields::Text(name),
+            items: false,
+        }
+    }
+
+    pub const fn field_list(name: &'static str) -> Self {
+        Self {
+            shape: Shape::List { name },
+            fields: Fields::List(name),
+            items: false,
+        }
+    }
+
+    pub const fn field_pairs(name: &'static str) -> Self {
+        Self {
+            shape: Shape::Pairs { name },
+            fields: Fields::Pairs(name),
+            items: false,
+        }
+    }
+
+    pub(crate) const fn with_items(mut self) -> Self {
+        self.items = true;
         self
     }
 
     pub(crate) fn requires_fields(self) -> bool {
-        self.fields
+        !matches!(self.fields, Fields::None)
+    }
+
+    pub(crate) fn field_targets(self, params: &Params) -> Vec<&str> {
+        match self.fields {
+            Fields::None => Vec::new(),
+            Fields::Text(name) => params.text(name).into_iter().collect(),
+            Fields::List(name) => params
+                .list(name)
+                .into_iter()
+                .flatten()
+                .map(String::as_str)
+                .collect(),
+            Fields::Pairs(name) => params
+                .pairs(name)
+                .into_iter()
+                .flatten()
+                .map(|(field, _)| field.as_str())
+                .collect(),
+        }
+    }
+
+    pub(crate) fn requires_items(self, params: &Params) -> bool {
+        self.items && !params.is_empty()
+    }
+
+    pub(crate) fn item_field(self, params: &Params) -> Option<&str> {
+        if !self.items {
+            return None;
+        }
+
+        match self.shape {
+            Shape::Text { name, .. } => params.text(name),
+            Shape::None | Shape::List { .. } | Shape::Named { .. } | Shape::Pairs { .. } => None,
+        }
     }
 
     pub(crate) fn bind(self, rule: &str, params: &RawParams) -> Result<Params, Error> {

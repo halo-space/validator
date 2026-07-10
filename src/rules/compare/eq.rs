@@ -8,6 +8,10 @@ impl Rule for Eq {
         Signature::optional_text("value")
     }
 
+    fn validate_params(&self, field: &Field<'_>) -> Result<(), crate::Error> {
+        super::validate_equality(field, "eq")
+    }
+
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         super::equals(field)
     }

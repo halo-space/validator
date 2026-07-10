@@ -129,6 +129,7 @@ fn option_none_fails_required() {
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].namespace().as_str(), "OptionalUser.email");
+    assert_eq!(fields[0].kind(), Kind::Option);
     assert_eq!(fields[0].rule(), "required");
 }
 
@@ -378,6 +379,24 @@ fn map_dive_validates_hash_map_values() {
     assert_eq!(fields[0].rule(), "required");
 }
 
+#[test]
+fn map_dive_escapes_namespace_keys() {
+    let value = LabelMap {
+        labels: HashMap::from([("quoted\"key\\line\n".to_owned(), String::new())]),
+    };
+
+    let fields = Validator::new()
+        .validate(&value)
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(
+        fields[0].namespace().as_str(),
+        "LabelMap.labels[\"quoted\\\"key\\\\line\\n\"]"
+    );
+}
+
 #[derive(Debug, Validate)]
 struct OrderedLabels {
     #[validate(dive(keys(max = 4), values(required)))]
@@ -614,8 +633,8 @@ struct StringLengths {
 fn ordered_string_cross_field_rules_compare_length() {
     Validator::new()
         .validate(&StringLengths {
-            title: "rust".to_owned(),
-            summary: "rustacean".to_owned(),
+            title: "zz".to_owned(),
+            summary: "aaa".to_owned(),
         })
         .unwrap();
 
@@ -630,6 +649,82 @@ fn ordered_string_cross_field_rules_compare_length() {
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "gte_field");
+}
+
+#[derive(Debug, Validate)]
+struct BoolOrdering {
+    lower: bool,
+
+    #[validate(gt_field = "lower")]
+    higher: bool,
+}
+
+#[test]
+fn ordered_cross_field_rules_do_not_order_bool_values() {
+    let fields = Validator::new()
+        .validate(&BoolOrdering {
+            lower: false,
+            higher: true,
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "gt_field");
+}
+
+#[derive(Debug, Validate)]
+struct FloatRelations {
+    source: f64,
+
+    #[validate(ne_field = "source")]
+    different: f64,
+
+    #[validate(gt_field = "source")]
+    ordered: f64,
+}
+
+#[test]
+fn cross_field_float_nan_is_unequal_and_unordered() {
+    let fields = Validator::new()
+        .validate(&FloatRelations {
+            source: f64::NAN,
+            different: f64::NAN,
+            ordered: f64::NAN,
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "gt_field");
+}
+
+#[derive(Debug, Validate)]
+struct RawIdentifierFields {
+    #[validate(required)]
+    r#type: String,
+
+    #[validate(eq_field = "type")]
+    copy: String,
+}
+
+#[test]
+fn derive_canonicalizes_raw_field_metadata_and_targets() {
+    let fields = Validator::new()
+        .validate(&RawIdentifierFields {
+            r#type: String::new(),
+            copy: "value".to_owned(),
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].namespace().as_str(), "RawIdentifierFields.type");
+    assert_eq!(fields[0].field(), "type");
+    assert_eq!(fields[1].params().text("compare"), Some("type"));
 }
 
 #[derive(Debug, Validate)]
@@ -921,6 +1016,59 @@ fn conditional_pair_rule_compares_typed_values() {
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "required_if");
     assert_eq!(param_pairs(&fields[0], "conditions"), vec![("level", "3")]);
+}
+
+#[derive(Debug, Validate)]
+struct NullableConditionalFieldRule {
+    level: Option<u8>,
+
+    #[validate(required_if(level = "null"))]
+    badge: String,
+}
+
+#[test]
+fn conditional_pair_rule_accepts_null_for_typed_fields() {
+    let fields = Validator::new()
+        .validate(&NullableConditionalFieldRule {
+            level: None,
+            badge: String::new(),
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(fields[0].rule(), "required_if");
+
+    Validator::new()
+        .validate(&NullableConditionalFieldRule {
+            level: Some(1),
+            badge: String::new(),
+        })
+        .unwrap();
+
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  level:
+    type: uint
+  badge:
+    type: string
+    rules:
+      - required_if:
+          level: "null"
+"#,
+    )
+    .unwrap();
+    let validator = Validator::with_schema(schema);
+    let fields = validator
+        .validate_map(&json!({ "badge": "" }))
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(fields[0].rule(), "required_if");
+
+    validator
+        .validate_map(&json!({ "level": 1, "badge": "" }))
+        .unwrap();
 }
 
 #[derive(Debug, Validate)]
@@ -1590,6 +1738,72 @@ fn schema_rejects_unknown_top_level_key() {
 }
 
 #[test]
+fn schema_preserves_explicit_empty_fields_structure() {
+    let scalar = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    fields: {}
+"#,
+    )
+    .unwrap_err();
+    assert!(matches!(scalar, Error::InvalidSchema { .. }));
+
+    let inferred = Schema::from_yaml(
+        r#"
+fields:
+  metadata:
+    fields: {}
+"#,
+    )
+    .unwrap();
+    let fields = fields(
+        Validator::with_schema(inferred)
+            .validate_map(&json!({ "metadata": "not-an-object" }))
+            .unwrap_err(),
+    );
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "metadata");
+    assert_eq!(fields[0].rule(), "type");
+    assert_eq!(fields[0].params().text("expected"), Some("object"));
+}
+
+#[test]
+fn schema_empty_array_fields_require_object_items_only_when_declared() {
+    let object_items = Schema::from_yaml(
+        r#"
+fields:
+  items:
+    type: array
+    fields: {}
+"#,
+    )
+    .unwrap();
+    let fields = fields(
+        Validator::with_schema(object_items)
+            .validate_map(&json!({ "items": ["scalar", null] }))
+            .unwrap_err(),
+    );
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].namespace().as_str(), "items[0]");
+    assert_eq!(fields[1].namespace().as_str(), "items[1]");
+    assert!(fields.iter().all(|field| field.rule() == "type"));
+
+    let unconstrained = Schema::from_yaml(
+        r#"
+fields:
+  items:
+    type: array
+"#,
+    )
+    .unwrap();
+    Validator::with_schema(unconstrained)
+        .validate_map(&json!({ "items": ["scalar", null] }))
+        .unwrap();
+}
+
+#[test]
 fn schema_choice_shorthand_uses_values_param() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
@@ -1639,12 +1853,323 @@ fields:
 }
 
 #[test]
+fn schema_unique_field_validates_array_object_fields() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: email
+    fields:
+      email:
+        type: string
+        rules:
+          - required
+          - email
+"#,
+    )
+    .unwrap();
+    let validator = Validator::with_schema(schema);
+
+    validator
+        .validate_map(&serde_json::json!({
+            "users": [
+                { "email": "first@example.com" },
+                { "email": "second@example.com" }
+            ]
+        }))
+        .unwrap();
+
+    let fields = validator
+        .validate_map(&serde_json::json!({
+            "users": [
+                { "email": "same@example.com" },
+                { "email": "same@example.com" }
+            ]
+        }))
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "users");
+    assert_eq!(fields[0].rule(), "unique");
+    assert_eq!(fields[0].params().text("field"), Some("email"));
+}
+
+#[test]
+fn schema_alias_preserves_unique_field_context() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules: unique_email
+    fields:
+      email:
+        type: string
+"#,
+    )
+    .unwrap();
+    let validator = Validator::with_schema(schema)
+        .alias("unique_email", "unique=email")
+        .unwrap();
+
+    let fields = validator
+        .validate_map(&serde_json::json!({
+            "users": [
+                { "email": "same@example.com" },
+                { "email": "same@example.com" }
+            ]
+        }))
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "users");
+    assert_eq!(fields[0].rule(), "unique_email");
+    assert_eq!(fields[0].reason(), "unique");
+    assert_eq!(fields[0].params().text("field"), Some("email"));
+}
+
+#[test]
+fn schema_array_fields_report_indexed_child_errors() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    fields:
+      email:
+        type: string
+        rules: email
+"#,
+    )
+    .unwrap();
+    let fields = Validator::with_schema(schema)
+        .validate_map(&serde_json::json!({
+            "users": [
+                { "email": "invalid" },
+                "not-an-object"
+            ]
+        }))
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 2);
+    assert_eq!(fields[0].namespace().as_str(), "users[0].email");
+    assert_eq!(fields[0].rule(), "email");
+    assert_eq!(fields[1].namespace().as_str(), "users[1]");
+    assert_eq!(fields[1].rule(), "type");
+    assert_eq!(fields[1].params().text("expected"), Some("object"));
+}
+
+#[test]
+fn schema_array_fields_reject_null_items_as_indexed_type_errors() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    fields:
+      name:
+        type: string
+"#,
+    )
+    .unwrap();
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({ "users": [null] }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "users[0]");
+    assert_eq!(fields[0].kind(), Kind::Option);
+    assert_eq!(fields[0].rule(), "type");
+    assert_eq!(fields[0].params().text("expected"), Some("object"));
+}
+
+#[test]
+fn schema_unique_field_leaves_invalid_values_to_child_type_validation() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: age
+    fields:
+      age:
+        type: uint
+"#,
+    )
+    .unwrap();
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({
+                "users": [
+                    { "age": "invalid" },
+                    { "age": 1 }
+                ]
+            }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "users[0].age");
+    assert_eq!(fields[0].kind(), Kind::String);
+    assert_eq!(fields[0].rule(), "type");
+    assert_eq!(fields[0].params().text("expected"), Some("uint"));
+}
+
+#[test]
+fn schema_unique_field_rejects_invalid_configuration() {
+    for yaml in [
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: missing
+    fields:
+      email:
+        type: string
+"#,
+        r#"
+fields:
+  users:
+    type: object
+    rules:
+      - unique: email
+    fields:
+      email:
+        type: string
+"#,
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: profile
+    fields:
+      profile:
+        type: object
+        fields:
+          email:
+            type: string
+"#,
+    ] {
+        let schema = Schema::from_yaml(yaml).unwrap();
+        let error = Validator::with_schema(schema)
+            .validate_map(&serde_json::json!({ "users": [] }))
+            .unwrap_err();
+        assert!(matches!(error, Error::InvalidSchema { .. }));
+    }
+}
+
+#[test]
+fn schema_unique_field_treats_missing_and_null_as_none() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: nickname
+    fields:
+      nickname:
+        type: string
+"#,
+    )
+    .unwrap();
+    let validator = Validator::with_schema(schema);
+
+    validator
+        .validate_map(&serde_json::json!({
+            "users": [{}, { "nickname": "rust" }]
+        }))
+        .unwrap();
+
+    let fields = validator
+        .validate_map(&serde_json::json!({
+            "users": [{}, { "nickname": null }]
+        }))
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "unique");
+    assert_eq!(fields[0].params().text("field"), Some("nickname"));
+}
+
+#[test]
 fn validate_map_without_schema_returns_error() {
     let error = Validator::new()
         .validate_map(&json!({ "title": "Rust" }))
         .unwrap_err();
 
-    assert!(matches!(error, validator::Error::MissingSchema));
+    assert!(matches!(&error, validator::Error::MissingSchema));
+    assert_eq!(
+        error.to_string(),
+        "schema is required for Schema validation"
+    );
+}
+
+#[test]
+fn schema_numeric_rules_follow_declared_families() {
+    let unsigned = Schema::from_yaml(
+        r#"
+fields:
+  count:
+    type: uint
+    rules:
+      - min: -1
+"#,
+    )
+    .unwrap();
+    let error = Validator::with_schema(unsigned)
+        .validate_map(&json!({}))
+        .unwrap_err();
+    assert!(matches!(error, Error::InvalidRuleExpression { .. }));
+
+    let number = Schema::from_yaml(
+        r#"
+fields:
+  ratio:
+    type: number
+    rules:
+      - min: 1.5
+"#,
+    )
+    .unwrap();
+    Validator::with_schema(number)
+        .validate_map(&json!({ "ratio": 2 }))
+        .unwrap();
+}
+
+#[test]
+fn schema_uint_cross_field_comparison_preserves_u64_range() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  lower:
+    type: uint
+  upper:
+    type: uint
+    rules:
+      - gt_field: lower
+"#,
+    )
+    .unwrap();
+    let lower = i64::MAX as u64;
+    let upper = lower + 1;
+
+    Validator::with_schema(schema)
+        .validate_map(&json!({ "lower": lower, "upper": upper }))
+        .unwrap();
 }
 
 #[test]
@@ -1862,6 +2387,7 @@ fields:
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].namespace().as_str(), "$value");
+    assert_eq!(fields[0].kind(), Kind::String);
     assert_eq!(fields[0].rule(), "type");
     assert_eq!(fields[0].params().text("expected"), Some("object"));
 
@@ -1902,11 +2428,27 @@ fields:
 
 #[test]
 fn validate_serde_without_schema_returns_error() {
-    let error = Validator::new()
-        .validate_serde(&json!({ "title": "Rust" }))
-        .unwrap_err();
+    let error = Validator::new().validate_serde(&BrokenSerde).unwrap_err();
 
     assert!(matches!(error, validator::Error::MissingSchema));
+}
+
+#[test]
+fn validate_serde_compiles_schema_before_serialization() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    rules: missing_rule
+"#,
+    )
+    .unwrap();
+    let error = Validator::with_schema(schema)
+        .validate_serde(&BrokenSerde)
+        .unwrap_err();
+
+    assert!(matches!(error, Error::UnknownRule { name } if name == "missing_rule"));
 }
 
 #[test]

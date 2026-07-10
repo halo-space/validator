@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use super::{Access, Context, Namespace, Params, Value};
+use super::{Access, Context, Items, Namespace, Params, Value};
 
 pub struct Field<'a> {
     namespace: &'a Namespace,
@@ -10,6 +10,7 @@ pub struct Field<'a> {
     params: &'a Params,
     value: &'a dyn Value,
     access: Option<&'a dyn Access>,
+    items: Option<&'a dyn Items>,
     now: SystemTime,
 }
 
@@ -30,6 +31,7 @@ impl<'a> Field<'a> {
             params,
             value,
             access: None,
+            items: None,
             now: SystemTime::now(),
         }
     }
@@ -38,8 +40,10 @@ impl<'a> Field<'a> {
         mut self,
         context: &Context,
         access: Option<&'a dyn Access>,
+        items: Option<&'a dyn Items>,
     ) -> Self {
         self.access = access;
+        self.items = items;
         self.now = context.now();
         self
     }
@@ -76,5 +80,9 @@ impl<'a> Field<'a> {
 
     pub fn now(&self) -> SystemTime {
         self.now
+    }
+
+    pub(crate) fn items(&self) -> Option<&dyn Items> {
+        self.items
     }
 }

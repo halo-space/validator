@@ -28,7 +28,7 @@ impl Rule for Check {
             | Condition::RequiredUnless
             | Condition::SkipUnless
             | Condition::ExcludedIf
-            | Condition::ExcludedUnless => Signature::pairs("conditions").with_fields(),
+            | Condition::ExcludedUnless => Signature::field_pairs("conditions"),
             Condition::RequiredWith
             | Condition::RequiredWithAll
             | Condition::RequiredWithout
@@ -36,7 +36,7 @@ impl Rule for Check {
             | Condition::ExcludedWith
             | Condition::ExcludedWithAll
             | Condition::ExcludedWithout
-            | Condition::ExcludedWithoutAll => Signature::list("fields").with_fields(),
+            | Condition::ExcludedWithoutAll => Signature::field_list("fields"),
         }
     }
 
@@ -44,24 +44,22 @@ impl Rule for Check {
         true
     }
 
+    fn validate_params(&self, field: &Field<'_>) -> Result<(), Error> {
+        if matches!(
+            self.0,
+            Condition::RequiredIf
+                | Condition::RequiredUnless
+                | Condition::SkipUnless
+                | Condition::ExcludedIf
+                | Condition::ExcludedUnless
+        ) {
+            validate_conditions(field, self.0)?;
+        }
+        Ok(())
+    }
+
     fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let required = field.value().required();
-        let matches_all = || {
-            field
-                .params()
-                .pairs("conditions")
-                .into_iter()
-                .flatten()
-                .all(|(name, expected)| matches(field.sibling(name), expected))
-        };
-        let matches_any = || {
-            field
-                .params()
-                .pairs("conditions")
-                .into_iter()
-                .flatten()
-                .any(|(name, expected)| matches(field.sibling(name), expected))
-        };
         let any_satisfies_required =
             || fields(field).any(|value| value.is_some_and(Value::required));
         let all_satisfy_required = || fields(field).all(|value| value.is_some_and(Value::required));
@@ -69,14 +67,16 @@ impl Rule for Check {
         let all_fail_required = || fields(field).all(|value| !value.is_some_and(Value::required));
 
         Ok(match self.0 {
-            Condition::RequiredIf | Condition::SkipUnless => !matches_all() || required,
-            Condition::RequiredUnless => matches_any() || required,
+            Condition::RequiredIf | Condition::SkipUnless => {
+                !conditions_match(field, self.0, true)? || required
+            }
+            Condition::RequiredUnless => conditions_match(field, self.0, false)? || required,
             Condition::RequiredWith => !any_satisfies_required() || required,
             Condition::RequiredWithAll => !all_satisfy_required() || required,
             Condition::RequiredWithout => !any_fails_required() || required,
             Condition::RequiredWithoutAll => !all_fail_required() || required,
-            Condition::ExcludedIf => !matches_all() || !required,
-            Condition::ExcludedUnless => matches_any() || !required,
+            Condition::ExcludedIf => !conditions_match(field, self.0, true)? || !required,
+            Condition::ExcludedUnless => conditions_match(field, self.0, false)? || !required,
             Condition::ExcludedWith => !any_satisfies_required() || !required,
             Condition::ExcludedWithAll => !all_satisfy_required() || !required,
             Condition::ExcludedWithout => !any_fails_required() || !required,
@@ -111,15 +111,47 @@ fn fields<'a>(field: &'a Field<'a>) -> impl Iterator<Item = Option<&'a dyn Value
         .map(|name| field.sibling(name))
 }
 
-fn matches(value: Option<&dyn Value>, expected: &str) -> bool {
+fn validate_conditions(field: &Field<'_>, condition: Condition) -> Result<(), Error> {
+    for (name, expected) in field.params().pairs("conditions").into_iter().flatten() {
+        validate_expected(condition, name, field.sibling(name), expected)?;
+    }
+    Ok(())
+}
+
+fn conditions_match(field: &Field<'_>, condition: Condition, all: bool) -> Result<bool, Error> {
+    let pairs = field.params().pairs("conditions").into_iter().flatten();
+    if all {
+        for (name, expected) in pairs {
+            if !matches_value(condition, name, field.sibling(name), expected)? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    } else {
+        for (name, expected) in pairs {
+            if matches_value(condition, name, field.sibling(name), expected)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+}
+
+fn matches_value(
+    condition: Condition,
+    name: &str,
+    value: Option<&dyn Value>,
+    expected: &str,
+) -> Result<bool, Error> {
+    validate_expected(condition, name, value, expected)?;
     let Some(value) = value else {
-        return false;
+        return Ok(false);
     };
     if value.is_none() {
-        return expected == "null";
+        return Ok(expected == "null");
     }
 
-    match value.kind() {
+    Ok(match value.kind() {
         Kind::String => value.string().is_some_and(|value| value == expected),
         Kind::Bool => expected
             .parse::<bool>()
@@ -137,5 +169,64 @@ fn matches(value: Option<&dyn Value>, expected: &str) -> bool {
             .parse::<usize>()
             .is_ok_and(|expected| value.len() == Some(expected)),
         Kind::Time | Kind::Option | Kind::Other => false,
+    })
+}
+
+fn validate_expected(
+    condition: Condition,
+    name: &str,
+    value: Option<&dyn Value>,
+    expected: &str,
+) -> Result<(), Error> {
+    if expected == "null" {
+        return Ok(());
+    }
+
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let expected_type = match value.kind() {
+        Kind::String | Kind::Time | Kind::Option | Kind::Other => return Ok(()),
+        Kind::Bool => expected.parse::<bool>().map(|_| ()).map_err(|_| "boolean"),
+        Kind::Int(_) => expected
+            .parse::<i128>()
+            .map(|_| ())
+            .map_err(|_| "signed integer"),
+        Kind::Uint(_) => expected
+            .parse::<u128>()
+            .map(|_| ())
+            .map_err(|_| "unsigned integer"),
+        Kind::Float(_) => expected.parse::<f64>().map(|_| ()).map_err(|_| "float"),
+        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => expected
+            .parse::<usize>()
+            .map(|_| ())
+            .map_err(|_| "collection length"),
+    };
+
+    expected_type.map_err(|expected_type| Error::InvalidRuleExpression {
+        expression: condition.name().to_owned(),
+        reason: format!(
+            "condition for field '{name}' must be a valid {expected_type}, got '{expected}'"
+        ),
+    })
+}
+
+impl Condition {
+    fn name(self) -> &'static str {
+        match self {
+            Self::RequiredIf => "required_if",
+            Self::RequiredUnless => "required_unless",
+            Self::SkipUnless => "skip_unless",
+            Self::RequiredWith => "required_with",
+            Self::RequiredWithAll => "required_with_all",
+            Self::RequiredWithout => "required_without",
+            Self::RequiredWithoutAll => "required_without_all",
+            Self::ExcludedIf => "excluded_if",
+            Self::ExcludedUnless => "excluded_unless",
+            Self::ExcludedWith => "excluded_with",
+            Self::ExcludedWithAll => "excluded_with_all",
+            Self::ExcludedWithout => "excluded_without",
+            Self::ExcludedWithoutAll => "excluded_without_all",
+        }
     }
 }

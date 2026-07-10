@@ -1,6 +1,8 @@
 use proc_macro::TokenStream;
-use quote::quote;
+use proc_macro_crate::{FoundCrate, crate_name};
+use quote::{format_ident, quote};
 use std::collections::BTreeSet;
+use syn::ext::IdentExt;
 use syn::meta::ParseNestedMeta;
 use syn::{
     Data, DeriveInput, Expr, ExprLit, ExprUnary, Fields, GenericArgument, Lit, LitStr,
@@ -18,6 +20,7 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 }
 
 fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let crate_path = validator_crate_path()?;
     let DeriveInput {
         attrs,
         data,
@@ -25,6 +28,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
         ident: name,
         ..
     } = input;
+    let type_name = canonical(&name);
     let struct_checks = parse_struct_checks(&attrs)?;
     let fields = match data {
         Data::Struct(data) => match data.fields {
@@ -48,7 +52,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
     let field_names = fields
         .iter()
         .filter_map(|field| field.ident.as_ref())
-        .map(ToString::to_string)
+        .map(canonical)
         .collect::<BTreeSet<_>>();
     let mut access_fields = BTreeSet::new();
 
@@ -57,45 +61,48 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
     let struct_check_calls = struct_checks.iter().map(|check| {
         quote! {
             {
-                let mut valid = validator.__valid(stringify!(#name), &mut errors);
+                let mut valid = validator.__valid(#type_name, &mut errors);
                 #check(self, &mut valid);
             }
         }
     });
 
     for field in &fields {
-        let is_option = is_option_type(&field.ty);
-        let item_is_option = collection_item_type(&field.ty).is_some_and(is_option_type);
-        let map_value_is_option = map_value_type(&field.ty).is_some_and(is_option_type);
         let Some(field_ident) = field.ident.as_ref() else {
             continue;
         };
-        let field_name = field_ident.to_string();
+        let field_name = canonical(field_ident);
         let rules = parse_rules(&field.attrs)?;
         validate_field_targets(&rules, &field_names)?;
         collect_access_fields(&rules, &field_name, &mut access_fields);
         let target = quote! {
-            ::validator::FieldTarget::new(
-                stringify!(#name),
+            #crate_path::FieldTarget::new(
+                #type_name,
                 #field_name,
                 #field_name,
             )
         };
         reject_field_rules_inside_dive(&rules)?;
+        let mut spec_index = 0;
         let field_checks = build_checks(
             rules,
             quote!(&self.#field_ident),
+            target.clone(),
             target,
-            is_option,
-            Some(item_is_option),
-            Some(map_value_is_option),
+            &field.ty,
+            false,
+            &mut spec_index,
+            &crate_path,
         )?;
 
-        if !field_checks.is_empty() {
+        if !field_checks.preflight.is_empty() || !field_checks.execute.is_empty() {
+            let preflight = field_checks.preflight;
+            let execute = field_checks.execute;
             checks.push(quote! {
                 {
+                    #(#preflight)*
                     let mut skip_rest = false;
-                    #(#field_checks)*
+                    #(#execute)*
                 }
             });
         }
@@ -105,29 +112,29 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
         let Some(field_ident) = field.ident.as_ref() else {
             continue;
         };
-        let field_name = field_ident.to_string();
+        let field_name = canonical(field_ident);
         if access_fields.contains(&field_name) {
             access_arms.push(quote! {
-                #field_name => Some(::validator::__private::FieldRef::new(#field_name, &self.#field_ident)),
+                #field_name => Some(#crate_path::__private::FieldRef::new(#field_name, &self.#field_ident)),
             });
         }
     }
 
     Ok(quote! {
-        impl #impl_generics ::validator::Validate for #name #ty_generics #where_clause {
+        impl #impl_generics #crate_path::Validate for #name #ty_generics #where_clause {
             fn validate(
                 &self,
-                validator: &::validator::Validator,
-            ) -> std::result::Result<(), ::validator::Error> {
-                let context = ::validator::__private::Context::new();
+                validator: &#crate_path::Validator,
+            ) -> std::result::Result<(), #crate_path::Error> {
+                let context = #crate_path::__private::Context::new();
                 self.__validate_with_context(validator, &context)
             }
 
             fn __validate_with_context(
                 &self,
-                validator: &::validator::Validator,
-                context: &::validator::__private::Context,
-            ) -> std::result::Result<(), ::validator::Error> {
+                validator: &#crate_path::Validator,
+                context: &#crate_path::__private::Context,
+            ) -> std::result::Result<(), #crate_path::Error> {
                 let mut errors = Vec::new();
 
                 #(#checks)*
@@ -136,16 +143,16 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                 if errors.is_empty() {
                     Ok(())
                 } else {
-                    Err(::validator::Error::failed(errors))
+                    Err(#crate_path::Error::failed(errors))
                 }
             }
         }
 
-        impl #impl_generics ::validator::__private::Access for #name #ty_generics #where_clause {
+        impl #impl_generics #crate_path::__private::Access for #name #ty_generics #where_clause {
             fn field<'__validator>(
                 &'__validator self,
                 name: &'__validator str,
-            ) -> Option<::validator::__private::FieldRef<'__validator>> {
+            ) -> Option<#crate_path::__private::FieldRef<'__validator>> {
                 match name {
                     #(#access_arms)*
                     _ => None,
@@ -189,6 +196,10 @@ enum RuleAttr {
         name: String,
         params: Vec<ParamAttr>,
     },
+    UniqueField {
+        field: String,
+        member: syn::Ident,
+    },
     OmitEmpty,
     Nested,
     Dive(DiveAttr),
@@ -210,6 +221,12 @@ enum DiveAttr {
     },
 }
 
+#[derive(Default)]
+struct GeneratedChecks {
+    preflight: Vec<proc_macro2::TokenStream>,
+    execute: Vec<proc_macro2::TokenStream>,
+}
+
 fn exposes_value_access(rules: &[RuleAttr]) -> bool {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
 
@@ -217,6 +234,7 @@ fn exposes_value_access(rules: &[RuleAttr]) -> bool {
         RuleAttr::Rule { name, .. } => !(has_nested && name == "required"),
         RuleAttr::Alias(_) => true,
         RuleAttr::FieldRule { .. } => true,
+        RuleAttr::UniqueField { .. } => false,
         RuleAttr::OmitEmpty => !has_nested,
         RuleAttr::Nested | RuleAttr::Dive(_) => false,
     })
@@ -303,6 +321,7 @@ fn reject_field_rules_inside_dive(rules: &[RuleAttr]) -> syn::Result<()> {
             RuleAttr::Rule { .. }
             | RuleAttr::Alias(_)
             | RuleAttr::FieldRule { .. }
+            | RuleAttr::UniqueField { .. }
             | RuleAttr::OmitEmpty
             | RuleAttr::Nested => {}
         }
@@ -318,6 +337,12 @@ fn reject_field_rules(rules: &[RuleAttr]) -> syn::Result<()> {
                 return Err(syn::Error::new(
                     proc_macro2::Span::call_site(),
                     format!("validate rule '{name}' is not supported inside dive"),
+                ));
+            }
+            RuleAttr::UniqueField { .. } => {
+                return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "unique=field is not supported inside dive",
                 ));
             }
             RuleAttr::Dive(DiveAttr::Values(rules)) => reject_field_rules(rules)?,
@@ -337,20 +362,23 @@ fn build_checks(
     rules: Vec<RuleAttr>,
     value: proc_macro2::TokenStream,
     target: proc_macro2::TokenStream,
-    is_option: bool,
-    dive_item_is_option: Option<bool>,
-    map_value_is_option: Option<bool>,
-) -> syn::Result<Vec<proc_macro2::TokenStream>> {
+    preflight_target: proc_macro2::TokenStream,
+    value_type: &Type,
+    type_only: bool,
+    spec_index: &mut usize,
+    crate_path: &proc_macro2::TokenStream,
+) -> syn::Result<GeneratedChecks> {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
+    let is_option = is_option_type(value_type);
     let is_nested_option = has_nested && is_option;
-    let mut checks = Vec::new();
+    let mut checks = GeneratedChecks::default();
 
     for rule in rules {
         match rule {
             RuleAttr::Rule { name, params } => {
                 if has_nested && name == "required" {
                     if is_option {
-                        checks.push(quote! {
+                        checks.execute.push(quote! {
                             if !skip_rest {
                                 validator.__validate_required_option(
                                     &mut errors,
@@ -364,73 +392,139 @@ fn build_checks(
                 }
 
                 let inserts = build_params(&params);
-                checks.push(quote! {
-                    if !skip_rest {
-                        let mut params = ::validator::__private::RawParams::new();
+                let spec = next_ident("spec", spec_index);
+                let validate =
+                    build_preflight(value_type, type_only, &preflight_target, &value, &spec);
+                checks.preflight.push(quote! {
+                    let #spec = {
+                        let mut params = #crate_path::__private::RawParams::new();
                         #(#inserts)*
-                        let spec = ::validator::__private::Spec::with_params(#name, params);
+                        #crate_path::__private::Spec::with_params(#name, params)
+                    };
+                    #validate
+                });
+                checks.execute.push(quote! {{
+                    if !skip_rest {
                         if validator.__validate_spec(
                             &mut errors,
                             #target,
                             #value,
-                            spec,
+                            #spec.clone(),
                             context,
                             self,
                         )? {
                             skip_rest = true;
                         }
                     }
-                });
+                }});
             }
             RuleAttr::Alias(alias) => {
-                checks.push(quote! {
+                let spec = next_ident("spec", spec_index);
+                let validate =
+                    build_preflight(value_type, type_only, &preflight_target, &value, &spec);
+                checks.preflight.push(quote! {
+                    let #spec = #crate_path::__private::Spec::with_params(
+                        #alias,
+                        #crate_path::__private::RawParams::new(),
+                    );
+                    #validate
+                });
+                checks.execute.push(quote! {{
                     if !skip_rest {
-                        let spec = ::validator::__private::Spec::with_params(
-                            #alias,
-                            ::validator::__private::RawParams::new(),
-                        );
                         if validator.__validate_spec(
                             &mut errors,
                             #target,
                             #value,
-                            spec,
+                            #spec.clone(),
                             context,
                             self,
                         )? {
                             skip_rest = true;
                         }
                     }
-                });
+                }});
             }
             RuleAttr::FieldRule { name, params } => {
                 let inserts = build_params(&params);
-                checks.push(quote! {
-                    if !skip_rest {
-                        let mut params = ::validator::__private::RawParams::new();
+                let spec = next_ident("spec", spec_index);
+                let validate =
+                    build_preflight(value_type, type_only, &preflight_target, &value, &spec);
+                checks.preflight.push(quote! {
+                    let #spec = {
+                        let mut params = #crate_path::__private::RawParams::new();
                         #(#inserts)*
-                        let spec = ::validator::__private::Spec::with_params(#name, params);
+                        #crate_path::__private::Spec::with_params(#name, params)
+                    };
+                    #validate
+                });
+                checks.execute.push(quote! {{
+                    if !skip_rest {
                         if validator.__validate_spec(
                             &mut errors,
                             #target,
                             #value,
-                            spec,
+                            #spec.clone(),
                             context,
                             self,
                         )? {
                             skip_rest = true;
                         }
                     }
+                }});
+            }
+            RuleAttr::UniqueField { field, member } => {
+                let Some(kind) = collection_kind(value_type, crate_path) else {
+                    return Err(syn::Error::new(
+                        member.span(),
+                        "unique=field requires a Vec, array, or slice field",
+                    ));
+                };
+                let spec = next_ident("spec", spec_index);
+                let projection = next_ident("projection", spec_index);
+                checks.preflight.push(quote! {
+                    let #projection = #crate_path::__private::Projection::new(
+                        &(#value)[..],
+                        #field,
+                        #kind,
+                        |item| &item.#member,
+                    );
+                    let #spec = {
+                        let mut params = #crate_path::__private::RawParams::new();
+                        params.positional(#field);
+                        #crate_path::__private::Spec::with_params("unique", params)
+                    };
+                    validator.__validate_item_params(
+                        #preflight_target,
+                        #spec.clone(),
+                        context,
+                        self,
+                        &#projection,
+                    )?;
                 });
+                checks.execute.push(quote! {{
+                    if !skip_rest {
+                        if validator.__validate_items(
+                            &mut errors,
+                            #target,
+                            #spec.clone(),
+                            context,
+                            self,
+                            &#projection,
+                        )? {
+                            skip_rest = true;
+                        }
+                    }
+                }});
             }
             RuleAttr::OmitEmpty => {
                 if is_nested_option {
-                    checks.push(quote! {
+                    checks.execute.push(quote! {
                         if !skip_rest && (#value).is_none() {
                             skip_rest = true;
                         }
                     });
                 } else if !has_nested {
-                    checks.push(quote! {
+                    checks.execute.push(quote! {
                         if !skip_rest && validator.__skip_empty(#value) {
                             skip_rest = true;
                         }
@@ -439,18 +533,18 @@ fn build_checks(
             }
             RuleAttr::Nested => {
                 if is_option {
-                    checks.push(quote! {
+                    checks.execute.push(quote! {
                         if !skip_rest {
                             validator.__validate_nested_option(
-                            &mut errors,
-                            #target,
-                            #value,
-                            context,
+                                &mut errors,
+                                #target,
+                                #value,
+                                context,
                             )?;
                         }
                     });
                 } else {
-                    checks.push(quote! {
+                    checks.execute.push(quote! {
                         if !skip_rest {
                             validator.__validate_nested(
                                 &mut errors,
@@ -464,56 +558,85 @@ fn build_checks(
             }
             RuleAttr::Dive(dive) => match dive {
                 DiveAttr::Values(rules) => {
-                    let item_is_option = dive_item_is_option.unwrap_or(false);
+                    let item_type = collection_item_type(value_type).ok_or_else(|| {
+                        syn::Error::new_spanned(
+                            value_type,
+                            "dive requires a Vec, array, or slice field",
+                        )
+                    })?;
                     let element_checks = build_checks(
                         rules,
                         quote!(item),
                         quote!(item_target.clone()),
-                        item_is_option,
-                        None,
-                        None,
+                        quote!((#preflight_target).index(0)),
+                        item_type,
+                        true,
+                        spec_index,
+                        crate_path,
                     )?;
+                    let GeneratedChecks { preflight, execute } = element_checks;
+                    checks.preflight.extend(preflight);
 
-                    checks.push(quote! {
+                    checks.execute.push(quote! {
                         if !skip_rest {
                             for (index, item) in (#value).iter().enumerate() {
                                 let item_target = #target.index(index);
                                 let mut skip_rest = false;
-                                #(#element_checks)*
+                                #(#execute)*
                             }
                         }
                     });
                 }
                 DiveAttr::Map { keys, values } => {
-                    let value_is_option = map_value_is_option.unwrap_or(false);
+                    let key_type = map_key_type(value_type).ok_or_else(|| {
+                        syn::Error::new_spanned(
+                            value_type,
+                            "map dive requires a HashMap or BTreeMap",
+                        )
+                    })?;
+                    let value_type = map_value_type(value_type).expect("map key and value coexist");
                     let key_checks = build_checks(
                         keys,
                         quote!(key),
                         quote!(entry_target.clone()),
-                        false,
-                        None,
-                        None,
+                        quote!((#preflight_target).clone()),
+                        key_type,
+                        true,
+                        spec_index,
+                        crate_path,
                     )?;
                     let value_checks = build_checks(
                         values,
                         quote!(value),
                         quote!(entry_target.clone()),
-                        value_is_option,
-                        None,
-                        None,
+                        quote!((#preflight_target).clone()),
+                        value_type,
+                        true,
+                        spec_index,
+                        crate_path,
                     )?;
+                    let GeneratedChecks {
+                        preflight: key_preflight,
+                        execute: key_execute,
+                    } = key_checks;
+                    let GeneratedChecks {
+                        preflight: value_preflight,
+                        execute: value_execute,
+                    } = value_checks;
+                    checks.preflight.extend(key_preflight);
+                    checks.preflight.extend(value_preflight);
 
-                    checks.push(quote! {
+                    checks.execute.push(quote! {
                         if !skip_rest {
                             for (key, value) in (#value).iter() {
                                 let entry_target = #target.key(key);
                                 {
                                     let mut skip_rest = false;
-                                    #(#key_checks)*
+                                    #(#key_execute)*
                                 }
                                 {
                                     let mut skip_rest = false;
-                                    #(#value_checks)*
+                                    #(#value_execute)*
                                 }
                             }
                         }
@@ -524,6 +647,41 @@ fn build_checks(
     }
 
     Ok(checks)
+}
+
+fn build_preflight(
+    value_type: &Type,
+    type_only: bool,
+    target: &proc_macro2::TokenStream,
+    value: &proc_macro2::TokenStream,
+    spec: &syn::Ident,
+) -> proc_macro2::TokenStream {
+    if type_only {
+        quote! {
+            validator.__validate_type_params::<#value_type, _>(
+                #target,
+                #spec.clone(),
+                context,
+                self,
+            )?;
+        }
+    } else {
+        quote! {
+            validator.__validate_params(
+                #target,
+                #value,
+                #spec.clone(),
+                context,
+                self,
+            )?;
+        }
+    }
+}
+
+fn next_ident(prefix: &str, index: &mut usize) -> syn::Ident {
+    let ident = format_ident!("__validator_{prefix}_{}", *index);
+    *index += 1;
+    ident
 }
 
 fn build_params(params: &[ParamAttr]) -> Vec<proc_macro2::TokenStream> {
@@ -589,16 +747,16 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
         return Ok(());
     }
 
-    for name in FIELD_RULES {
-        if meta.path.is_ident(*name) {
-            let value = meta.value()?;
-            let target: LitStr = value.parse()?;
-            rules.push(RuleAttr::FieldRule {
-                name: (*name).to_owned(),
-                params: vec![ParamAttr::Named("compare".to_owned(), target.value())],
-            });
-            return Ok(());
-        }
+    if let Some(name) = meta.path.get_ident().map(canonical)
+        && (name.ends_with("_field") || matches!(name.as_str(), "fieldcontains" | "fieldexcludes"))
+    {
+        let value = meta.value()?;
+        let target: LitStr = value.parse()?;
+        rules.push(RuleAttr::FieldRule {
+            name,
+            params: vec![ParamAttr::Named("compare".to_owned(), target.value())],
+        });
+        return Ok(());
     }
 
     for name in CONDITIONAL_PAIR_RULES {
@@ -624,7 +782,27 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
         }
     }
 
-    let Some(name) = meta.path.get_ident().map(ToString::to_string) else {
+    if meta.path.is_ident("unique") && meta.input.peek(Token![=]) {
+        let value = meta.value()?;
+        let field: LitStr = value.parse()?;
+        if field.value().contains('.') {
+            return Err(syn::Error::new_spanned(
+                field,
+                "unique=field only supports a direct element field",
+            ));
+        }
+        let member = member(&field)?;
+        rules.push(RuleAttr::UniqueField {
+            field: canonical(&member),
+            member,
+        });
+        return Ok(());
+    }
+    if meta.path.is_ident("unique") && meta.input.peek(syn::token::Paren) {
+        return Err(meta.error("unique field syntax is `unique = \"field\"`"));
+    }
+
+    let Some(name) = meta.path.get_ident().map(canonical) else {
         return Err(meta.error("validate rule must be a single identifier"));
     };
     rules.push(rule(name, parse_custom_params(meta)?));
@@ -650,7 +828,7 @@ fn parse_custom_params(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ParamAttr>>
             let name: syn::Ident = content.parse()?;
             content.parse::<Token![=]>()?;
             params.push(ParamAttr::Named(
-                name.to_string(),
+                canonical(&name),
                 parse_param_value(&content)?,
             ));
         } else {
@@ -727,7 +905,7 @@ fn parse_conditional_pairs(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result
     let mut seen = BTreeSet::new();
 
     meta.parse_nested_meta(|nested| {
-        let Some(field) = nested.path.get_ident().map(ToString::to_string) else {
+        let Some(field) = nested.path.get_ident().map(canonical) else {
             return Err(nested.error("conditional rule field must be a field identifier"));
         };
 
@@ -805,7 +983,15 @@ fn collection_item_type(ty: &Type) -> Option<&Type> {
     }
 }
 
+fn map_key_type(ty: &Type) -> Option<&Type> {
+    map_type(ty, 0)
+}
+
 fn map_value_type(ty: &Type) -> Option<&Type> {
+    map_type(ty, 1)
+}
+
+fn map_type(ty: &Type, index: usize) -> Option<&Type> {
     let Type::Path(path) = ty else {
         return None;
     };
@@ -826,20 +1012,56 @@ fn map_value_type(ty: &Type) -> Option<&Type> {
                 GenericArgument::Type(ty) => Some(ty),
                 _ => None,
             })
-            .nth(1)
+            .nth(index)
     })
 }
 
-const FIELD_RULES: &[&str] = &[
-    "eq_field",
-    "ne_field",
-    "gt_field",
-    "gte_field",
-    "lt_field",
-    "lte_field",
-    "fieldcontains",
-    "fieldexcludes",
-];
+fn collection_kind(
+    ty: &Type,
+    crate_path: &proc_macro2::TokenStream,
+) -> Option<proc_macro2::TokenStream> {
+    match ty {
+        Type::Path(path)
+            if path
+                .path
+                .segments
+                .last()
+                .is_some_and(|segment| segment.ident == "Vec") =>
+        {
+            Some(quote!(#crate_path::Kind::Vec))
+        }
+        Type::Array(_) => Some(quote!(#crate_path::Kind::Array)),
+        Type::Reference(TypeReference { elem, .. }) if matches!(elem.as_ref(), Type::Slice(_)) => {
+            Some(quote!(#crate_path::Kind::Slice))
+        }
+        _ => None,
+    }
+}
+
+fn validator_crate_path() -> syn::Result<proc_macro2::TokenStream> {
+    match crate_name("validator") {
+        Ok(FoundCrate::Itself) => Ok(quote!(::validator)),
+        Ok(FoundCrate::Name(name)) => {
+            let name = syn::Ident::new(&name.replace('-', "_"), proc_macro2::Span::call_site());
+            Ok(quote!(::#name))
+        }
+        Err(error) => Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            format!("validator crate could not be resolved: {error}"),
+        )),
+    }
+}
+
+fn canonical(ident: &syn::Ident) -> String {
+    ident.unraw().to_string()
+}
+
+fn member(field: &LitStr) -> syn::Result<syn::Ident> {
+    let name = field.value();
+    syn::parse_str::<syn::Ident>(&name)
+        .or_else(|_| syn::parse_str::<syn::Ident>(&format!("r#{name}")))
+        .map_err(|_| syn::Error::new_spanned(field, "unique field must be a Rust field identifier"))
+}
 
 const CONDITIONAL_PAIR_RULES: &[&str] = &[
     "required_if",

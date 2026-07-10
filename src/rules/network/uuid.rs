@@ -32,7 +32,7 @@ impl Rule for Uuid4 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| valid_version(value.as_ref(), b'4')))
+            .is_some_and(|value| valid_version_and_variant(value.as_ref(), b'4')))
     }
 }
 
@@ -56,7 +56,7 @@ impl Rule for Uuid5 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| valid_version(value.as_ref(), b'5')))
+            .is_some_and(|value| valid_version_and_variant(value.as_ref(), b'5')))
     }
 }
 
@@ -102,6 +102,14 @@ fn valid(value: &str) -> bool {
 
 fn valid_version(value: &str, expected: u8) -> bool {
     version(value) == Some(expected)
+}
+
+fn valid_version_and_variant(value: &str, expected: u8) -> bool {
+    version(value) == Some(expected)
+        && value
+            .as_bytes()
+            .get(19)
+            .is_some_and(|byte| matches!(byte, b'8' | b'9' | b'a' | b'b'))
 }
 
 fn valid_rfc(value: &str) -> bool {

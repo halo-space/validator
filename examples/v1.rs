@@ -25,8 +25,16 @@ struct User {
     #[validate(unique, dive(keys(max = 10), values(required)))]
     labels: HashMap<String, String>,
 
+    #[validate(unique = "email")]
+    members: Vec<Member>,
+
     #[validate(required, email)]
     backup_email: Email,
+}
+
+#[derive(Debug)]
+struct Member {
+    email: String,
 }
 
 #[derive(Debug, Validate)]
@@ -77,6 +85,10 @@ struct Email(String);
 impl Value for Email {
     fn kind(&self) -> Kind {
         Kind::String
+    }
+
+    fn declared_kind() -> Option<Kind> {
+        Some(Kind::String)
     }
 
     fn required(&self) -> bool {
@@ -159,6 +171,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         tags: vec!["rust".to_owned(), "validator".to_owned()],
         labels: HashMap::from([("source".to_owned(), "example".to_owned())]),
+        members: vec![
+            Member {
+                email: "first@example.com".to_owned(),
+            },
+            Member {
+                email: "second@example.com".to_owned(),
+            },
+        ],
         backup_email: Email("backup@example.com".to_owned()),
     };
 
@@ -227,6 +247,9 @@ fields:
         },
         tags: vec!["rust".to_owned()],
         labels: HashMap::from([("source".to_owned(), "example".to_owned())]),
+        members: vec![Member {
+            email: "first@example.com".to_owned(),
+        }],
         backup_email: Email("backup@example.com".to_owned()),
     };
     let error = validator.validate(&invalid).unwrap_err();

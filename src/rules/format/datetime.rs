@@ -66,7 +66,10 @@ fn split_offset(value: &str) -> Option<(&str, &str)> {
 }
 
 fn valid_time(value: &str) -> bool {
-    let (main, fraction) = value.split_once('.').unwrap_or((value, ""));
+    let (main, fraction) = match value.split_once('.') {
+        Some((main, fraction)) => (main, Some(fraction)),
+        None => (value, None),
+    };
     let parts = main.split(':').collect::<Vec<_>>();
     if parts.len() != 3 {
         return false;
@@ -88,7 +91,9 @@ fn valid_time(value: &str) -> bool {
         && hour <= 23
         && minute <= 59
         && second <= 60
-        && (fraction.is_empty() || fraction.bytes().all(|byte| byte.is_ascii_digit()))
+        && fraction.is_none_or(|fraction| {
+            !fraction.is_empty() && fraction.bytes().all(|byte| byte.is_ascii_digit())
+        })
 }
 
 fn valid_offset(value: &str) -> bool {

@@ -20,7 +20,7 @@ struct Compare(Relation);
 
 impl Rule for Compare {
     fn signature(&self) -> Signature {
-        Signature::text("compare").with_fields()
+        Signature::field("compare")
     }
 
     fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
@@ -59,28 +59,43 @@ fn compare(value: &dyn Value, sibling: Option<&dyn Value>, relation: Relation) -
         return false;
     }
 
-    let ordering = ordering(value, sibling);
     match relation {
-        Relation::Eq => ordering == Some(Ordering::Equal),
-        Relation::Ne => ordering.is_some_and(|ordering| ordering != Ordering::Equal),
-        Relation::Gt => ordering == Some(Ordering::Greater),
-        Relation::Gte => ordering.is_some_and(|ordering| ordering != Ordering::Less),
-        Relation::Lt => ordering == Some(Ordering::Less),
-        Relation::Lte => ordering.is_some_and(|ordering| ordering != Ordering::Greater),
+        Relation::Eq => equality(value, sibling).unwrap_or(false),
+        Relation::Ne => equality(value, sibling).is_some_and(|equal| !equal),
+        Relation::Gt => ordering(value, sibling) == Some(Ordering::Greater),
+        Relation::Gte => {
+            ordering(value, sibling).is_some_and(|ordering| ordering != Ordering::Less)
+        }
+        Relation::Lt => ordering(value, sibling) == Some(Ordering::Less),
+        Relation::Lte => {
+            ordering(value, sibling).is_some_and(|ordering| ordering != Ordering::Greater)
+        }
         Relation::Contains | Relation::Excludes => false,
+    }
+}
+
+fn equality(left: &dyn Value, right: &dyn Value) -> Option<bool> {
+    match left.kind() {
+        Kind::String => Some(left.string()? == right.string()?),
+        Kind::Bool => Some(left.boolean()? == right.boolean()?),
+        Kind::Int(_) => Some(left.int()? == right.int()?),
+        Kind::Uint(_) => Some(left.uint()? == right.uint()?),
+        Kind::Float(_) => Some(left.float()? == right.float()?),
+        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => Some(left.len()? == right.len()?),
+        Kind::Time => Some(left.time()? == right.time()?),
+        Kind::Option | Kind::Other => None,
     }
 }
 
 fn ordering(left: &dyn Value, right: &dyn Value) -> Option<Ordering> {
     match left.kind() {
-        Kind::String => left.string()?.partial_cmp(&right.string()?),
-        Kind::Bool => Some(left.boolean()?.cmp(&right.boolean()?)),
+        Kind::String => Some(left.len()?.cmp(&right.len()?)),
         Kind::Int(_) => Some(left.int()?.cmp(&right.int()?)),
         Kind::Uint(_) => Some(left.uint()?.cmp(&right.uint()?)),
         Kind::Float(_) => left.float()?.partial_cmp(&right.float()?),
         Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => Some(left.len()?.cmp(&right.len()?)),
         Kind::Time => left.time()?.partial_cmp(&right.time()?),
-        Kind::Option | Kind::Other => None,
+        Kind::Bool | Kind::Option | Kind::Other => None,
     }
 }
 

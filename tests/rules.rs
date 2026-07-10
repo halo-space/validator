@@ -59,6 +59,24 @@ fn min_max_range_fail() {
     assert_eq!(fields[2].params().text("max"), Some("20"));
 }
 
+#[test]
+fn size_rules_reject_conflicting_or_reversed_bounds() {
+    let validator = Validator::new();
+
+    for error in [
+        validator.value(&"", "length").unwrap_err(),
+        validator
+            .value(&"", "omitempty,length(exact=3,min=1)")
+            .unwrap_err(),
+        validator
+            .value(&"", "omitempty,length(min=3,max=1)")
+            .unwrap_err(),
+        validator.value(&5_i32, "range(min=10,max=1)").unwrap_err(),
+    ] {
+        assert!(matches!(error, Error::InvalidRuleExpression { .. }));
+    }
+}
+
 #[derive(Debug, Validate)]
 struct Comparisons {
     #[validate(gte = 0, lte = 130)]
@@ -211,6 +229,23 @@ fn email_url_regex_fail() {
     assert_eq!(fields[2].rule(), "uri");
     assert_eq!(fields[3].rule(), "regex");
     assert_eq!(fields[3].params().text("pattern"), Some("^[a-z0-9-]+$"));
+}
+
+#[test]
+fn email_rejects_local_dot_and_domain_label_boundaries() {
+    for email in [
+        ".user@example.com",
+        "user..name@example.com",
+        "user@-example.com",
+    ] {
+        let fields = Validator::new()
+            .value(&email, "email")
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), "email", "unexpectedly accepted {email}");
+    }
 }
 
 #[test]
@@ -486,6 +521,37 @@ fn rfc4122_uuid_rules_accept_uppercase_and_version_boundaries() {
 }
 
 #[test]
+fn lowercase_uuid4_and_uuid5_require_rfc_variant() {
+    let validator = Validator::new();
+
+    for (value, rule) in [
+        ("550e8400-e29b-41d4-0716-446655440000", "uuid4"),
+        ("987fbc97-4bed-5078-0f07-9141ba07c9f3", "uuid5"),
+    ] {
+        let fields = validator
+            .value(&value, rule)
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+        assert_eq!(fields[0].rule(), rule);
+    }
+}
+
+#[test]
+fn cidr_rules_preserve_address_prefix_and_network_semantics() {
+    let validator = Validator::new();
+
+    validator.value(&"192.168.0.1/24", "cidr").unwrap();
+    validator.value(&"2001:db8::1/32", "cidr,cidrv6").unwrap();
+    let fields = validator
+        .value(&"192.168.0.1/24", "cidrv4")
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(fields[0].rule(), "cidrv4");
+}
+
+#[test]
 fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
     let validator = Validator::new();
 
@@ -690,13 +756,319 @@ fn direct_native_collections_unique_rule_works() {
 
 #[test]
 fn unique_rejects_unsupported_json_array_elements() {
+    let error = Validator::new()
+        .value(&serde_json::json!([{ "id": 1 }]), "unique")
+        .unwrap_err();
+
+    assert!(matches!(error, Error::InvalidRuleExpression { .. }));
+}
+
+#[test]
+fn unique_preflight_rejects_scalar_behind_omitempty() {
+    let error = Validator::new()
+        .value(&0_i32, "omitempty,unique")
+        .unwrap_err();
+
+    assert!(matches!(error, Error::InvalidRuleExpression { .. }));
+}
+
+#[test]
+fn unique_treats_nan_values_as_distinct() {
+    Validator::new()
+        .value(&vec![f64::NAN, f64::NAN, 1.0], "unique")
+        .unwrap();
+}
+
+#[derive(Debug)]
+struct UniqueAccount {
+    email: String,
+    age: u32,
+    nickname: Option<String>,
+    created_at: std::time::SystemTime,
+}
+
+#[derive(Debug, Validate)]
+struct UniqueAccountVec {
+    #[validate(unique = "email")]
+    users: Vec<UniqueAccount>,
+}
+
+#[derive(Debug, Validate)]
+struct UniqueAccountArray {
+    #[validate(unique = "age")]
+    users: [UniqueAccount; 2],
+}
+
+#[derive(Debug, Validate)]
+struct UniqueAccountSlice<'a> {
+    #[validate(unique = "created_at")]
+    users: &'a [UniqueAccount],
+}
+
+#[derive(Debug, Validate)]
+struct UniqueOptionalField {
+    #[validate(unique = "nickname")]
+    users: Vec<UniqueAccount>,
+}
+
+#[derive(Debug)]
+struct UnsupportedUniqueKey;
+
+impl Value for UnsupportedUniqueKey {
+    fn kind(&self) -> Kind {
+        Kind::Other
+    }
+
+    fn required(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Debug)]
+struct UniqueUnsupportedItem {
+    value: UnsupportedUniqueKey,
+}
+
+#[derive(Debug, Validate)]
+struct UniqueUnsupportedField {
+    #[validate(unique = "value")]
+    items: Vec<UniqueUnsupportedItem>,
+}
+
+#[derive(Debug)]
+struct UniqueScalarItem {
+    enabled: bool,
+    balance: i64,
+    ratio: f64,
+}
+
+#[derive(Debug, Validate)]
+struct UniqueScalarFields {
+    #[validate(unique = "enabled")]
+    bools: Vec<UniqueScalarItem>,
+    #[validate(unique = "balance")]
+    ints: Vec<UniqueScalarItem>,
+    #[validate(unique = "ratio")]
+    floats: Vec<UniqueScalarItem>,
+}
+
+#[derive(Debug)]
+struct RawUniqueItem {
+    r#type: String,
+}
+
+#[derive(Debug, Validate)]
+struct RawUniqueItems {
+    #[validate(unique = "type")]
+    items: Vec<RawUniqueItem>,
+}
+
+fn unique_account(email: &str, age: u32, nickname: Option<&str>, second: u64) -> UniqueAccount {
+    UniqueAccount {
+        email: email.to_owned(),
+        age,
+        nickname: nickname.map(str::to_owned),
+        created_at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(second),
+    }
+}
+
+#[test]
+fn unique_field_supports_vec_array_and_slice() {
+    Validator::new()
+        .validate(&UniqueAccountVec {
+            users: vec![
+                unique_account("first@example.com", 1, Some("first"), 1),
+                unique_account("second@example.com", 2, Some("second"), 2),
+            ],
+        })
+        .unwrap();
+
+    Validator::new()
+        .validate(&UniqueAccountArray {
+            users: [
+                unique_account("same@example.com", 1, Some("first"), 1),
+                unique_account("same@example.com", 2, Some("second"), 2),
+            ],
+        })
+        .unwrap();
+
+    let users = [
+        unique_account("same@example.com", 1, Some("first"), 1),
+        unique_account("same@example.com", 1, Some("second"), 2),
+    ];
+    Validator::new()
+        .validate(&UniqueAccountSlice { users: &users })
+        .unwrap();
+}
+
+#[test]
+fn unique_field_supports_raw_identifier_members() {
     let fields = Validator::new()
-        .value(&serde_json::json!([{ "id": 1 }, { "id": 2 }]), "unique")
+        .validate(&RawUniqueItems {
+            items: vec![
+                RawUniqueItem {
+                    r#type: "same".to_owned(),
+                },
+                RawUniqueItem {
+                    r#type: "same".to_owned(),
+                },
+            ],
+        })
         .unwrap_err()
         .into_fields()
         .unwrap();
 
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].params().text("field"), Some("type"));
+}
+
+#[test]
+fn unique_field_reports_collection_error_and_params() {
+    let fields = Validator::new()
+        .validate(&UniqueAccountVec {
+            users: vec![
+                unique_account("same@example.com", 1, Some("first"), 1),
+                unique_account("same@example.com", 2, Some("second"), 2),
+            ],
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "UniqueAccountVec.users");
     assert_eq!(fields[0].rule(), "unique");
+    assert_eq!(fields[0].reason(), "unique");
+    assert_eq!(fields[0].params().text("field"), Some("email"));
+}
+
+#[test]
+fn unique_field_treats_none_as_one_key() {
+    Validator::new()
+        .validate(&UniqueOptionalField {
+            users: vec![
+                unique_account("first@example.com", 1, None, 1),
+                unique_account("second@example.com", 2, Some("name"), 2),
+            ],
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&UniqueOptionalField {
+            users: vec![
+                unique_account("first@example.com", 1, None, 1),
+                unique_account("second@example.com", 2, None, 2),
+            ],
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].params().text("field"), Some("nickname"));
+}
+
+#[test]
+fn unique_field_rejects_duplicate_numeric_and_time_keys() {
+    let numeric = Validator::new()
+        .validate(&UniqueAccountArray {
+            users: [
+                unique_account("first@example.com", 1, Some("first"), 1),
+                unique_account("second@example.com", 1, Some("second"), 2),
+            ],
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(numeric[0].params().text("field"), Some("age"));
+
+    let users = [
+        unique_account("first@example.com", 1, Some("first"), 1),
+        unique_account("second@example.com", 2, Some("second"), 1),
+    ];
+    let time = Validator::new()
+        .validate(&UniqueAccountSlice { users: &users })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(time[0].params().text("field"), Some("created_at"));
+}
+
+#[test]
+fn unique_field_supports_bool_signed_integer_and_float_keys() {
+    let error = Validator::new()
+        .validate(&UniqueScalarFields {
+            bools: vec![
+                UniqueScalarItem {
+                    enabled: true,
+                    balance: 1,
+                    ratio: 1.0,
+                },
+                UniqueScalarItem {
+                    enabled: true,
+                    balance: 2,
+                    ratio: 2.0,
+                },
+            ],
+            ints: vec![
+                UniqueScalarItem {
+                    enabled: true,
+                    balance: -1,
+                    ratio: 1.0,
+                },
+                UniqueScalarItem {
+                    enabled: false,
+                    balance: -1,
+                    ratio: 2.0,
+                },
+            ],
+            floats: vec![
+                UniqueScalarItem {
+                    enabled: true,
+                    balance: 1,
+                    ratio: -0.0,
+                },
+                UniqueScalarItem {
+                    enabled: false,
+                    balance: 2,
+                    ratio: 0.0,
+                },
+            ],
+        })
+        .unwrap_err();
+    let fields = error.into_fields().unwrap();
+
+    assert_eq!(fields.len(), 3);
+    assert_eq!(fields[0].params().text("field"), Some("enabled"));
+    assert_eq!(fields[1].params().text("field"), Some("balance"));
+    assert_eq!(fields[2].params().text("field"), Some("ratio"));
+}
+
+#[test]
+fn direct_unique_field_requires_field_context() {
+    let error = Validator::new()
+        .value(
+            &vec![serde_json::json!({ "email": "team@example.com" })],
+            "unique=email",
+        )
+        .unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::MissingFieldContext { name } if name == "unique"
+    ));
+}
+
+#[test]
+fn unique_field_rejects_unsupported_key_kind_as_configuration_error() {
+    let error = Validator::new()
+        .validate(&UniqueUnsupportedField {
+            items: vec![UniqueUnsupportedItem {
+                value: UnsupportedUniqueKey,
+            }],
+        })
+        .unwrap_err();
+
+    assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
 #[derive(Debug, Validate)]
@@ -814,12 +1186,34 @@ fn json_datetime_rules_fail() {
 }
 
 #[test]
+fn datetime_rejects_empty_fractional_seconds() {
+    let fields = Validator::new()
+        .value(&"2026-07-08T12:30:00.Z", "datetime")
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields[0].rule(), "datetime");
+}
+
+#[test]
 fn mac_accepts_common_notations() {
     let validator = Validator::new();
 
     validator.value(&"01:23:45:67:89:ab", "mac").unwrap();
     validator.value(&"01-23-45-67-89-ab", "mac").unwrap();
     validator.value(&"0123.4567.89ab", "mac").unwrap();
+
+    for value in [
+        "02:00:5e:10:00:00:00:01",
+        "02-00-5e-10-00-00-00-01",
+        "0200.5e10.0000.0001",
+        "00:00:00:00:fe:80:00:00:00:00:00:00:02:00:5e:10:00:00:00:01",
+        "00-00-00-00-fe-80-00-00-00-00-00-00-02-00-5e-10-00-00-00-01",
+        "0000.0000.fe80.0000.0000.0000.0200.5e10.0000.0001",
+    ] {
+        validator.value(&value, "mac").unwrap();
+    }
 }
 
 #[test]

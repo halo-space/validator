@@ -1,0 +1,5 @@
+error: unique=field only supports a direct element field
+  --> tests/ui/unique_field_path.rs:10:25
+   |
+10 |     #[validate(unique = "profile.email")]
+   |                         ^^^^^^^^^^^^^^^

@@ -53,7 +53,7 @@ impl Registry {
     }
 
     fn contains(&self, name: &str) -> bool {
-        name == "omitempty" || self.values.contains_key(name)
+        CONTROL_NAMES.contains(&name) || self.values.contains_key(name)
     }
 
     #[cfg(test)]
@@ -70,6 +70,16 @@ impl Registry {
             .filter_map(|(name, entry)| matches!(entry, Entry::Alias(_)).then_some(name.as_str()))
     }
 }
+
+const CONTROL_NAMES: &[&str] = &[
+    "alias",
+    "check",
+    "dive",
+    "keys",
+    "nested",
+    "omitempty",
+    "values",
+];
 
 fn validate_name(name: &str) -> Result<(), String> {
     let valid = !name.is_empty()

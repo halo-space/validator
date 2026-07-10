@@ -14,6 +14,8 @@ mod value;
 
 pub use access::{Access, FieldRef};
 #[doc(hidden)]
+pub use access::{Items, Projection};
+#[doc(hidden)]
 pub use context::Context;
 pub use error::{Error, FieldError};
 pub use field::Field;
@@ -36,6 +38,11 @@ pub(crate) use spec::{Expr, parse_expression};
 pub trait Rule: Send + Sync {
     fn signature(&self) -> Signature {
         Signature::none()
+    }
+
+    /// Validates parameter semantics without deciding whether field data passes.
+    fn validate_params(&self, _field: &Field<'_>) -> Result<(), Error> {
+        Ok(())
     }
 
     fn validates_none(&self) -> bool {

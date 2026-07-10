@@ -1,0 +1,7 @@
+error: unique=field requires a Vec, array, or slice field
+  --> tests/ui/unique_field_invalid_container.rs:10:17
+   |
+10 | #[derive(Debug, Validate)]
+   |                 ^^^^^^^^
+   |
+   = note: this error originates in the derive macro `Validate` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -34,6 +34,7 @@ pub(super) fn satisfies(
     limit_name: &str,
     relation: Relation,
 ) -> Result<bool, Error> {
+    validate_satisfies(field, limit_name)?;
     let limit = field.params().text(limit_name);
 
     if field.value().kind() == Kind::Time {
@@ -44,126 +45,277 @@ pub(super) fn satisfies(
         return Ok(limit_name == "value" && time_satisfies_now(field, relation));
     }
 
-    Ok(limit.is_some_and(|limit| value_satisfies(field, limit, relation)))
+    let limit = limit.ok_or_else(|| Error::InvalidRuleExpression {
+        expression: limit_name.to_owned(),
+        reason: format!("rule requires exactly one '{limit_name}' parameter for this field type"),
+    })?;
+
+    value_satisfies(field, limit_name, limit, relation)
 }
 
 pub(super) fn equals(field: &Field<'_>) -> Result<bool, Error> {
-    equality(field, "eq").map(|value| value.unwrap_or(false))
+    equality(field, "eq")
 }
 
 pub(super) fn not_equals(field: &Field<'_>) -> Result<bool, Error> {
-    equality(field, "ne").map(|value| value.is_some_and(|equal| !equal))
+    equality(field, "ne").map(|equal| !equal)
 }
 
-fn equality(field: &Field<'_>, rule: &str) -> Result<Option<bool>, Error> {
+fn equality(field: &Field<'_>, rule: &str) -> Result<bool, Error> {
+    validate_equality(field, rule)?;
+
     if field.value().kind() == Kind::Time {
-        if let Some(value) = field.params().text("value") {
-            return Err(invalid_time_parameter("value", value));
+        unreachable!("time equality is rejected during parameter validation");
+    }
+
+    value_equals(
+        field,
+        field
+            .params()
+            .text("value")
+            .expect("value parameter is checked above"),
+    )
+}
+
+pub(super) fn validate_equality(field: &Field<'_>, rule: &str) -> Result<(), Error> {
+    let value = field.params().text("value");
+    match field.value().kind() {
+        Kind::Time => {
+            if let Some(value) = value {
+                Err(invalid_time_parameter("value", value))
+            } else {
+                Err(invalid_time_equality(rule))
+            }
         }
-        return Err(invalid_time_equality(rule));
+        Kind::String | Kind::Option => value.map_or_else(
+            || {
+                Err(Error::InvalidRuleExpression {
+                    expression: rule.to_owned(),
+                    reason: "rule requires exactly one 'value' parameter".to_owned(),
+                })
+            },
+            |_| Ok(()),
+        ),
+        Kind::Bool => parse_limit("value", value, |value| value.parse::<bool>(), "boolean"),
+        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Int(_) => {
+            parse_limit("value", value, str::parse::<i128>, "signed integer")
+        }
+        Kind::Uint(_) => parse_limit("value", value, str::parse::<u128>, "unsigned integer"),
+        Kind::Float(FloatKind::F32) => parse_limit("value", value, str::parse::<f32>, "f32"),
+        Kind::Float(FloatKind::F64) => parse_limit("value", value, str::parse::<f64>, "f64"),
+        Kind::Other => Err(invalid_kind("value", field.value().kind())),
     }
+}
 
-    if field.params().text("value").is_none() {
-        return Err(Error::InvalidRuleExpression {
-            expression: rule.to_owned(),
-            reason: "rule requires exactly one 'value' parameter".to_owned(),
-        });
+pub(super) fn validate_satisfies(field: &Field<'_>, name: &str) -> Result<(), Error> {
+    let value = field.params().text(name);
+    match field.value().kind() {
+        Kind::Time => match value {
+            Some(value) => Err(invalid_time_parameter(name, value)),
+            None if name == "value" => Ok(()),
+            None => Err(missing_limit(name)),
+        },
+        Kind::String | Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Int(_) => {
+            parse_limit(name, value, str::parse::<i128>, "signed integer")
+        }
+        Kind::Uint(_) => parse_limit(name, value, str::parse::<u128>, "unsigned integer"),
+        Kind::Float(FloatKind::F32) => parse_limit(name, value, str::parse::<f32>, "f32"),
+        Kind::Float(FloatKind::F64) => parse_limit(name, value, str::parse::<f64>, "f64"),
+        Kind::Option => {
+            let Some(value) = value else {
+                return Ok(());
+            };
+            if value.parse::<i128>().is_ok()
+                || value.parse::<u128>().is_ok()
+                || value.parse::<f64>().is_ok()
+            {
+                Ok(())
+            } else {
+                Err(invalid_limit(name, value, "number"))
+            }
+        }
+        Kind::Bool | Kind::Other => Err(invalid_kind(name, field.value().kind())),
     }
+}
 
-    Ok(field
+pub(super) fn validate_bounds(field: &Field<'_>, rule: &str) -> Result<(), Error> {
+    let min = field
         .params()
-        .text("value")
-        .and_then(|value| value_equals(field, value)))
-}
+        .text("min")
+        .ok_or_else(|| missing_limit("min"))?;
+    let max = field
+        .params()
+        .text("max")
+        .ok_or_else(|| missing_limit("max"))?;
+    let ordered = match field.value().kind() {
+        Kind::String | Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Int(_) => {
+            signed_limit("min", min)? <= signed_limit("max", max)?
+        }
+        Kind::Uint(_) => unsigned_limit("min", min)? <= unsigned_limit("max", max)?,
+        Kind::Float(FloatKind::F32) => f32_limit("min", min)? <= f32_limit("max", max)?,
+        Kind::Float(FloatKind::F64) => f64_limit("min", min)? <= f64_limit("max", max)?,
+        Kind::Option => unknown_bounds_are_ordered(min, max),
+        Kind::Bool | Kind::Time | Kind::Other => {
+            return Err(invalid_kind("min", field.value().kind()));
+        }
+    };
 
-fn value_equals(field: &Field<'_>, limit: &str) -> Option<bool> {
-    match field.value().kind() {
-        Kind::String => field.value().string().map(|value| value == limit),
-        Kind::Bool => limit
-            .parse::<bool>()
-            .ok()
-            .and_then(|limit| field.value().boolean().map(|value| value == limit)),
-        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => {
-            let limit = signed_limit(limit)?;
-            field.value().len().map(|length| length as i128 == limit)
-        }
-        Kind::Int(_) => {
-            let limit = signed_limit(limit)?;
-            field.value().int().map(|value| value == limit)
-        }
-        Kind::Uint(_) => {
-            let limit = unsigned_limit(limit)?;
-            field.value().uint().map(|value| value == limit)
-        }
-        Kind::Float(FloatKind::F32) => {
-            let limit = f32_limit(limit)?;
-            field.value().float().map(|value| value == limit)
-        }
-        Kind::Float(FloatKind::F64) => {
-            let limit = f64_limit(limit)?;
-            field.value().float().map(|value| value == limit)
-        }
-        Kind::Option | Kind::Time | Kind::Other => None,
+    if ordered {
+        Ok(())
+    } else {
+        Err(Error::InvalidRuleExpression {
+            expression: rule.to_owned(),
+            reason: format!("minimum '{min}' must not be greater than maximum '{max}'"),
+        })
     }
 }
 
-fn value_satisfies(field: &Field<'_>, limit: &str, relation: Relation) -> bool {
+fn unknown_bounds_are_ordered(min: &str, max: &str) -> bool {
+    if let (Ok(min), Ok(max)) = (min.parse::<i128>(), max.parse::<i128>()) {
+        return min <= max;
+    }
+    if let (Ok(min), Ok(max)) = (min.parse::<u128>(), max.parse::<u128>()) {
+        return min <= max;
+    }
+
+    matches!(
+        (min.parse::<f64>(), max.parse::<f64>()),
+        (Ok(min), Ok(max)) if min <= max
+    )
+}
+
+fn parse_limit<T, E>(
+    name: &str,
+    value: Option<&str>,
+    parse: impl FnOnce(&str) -> Result<T, E>,
+    expected: &str,
+) -> Result<(), Error> {
+    let value = value.ok_or_else(|| missing_limit(name))?;
+    parse(value)
+        .map(|_| ())
+        .map_err(|_| invalid_limit(name, value, expected))
+}
+
+fn missing_limit(name: &str) -> Error {
+    Error::InvalidRuleExpression {
+        expression: name.to_owned(),
+        reason: format!("rule requires exactly one '{name}' parameter for this field type"),
+    }
+}
+
+fn value_equals(field: &Field<'_>, limit: &str) -> Result<bool, Error> {
     match field.value().kind() {
-        Kind::String => {
-            let Some(limit) = signed_limit(limit) else {
-                return false;
-            };
+        Kind::String => field
+            .value()
+            .string()
+            .map(|value| value == limit)
+            .ok_or_else(|| invalid_kind("value", field.value().kind())),
+        Kind::Bool => {
+            let limit = limit
+                .parse::<bool>()
+                .map_err(|_| invalid_limit("value", limit, "boolean"))?;
             field
                 .value()
-                .len()
-                .is_some_and(|length| signed_satisfies(length as i128, limit, relation))
+                .boolean()
+                .map(|value| value == limit)
+                .ok_or_else(|| invalid_kind("value", field.value().kind()))
         }
         Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => {
-            let Some(limit) = signed_limit(limit) else {
-                return false;
-            };
+            let limit = signed_limit("value", limit)?;
             field
                 .value()
                 .len()
-                .is_some_and(|length| signed_satisfies(length as i128, limit, relation))
+                .map(|length| length as i128 == limit)
+                .ok_or_else(|| invalid_kind("value", field.value().kind()))
         }
         Kind::Int(_) => {
-            let Some(limit) = signed_limit(limit) else {
-                return false;
-            };
+            let limit = signed_limit("value", limit)?;
             field
                 .value()
                 .int()
-                .is_some_and(|value| signed_satisfies(value, limit, relation))
+                .map(|value| value == limit)
+                .ok_or_else(|| invalid_kind("value", field.value().kind()))
         }
         Kind::Uint(_) => {
-            let Some(limit) = unsigned_limit(limit) else {
-                return false;
-            };
+            let limit = unsigned_limit("value", limit)?;
             field
                 .value()
                 .uint()
-                .is_some_and(|value| unsigned_satisfies(value, limit, relation))
+                .map(|value| value == limit)
+                .ok_or_else(|| invalid_kind("value", field.value().kind()))
         }
         Kind::Float(FloatKind::F32) => {
-            let Some(limit) = f32_limit(limit) else {
-                return false;
-            };
+            let limit = f32_limit("value", limit)?;
             field
                 .value()
                 .float()
-                .is_some_and(|value| float_satisfies(value, limit, relation))
+                .map(|value| value == limit)
+                .ok_or_else(|| invalid_kind("value", field.value().kind()))
         }
         Kind::Float(FloatKind::F64) => {
-            let Some(limit) = f64_limit(limit) else {
-                return false;
-            };
+            let limit = f64_limit("value", limit)?;
             field
                 .value()
                 .float()
-                .is_some_and(|value| float_satisfies(value, limit, relation))
+                .map(|value| value == limit)
+                .ok_or_else(|| invalid_kind("value", field.value().kind()))
         }
-        Kind::Bool | Kind::Option | Kind::Time | Kind::Other => false,
+        Kind::Option | Kind::Time | Kind::Other => Err(invalid_kind("value", field.value().kind())),
+    }
+}
+
+fn value_satisfies(
+    field: &Field<'_>,
+    name: &str,
+    limit: &str,
+    relation: Relation,
+) -> Result<bool, Error> {
+    match field.value().kind() {
+        Kind::String => {
+            let limit = signed_limit(name, limit)?;
+            Ok(field
+                .value()
+                .len()
+                .is_some_and(|length| signed_satisfies(length as i128, limit, relation)))
+        }
+        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => {
+            let limit = signed_limit(name, limit)?;
+            Ok(field
+                .value()
+                .len()
+                .is_some_and(|length| signed_satisfies(length as i128, limit, relation)))
+        }
+        Kind::Int(_) => {
+            let limit = signed_limit(name, limit)?;
+            Ok(field
+                .value()
+                .int()
+                .is_some_and(|value| signed_satisfies(value, limit, relation)))
+        }
+        Kind::Uint(_) => {
+            let limit = unsigned_limit(name, limit)?;
+            Ok(field
+                .value()
+                .uint()
+                .is_some_and(|value| unsigned_satisfies(value, limit, relation)))
+        }
+        Kind::Float(FloatKind::F32) => {
+            let limit = f32_limit(name, limit)?;
+            Ok(field
+                .value()
+                .float()
+                .is_some_and(|value| float_satisfies(value, limit, relation)))
+        }
+        Kind::Float(FloatKind::F64) => {
+            let limit = f64_limit(name, limit)?;
+            Ok(field
+                .value()
+                .float()
+                .is_some_and(|value| float_satisfies(value, limit, relation)))
+        }
+        Kind::Bool | Kind::Option | Kind::Time | Kind::Other => {
+            Err(invalid_kind(name, field.value().kind()))
+        }
     }
 }
 
@@ -199,20 +351,41 @@ fn ordering_satisfies(ordering: Ordering, relation: Relation) -> bool {
     }
 }
 
-fn signed_limit(value: &str) -> Option<i128> {
-    value.parse().ok()
+fn signed_limit(name: &str, value: &str) -> Result<i128, Error> {
+    value
+        .parse()
+        .map_err(|_| invalid_limit(name, value, "signed integer"))
 }
 
-fn unsigned_limit(value: &str) -> Option<u128> {
-    value.parse().ok()
+fn unsigned_limit(name: &str, value: &str) -> Result<u128, Error> {
+    value
+        .parse()
+        .map_err(|_| invalid_limit(name, value, "unsigned integer"))
 }
 
-fn f32_limit(value: &str) -> Option<f64> {
-    value.parse::<f32>().ok().map(f64::from)
+fn f32_limit(name: &str, value: &str) -> Result<f64, Error> {
+    value
+        .parse::<f32>()
+        .map(f64::from)
+        .map_err(|_| invalid_limit(name, value, "f32"))
 }
 
-fn f64_limit(value: &str) -> Option<f64> {
-    value.parse().ok()
+fn f64_limit(name: &str, value: &str) -> Result<f64, Error> {
+    value.parse().map_err(|_| invalid_limit(name, value, "f64"))
+}
+
+fn invalid_limit(name: &str, value: &str, expected: &str) -> Error {
+    Error::InvalidRuleExpression {
+        expression: format!("{name}={value}"),
+        reason: format!("parameter '{name}' must be a valid {expected}"),
+    }
+}
+
+fn invalid_kind(name: &str, kind: Kind) -> Error {
+    Error::InvalidRuleExpression {
+        expression: name.to_owned(),
+        reason: format!("field kind {kind:?} does not support this comparison"),
+    }
 }
 
 fn invalid_time_parameter(name: &str, value: &str) -> Error {

@@ -1,3 +1,5 @@
+extern crate self as validator;
+
 mod core;
 pub mod i18n;
 mod rules;
@@ -9,8 +11,8 @@ use std::fmt;
 use std::sync::{Arc, RwLock};
 
 use self::core::{
-    Access, CAPACITY, Cache, Context, Expr, FieldErrorParts, Flow, Group, RawParams, Registry,
-    Spec, parse_expression,
+    Access, CAPACITY, Cache, Context, Expr, FieldErrorParts, Flow, Group, Items, RawParams,
+    Registry, Spec, parse_expression,
 };
 pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
@@ -22,7 +24,7 @@ pub use validator_derive::Validate;
 
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::core::{Access, Context, FieldRef, RawParams, Spec};
+    pub use crate::core::{Access, Context, FieldRef, Projection, RawParams, Spec};
 }
 
 pub mod prelude {
@@ -32,13 +34,21 @@ pub mod prelude {
     };
 }
 
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+struct SpecKey {
+    generation: u64,
+    name: String,
+    params: RawParams,
+    items: bool,
+}
+
 pub struct Validator {
     registry: Registry,
     schema: Option<Schema>,
     generation: u64,
     expression_cache: RwLock<Cache<String, Arc<Vec<Expr>>>>,
     compiled_cache: RwLock<Cache<(u64, String), Arc<Group>>>,
-    spec_cache: RwLock<Cache<(u64, String, RawParams), Arc<Group>>>,
+    spec_cache: RwLock<Cache<SpecKey, Arc<Group>>>,
     schema_cache: RwLock<Cache<(schema::SchemaId, u64), Arc<Tree>>>,
 }
 
@@ -103,6 +113,23 @@ impl Validator {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
         let tree = self.schema_tree(schema)?;
 
+        self.validate_data(&tree, value)
+    }
+
+    pub fn validate_serde<T>(&self, value: &T) -> Result<(), Error>
+    where
+        T: serde::Serialize + ?Sized,
+    {
+        let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
+        let tree = self.schema_tree(schema)?;
+        let data = serde_json::to_value(value).map_err(|error| Error::InvalidData {
+            reason: error.to_string(),
+        })?;
+
+        self.validate_data(&tree, &data)
+    }
+
+    fn validate_data(&self, tree: &Tree, value: &serde_json::Value) -> Result<(), Error> {
         let mut errors = Vec::new();
         let context = Context::new();
         tree.validate(&context, &mut errors, value)?;
@@ -112,17 +139,6 @@ impl Validator {
         } else {
             Err(Error::failed(errors))
         }
-    }
-
-    pub fn validate_serde<T>(&self, value: &T) -> Result<(), Error>
-    where
-        T: serde::Serialize + ?Sized,
-    {
-        let data = serde_json::to_value(value).map_err(|error| Error::InvalidData {
-            reason: error.to_string(),
-        })?;
-
-        self.validate_map(&data)
     }
 
     fn bump_generation(&mut self) {
@@ -204,12 +220,13 @@ impl Validator {
         Ok(tree)
     }
 
-    fn compile_spec(&self, spec: Spec) -> Result<Arc<Group>, Error> {
-        let key = (
-            self.generation,
-            spec.name().to_owned(),
-            spec.params().clone(),
-        );
+    fn compile_spec(&self, spec: Spec, items: bool) -> Result<Arc<Group>, Error> {
+        let key = SpecKey {
+            generation: self.generation,
+            name: spec.name().to_owned(),
+            params: spec.params().clone(),
+            items,
+        };
         if let Some(group) = self
             .spec_cache
             .read()
@@ -220,7 +237,11 @@ impl Validator {
             return Ok(group);
         }
 
-        let group = Arc::new(Group::compile_spec(&spec, &self.registry)?);
+        let group = Arc::new(if items {
+            Group::compile_spec_with_items(&spec, &self.registry)?
+        } else {
+            Group::compile_spec(&spec, &self.registry)?
+        });
         let mut cache = self
             .spec_cache
             .write()
@@ -231,6 +252,39 @@ impl Validator {
 
         cache.insert(key, group.clone());
         Ok(group)
+    }
+
+    #[doc(hidden)]
+    pub fn __validate_params<V, A>(
+        &self,
+        target: FieldTarget<'_>,
+        value: &V,
+        spec: Spec,
+        context: &Context,
+        access: &A,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        A: Access,
+    {
+        let group = self.compile_spec(spec, false)?;
+        group.validate_spec(target, value, context, access)
+    }
+
+    #[doc(hidden)]
+    pub fn __validate_type_params<V, A>(
+        &self,
+        target: FieldTarget<'_>,
+        spec: Spec,
+        context: &Context,
+        access: &A,
+    ) -> Result<(), Error>
+    where
+        V: Value,
+        A: Access,
+    {
+        let group = self.compile_spec(spec, false)?;
+        group.validate_type_spec::<V, A>(target, context, access)
     }
 
     #[doc(hidden)]
@@ -247,9 +301,46 @@ impl Validator {
         V: Value,
         A: Access,
     {
-        let group = self.compile_spec(spec)?;
+        let group = self.compile_spec(spec, false)?;
         group
-            .execute_spec(errors, target, value, context, access)
+            .run_spec(errors, target, value, context, access)
+            .map(|flow| flow == Flow::Stop)
+    }
+
+    #[doc(hidden)]
+    pub fn __validate_item_params<A, I>(
+        &self,
+        target: FieldTarget<'_>,
+        spec: Spec,
+        context: &Context,
+        access: &A,
+        items: &I,
+    ) -> Result<(), Error>
+    where
+        A: Access,
+        I: Items + Value,
+    {
+        let group = self.compile_spec(spec, true)?;
+        group.validate_spec_with_items(target, items, context, access, items)
+    }
+
+    #[doc(hidden)]
+    pub fn __validate_items<A, I>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        spec: Spec,
+        context: &Context,
+        access: &A,
+        items: &I,
+    ) -> Result<bool, Error>
+    where
+        A: Access,
+        I: Items + Value,
+    {
+        let group = self.compile_spec(spec, true)?;
+        group
+            .run_spec_with_items(errors, target, items, context, access, items)
             .map(|flow| flow == Flow::Stop)
     }
 
@@ -361,10 +452,12 @@ impl<'a> FieldTarget<'a> {
     }
 
     pub fn key<K: fmt::Display>(&self, key: K) -> Self {
+        let key = serde_json::to_string(&key.to_string())
+            .expect("serializing a map key string must not fail");
         Self {
             type_name: self.type_name.clone(),
-            field_name: Cow::Owned(format!("{}[\"{key}\"]", self.field_name)),
-            struct_field_name: Cow::Owned(format!("{}[\"{key}\"]", self.struct_field_name)),
+            field_name: Cow::Owned(format!("{}[{key}]", self.field_name)),
+            struct_field_name: Cow::Owned(format!("{}[{key}]", self.struct_field_name)),
         }
     }
 

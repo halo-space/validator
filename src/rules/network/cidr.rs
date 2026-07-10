@@ -1,4 +1,4 @@
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 
 use crate::{Field, Rule};
 
@@ -22,7 +22,7 @@ impl Rule for Cidrv4 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| matches!(parse(value.as_ref()), Some(Kind::V4))))
+            .is_some_and(|value| matches!(parse(value.as_ref()), Some(Kind::V4 { network: true }))))
     }
 }
 
@@ -39,7 +39,7 @@ impl Rule for Cidrv6 {
 }
 
 enum Kind {
-    V4,
+    V4 { network: bool },
     V6,
 }
 
@@ -48,8 +48,18 @@ fn parse(value: &str) -> Option<Kind> {
     let prefix = prefix.parse::<u8>().ok()?;
 
     match addr.parse::<IpAddr>().ok()? {
-        IpAddr::V4(_) if prefix <= 32 && addr.parse::<Ipv4Addr>().is_ok() => Some(Kind::V4),
-        IpAddr::V6(_) if prefix <= 128 && addr.parse::<Ipv6Addr>().is_ok() => Some(Kind::V6),
+        IpAddr::V4(addr) if prefix <= 32 => {
+            let mask = if prefix == 0 {
+                0
+            } else {
+                u32::MAX << (32 - prefix)
+            };
+            let addr = u32::from(addr);
+            Some(Kind::V4 {
+                network: addr & mask == addr,
+            })
+        }
+        IpAddr::V6(_) if prefix <= 128 => Some(Kind::V6),
         _ => None,
     }
 }

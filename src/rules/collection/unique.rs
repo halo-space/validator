@@ -1,14 +1,60 @@
-use crate::{Field, Rule};
+use crate::{Error, Field, Kind, Rule, Signature};
 
 #[derive(Debug)]
 pub struct Unique;
 
 impl Rule for Unique {
+    fn signature(&self) -> Signature {
+        Signature::optional_text("field").with_items()
+    }
+
+    fn validate_params(&self, field: &Field<'_>) -> Result<(), Error> {
+        let kind = field.value().kind();
+        let supported = if field.params().text("field").is_some() {
+            matches!(kind, Kind::Vec | Kind::Array | Kind::Slice | Kind::Option)
+        } else {
+            matches!(
+                kind,
+                Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Option
+            )
+        };
+
+        if supported {
+            Ok(())
+        } else {
+            Err(invalid_kind(kind, field.params().text("field").is_some()))
+        }
+    }
+
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
-        Ok(field
+        if let Some(name) = field.params().text("field") {
+            if !matches!(field.value().kind(), Kind::Vec | Kind::Array | Kind::Slice) {
+                return Err(invalid_kind(field.value().kind(), true));
+            }
+            let items = field.items().ok_or_else(|| Error::MissingFieldContext {
+                name: "unique".to_owned(),
+            })?;
+            return super::fields_are_unique(items, name);
+        }
+
+        let items = field
             .value()
             .array_items()
             .or_else(|| field.value().map_values())
-            .is_some_and(super::values_are_unique))
+            .ok_or_else(|| invalid_kind(field.value().kind(), false))?;
+        super::values_are_unique(items)
+    }
+}
+
+fn invalid_kind(kind: Kind, projection: bool) -> Error {
+    let reason = if projection {
+        format!("field projection requires a Vec, array, or slice; found {kind:?}")
+    } else {
+        format!("field kind {kind:?} does not support collection uniqueness")
+    };
+
+    Error::InvalidRuleExpression {
+        expression: "unique".to_owned(),
+        reason,
     }
 }
