@@ -13,22 +13,14 @@ impl Rule for Uri {
 }
 
 fn valid(value: &str) -> bool {
-    let Some((scheme, rest)) = value.split_once(':') else {
+    let value = value.split_once('#').map_or(value, |(value, _)| value);
+    if value.is_empty() || value.chars().any(char::is_whitespace) {
         return false;
-    };
+    }
 
-    !scheme.is_empty()
-        && valid_scheme(scheme)
-        && !rest.is_empty()
-        && !rest.chars().any(char::is_whitespace)
-}
+    if value.starts_with('/') {
+        return value.parse::<http::Uri>().is_ok();
+    }
 
-fn valid_scheme(value: &str) -> bool {
-    let mut chars = value.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-
-    first.is_ascii_alphabetic()
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '.'))
+    url::Url::parse(value).is_ok()
 }

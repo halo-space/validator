@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
 use super::{
-    Aliases, Context, Error, Expr, Field, FieldError, Fields, Namespace, Params, Rule, Rules, Value,
+    Access, Context, Entry, Error, Expr, Field, FieldError, Namespace, Params, Registry, Rule,
+    Value,
 };
-use crate::{FieldTarget, field_error, field_rule_passes, is_field_rule, namespace_for};
+use crate::{FieldTarget, field_error, namespace_for};
 
 struct Exec<'a, 'b> {
     context: &'a Context,
     display_rule: Option<&'a str>,
-    fields: Option<&'a Fields<'b>>,
+    access: Option<&'b dyn Access>,
 }
 
 #[derive(Clone)]
@@ -33,44 +34,52 @@ enum Check {
         name: String,
         group: Arc<Group>,
     },
-    Field {
-        name: String,
-        params: Params,
-    },
     OmitEmpty,
 }
 
-enum CompileMode {
-    Direct,
-    Field,
-    Alias,
+#[derive(Clone, Copy)]
+struct CompileMode {
+    fields: bool,
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum Flow {
+pub(crate) enum Flow {
     Continue,
     Stop,
 }
 
+enum CheckResult {
+    Pass,
+    Fail,
+    Stop,
+}
+
 impl Group {
-    pub(crate) fn compile(exprs: &[Expr], rules: &Rules, aliases: &Aliases) -> Result<Self, Error> {
-        Self::build(exprs, rules, aliases, CompileMode::Direct)
+    pub(crate) fn compile(exprs: &[Expr], registry: &Registry) -> Result<Self, Error> {
+        Self::build(
+            exprs,
+            registry,
+            CompileMode { fields: false },
+            &mut Vec::new(),
+        )
     }
 
-    pub(crate) fn compile_with_fields(
-        exprs: &[Expr],
-        rules: &Rules,
-        aliases: &Aliases,
-    ) -> Result<Self, Error> {
-        Self::build(exprs, rules, aliases, CompileMode::Field)
+    pub(crate) fn compile_with_fields(exprs: &[Expr], registry: &Registry) -> Result<Self, Error> {
+        Self::build(
+            exprs,
+            registry,
+            CompileMode { fields: true },
+            &mut Vec::new(),
+        )
     }
 
-    pub(crate) fn compile_alias(
-        exprs: &[Expr],
-        rules: &Rules,
-        aliases: &Aliases,
-    ) -> Result<Self, Error> {
-        Self::build(exprs, rules, aliases, CompileMode::Alias)
+    pub(crate) fn compile_spec(spec: &super::Spec, registry: &Registry) -> Result<Self, Error> {
+        Self::build(
+            &[Expr::Single(spec.clone())],
+            registry,
+            CompileMode { fields: true },
+            &mut Vec::new(),
+        )
     }
 
     pub(crate) fn execute<V: Value>(
@@ -81,39 +90,45 @@ impl Group {
         context: &Context,
     ) -> Result<(), Error> {
         self.execute_with_display(errors, target, value, context, None, None)
+            .map(|_| ())
     }
 
-    pub(crate) fn execute_with_fields<'a, V, F>(
+    pub(crate) fn execute_spec<V, A>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
         context: &Context,
-        fields: F,
+        access: &A,
+    ) -> Result<Flow, Error>
+    where
+        V: Value,
+        A: Access,
+    {
+        self.execute_with_display(errors, target, value, context, None, Some(access))
+    }
+
+    pub(crate) fn execute_with_fields<V, A>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context,
+        access: &A,
     ) -> Result<(), Error>
     where
         V: Value,
-        F: Fn(&str) -> Option<&'a dyn Value> + 'a,
+        A: Access,
     {
-        self.execute_with_display(errors, target, value, context, None, Some(&fields))
-    }
-
-    pub(crate) fn execute_alias<V: Value>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        alias: &str,
-        context: &Context,
-    ) -> Result<(), Error> {
-        self.execute_with_display(errors, target, value, context, Some(alias), None)
+        self.execute_with_display(errors, target, value, context, None, Some(access))
+            .map(|_| ())
     }
 
     fn build(
         exprs: &[Expr],
-        rules: &Rules,
-        aliases: &Aliases,
+        registry: &Registry,
         mode: CompileMode,
+        aliases: &mut Vec<String>,
     ) -> Result<Self, Error> {
         let mut steps = Vec::new();
 
@@ -122,9 +137,9 @@ impl Group {
                 steps.push(Step::Check(Self::build_check(
                     spec.name(),
                     spec.params(),
-                    rules,
-                    aliases,
+                    registry,
                     &mode,
+                    aliases,
                 )?));
                 continue;
             }
@@ -133,7 +148,7 @@ impl Group {
                 let checks = alternatives
                     .iter()
                     .map(|spec| {
-                        Self::build_check(spec.name(), spec.params(), rules, aliases, &mode)
+                        Self::build_check(spec.name(), spec.params(), registry, &mode, aliases)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 let reason = alternatives
@@ -150,43 +165,54 @@ impl Group {
 
     fn build_check(
         name: &str,
-        params: &Params,
-        rules: &Rules,
-        aliases: &Aliases,
+        params: &super::RawParams,
+        registry: &Registry,
         mode: &CompileMode,
+        aliases: &mut Vec<String>,
     ) -> Result<Check, Error> {
         if name == "omitempty" {
             return Ok(Check::OmitEmpty);
         }
 
-        if matches!(mode, CompileMode::Field) && is_field_rule(name) {
-            return Ok(Check::Field {
+        match registry.get(name) {
+            Some(Entry::Rule(handler)) => {
+                let signature = handler.signature();
+                let params = signature.bind(name, params)?;
+                if signature.requires_fields() && !mode.fields {
+                    return Err(Error::MissingFieldContext {
+                        name: name.to_owned(),
+                    });
+                }
+                Ok(Check::Rule {
+                    name: name.to_owned(),
+                    params,
+                    handler: handler.clone(),
+                })
+            }
+            Some(Entry::Alias(exprs)) => {
+                if !params.is_empty() {
+                    return Err(Error::InvalidRuleExpression {
+                        expression: name.to_owned(),
+                        reason: "alias does not accept parameters".to_owned(),
+                    });
+                }
+                if aliases.iter().any(|alias| alias == name) {
+                    return Err(Error::RecursiveAlias {
+                        name: name.to_owned(),
+                    });
+                }
+                aliases.push(name.to_owned());
+                let group = Self::build(exprs, registry, *mode, aliases)?;
+                aliases.pop();
+                Ok(Check::Alias {
+                    name: name.to_owned(),
+                    group: Arc::new(group),
+                })
+            }
+            None => Err(Error::UnknownRule {
                 name: name.to_owned(),
-                params: params.clone(),
-            });
+            }),
         }
-
-        if let Some(handler) = rules.get(name) {
-            return Ok(Check::Rule {
-                name: name.to_owned(),
-                params: params.clone(),
-                handler,
-            });
-        }
-
-        if !matches!(mode, CompileMode::Alias)
-            && let Some(exprs) = aliases.get(name)
-        {
-            let group = Self::build(exprs, rules, aliases, CompileMode::Alias)?;
-            return Ok(Check::Alias {
-                name: name.to_owned(),
-                group: Arc::new(group),
-            });
-        }
-
-        Err(Error::UnknownRule {
-            name: name.to_owned(),
-        })
     }
 
     fn execute_with_display<V: Value>(
@@ -196,12 +222,12 @@ impl Group {
         value: &V,
         context: &Context,
         display_rule: Option<&str>,
-        fields: Option<&Fields<'_>>,
-    ) -> Result<(), Error> {
+        access: Option<&dyn Access>,
+    ) -> Result<Flow, Error> {
         let exec = Exec {
             context,
             display_rule,
-            fields,
+            access,
         };
 
         for step in &self.steps {
@@ -210,15 +236,19 @@ impl Group {
                     if self.execute_check(errors, target.clone(), value, check, &exec)?
                         == Flow::Stop
                     {
-                        return Ok(());
+                        return Ok(Flow::Stop);
                     }
                 }
                 Step::Any { checks, reason } => {
                     let mut passes = false;
                     for check in checks {
-                        if self.check_passes(target.clone(), value, check, &exec)? {
-                            passes = true;
-                            break;
+                        match self.evaluate(target.clone(), value, check, &exec)? {
+                            CheckResult::Pass => {
+                                passes = true;
+                                break;
+                            }
+                            CheckResult::Fail => {}
+                            CheckResult::Stop => return Ok(Flow::Stop),
                         }
                     }
 
@@ -236,7 +266,7 @@ impl Group {
             }
         }
 
-        Ok(())
+        Ok(Flow::Continue)
     }
 
     fn execute_check<V: Value>(
@@ -262,9 +292,9 @@ impl Group {
                     target.clone(),
                     value,
                     exec.context,
-                    name,
                     params,
                     handler.clone(),
+                    exec.access,
                 )? {
                     errors.push(field_error(
                         target,
@@ -276,59 +306,70 @@ impl Group {
                 }
             }
             Check::Alias { name, group } => {
-                group.execute_with_display(
+                return group.execute_with_display(
                     errors,
                     target,
                     value,
                     exec.context,
                     Some(name),
-                    exec.fields,
-                )?;
-            }
-            Check::Field { name, params } => {
-                if !field_rule_passes(value, params, exec.fields, name) {
-                    errors.push(field_error(
-                        target,
-                        value.kind(),
-                        name,
-                        name,
-                        params.clone(),
-                    ));
-                }
+                    exec.access,
+                );
             }
         }
 
         Ok(Flow::Continue)
     }
 
-    fn check_passes<V: Value>(
+    fn evaluate<V: Value>(
         &self,
         target: FieldTarget<'_>,
         value: &V,
         check: &Check,
         exec: &Exec<'_, '_>,
-    ) -> Result<bool, Error> {
+    ) -> Result<CheckResult, Error> {
         match check {
-            Check::OmitEmpty => Ok(true),
+            Check::OmitEmpty => Ok(if value.required() {
+                CheckResult::Pass
+            } else {
+                CheckResult::Stop
+            }),
             Check::Rule {
-                name,
+                name: _,
                 params,
                 handler,
-            } => self.rule_passes(target, value, exec.context, name, params, handler.clone()),
+            } => self
+                .rule_passes(
+                    target,
+                    value,
+                    exec.context,
+                    params,
+                    handler.clone(),
+                    exec.access,
+                )
+                .map(|passes| {
+                    if passes {
+                        CheckResult::Pass
+                    } else {
+                        CheckResult::Fail
+                    }
+                }),
             Check::Alias { name: _, group } => {
                 let mut errors = Vec::new();
-                group.execute_with_display(
+                let flow = group.execute_with_display(
                     &mut errors,
                     target,
                     value,
                     exec.context,
                     None,
-                    exec.fields,
+                    exec.access,
                 )?;
-                Ok(errors.is_empty())
-            }
-            Check::Field { name, params } => {
-                Ok(field_rule_passes(value, params, exec.fields, name))
+                if flow == Flow::Stop && errors.is_empty() {
+                    Ok(CheckResult::Stop)
+                } else if errors.is_empty() {
+                    Ok(CheckResult::Pass)
+                } else {
+                    Ok(CheckResult::Fail)
+                }
             }
         }
     }
@@ -338,26 +379,26 @@ impl Group {
         target: FieldTarget<'_>,
         value: &V,
         context: &Context,
-        name: &str,
         params: &Params,
         handler: Arc<dyn Rule>,
+        access: Option<&dyn Access>,
     ) -> Result<bool, Error> {
-        if name != "required" && value.is_none() {
+        if value.is_none() && !handler.validates_none() {
             return Ok(true);
         }
 
         let namespace = Namespace::new(namespace_for(&target.type_name, &target.field_name));
         let struct_namespace =
             Namespace::new(namespace_for(&target.type_name, &target.struct_field_name));
-        let field = Field::with_context(
+        let field = Field::new(
             &namespace,
             &struct_namespace,
             target.field_name.as_ref(),
             target.struct_field_name.as_ref(),
             params,
             value,
-            context,
-        );
+        )
+        .with_context(context, access);
 
         handler.check(&field)
     }

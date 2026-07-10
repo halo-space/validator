@@ -1,18 +1,30 @@
-use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
 use regex::Regex as Pattern;
 
-use crate::{Field, Rule};
+use crate::core::{CAPACITY, Cache};
+use crate::{Field, Rule, Signature};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Regex {
-    cache: RwLock<BTreeMap<String, Option<Arc<Pattern>>>>,
+    cache: RwLock<Cache<String, Option<Arc<Pattern>>>>,
+}
+
+impl Default for Regex {
+    fn default() -> Self {
+        Self {
+            cache: RwLock::new(Cache::new(CAPACITY)),
+        }
+    }
 }
 
 impl Rule for Regex {
+    fn signature(&self) -> Signature {
+        Signature::text("pattern")
+    }
+
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
-        let Some(pattern) = field.params().get("pattern") else {
+        let Some(pattern) = field.params().text("pattern") else {
             return Ok(false);
         };
         let Some(value) = field.value().string() else {

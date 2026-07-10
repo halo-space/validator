@@ -37,39 +37,3 @@ impl Rule for Ipv6 {
             .is_some_and(|value| value.parse::<Ipv6Addr>().is_ok()))
     }
 }
-
-#[derive(Debug)]
-pub struct IpAddress;
-
-impl Rule for IpAddress {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
-        Ok(field
-            .value()
-            .string()
-            .is_some_and(|value| value.parse::<StdIpAddr>().is_ok()))
-    }
-}
-
-#[derive(Debug)]
-pub struct Ip4Address;
-
-impl Rule for Ip4Address {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
-        Ok(field
-            .value()
-            .string()
-            .is_some_and(|value| value.parse::<Ipv4Addr>().is_ok()))
-    }
-}
-
-#[derive(Debug)]
-pub struct Ip6Address;
-
-impl Rule for Ip6Address {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
-        Ok(field
-            .value()
-            .string()
-            .is_some_and(|value| value.parse::<Ipv6Addr>().is_ok()))
-    }
-}

@@ -11,11 +11,12 @@ pub(super) use oneof::OneOf;
 pub(super) use oneofci::OneOfCi;
 
 fn contains(field: &Field<'_>) -> Option<bool> {
-    let values = field
+    let mut candidates = field
         .params()
-        .get("values")
-        .or_else(|| field.params().get("value"))?;
-    let mut candidates = candidates(values).peekable();
+        .list("values")?
+        .iter()
+        .map(String::as_str)
+        .peekable();
 
     candidates.peek()?;
 
@@ -55,21 +56,15 @@ fn contains(field: &Field<'_>) -> Option<bool> {
 }
 
 fn contains_ignore_case(field: &Field<'_>) -> Option<bool> {
-    let values = field
+    let mut candidates = field
         .params()
-        .get("values")
-        .or_else(|| field.params().get("value"))?;
-    let mut candidates = candidates(values).peekable();
+        .list("values")?
+        .iter()
+        .map(String::as_str)
+        .peekable();
 
     candidates.peek()?;
 
     let value = field.value().string()?.to_lowercase();
     Some(candidates.any(|candidate| candidate.to_lowercase() == value))
-}
-
-fn candidates(values: &str) -> impl Iterator<Item = &str> {
-    values
-        .split(',')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
 }

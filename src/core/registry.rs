@@ -4,65 +4,70 @@ use std::sync::Arc;
 use super::spec::{Expr, parse_expression};
 use super::{Error, Rule};
 
-#[derive(Clone, Default)]
-pub(crate) struct Rules {
-    values: BTreeMap<String, Arc<dyn Rule>>,
+#[derive(Clone)]
+pub(crate) enum Entry {
+    Rule(Arc<dyn Rule>),
+    Alias(Vec<Expr>),
 }
 
-impl Rules {
+#[derive(Clone, Default)]
+pub(crate) struct Registry {
+    values: BTreeMap<String, Entry>,
+}
+
+impl Registry {
     pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    pub(crate) fn insert<R>(&mut self, name: impl Into<String>, rule: R) -> Result<(), Error>
+    pub(crate) fn rule<R>(&mut self, name: impl Into<String>, rule: R) -> Result<(), Error>
     where
         R: Rule + 'static,
     {
         let name = name.into();
         validate_name(&name).map_err(|name| Error::InvalidRuleName { name })?;
-        self.values.insert(name, Arc::new(rule));
+        if self.contains(&name) {
+            return Err(Error::DuplicateName { name });
+        }
+        self.values.insert(name, Entry::Rule(Arc::new(rule)));
         Ok(())
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<Arc<dyn Rule>> {
-        self.values.get(name).cloned()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
-        self.values.keys().map(String::as_str)
-    }
-}
-
-#[derive(Clone, Default)]
-pub(crate) struct Aliases {
-    values: BTreeMap<String, Vec<Expr>>,
-}
-
-impl Aliases {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(crate) fn insert(
+    pub(crate) fn alias(
         &mut self,
         name: impl Into<String>,
         expr: impl AsRef<str>,
     ) -> Result<(), Error> {
         let name = name.into();
         validate_name(&name).map_err(|name| Error::InvalidAliasName { name })?;
-        let specs = parse_expression(expr.as_ref())?;
-        self.values.insert(name, specs);
+        if self.contains(&name) {
+            return Err(Error::DuplicateName { name });
+        }
+        let exprs = parse_expression(expr.as_ref())?;
+        self.values.insert(name, Entry::Alias(exprs));
         Ok(())
     }
 
-    pub(crate) fn get(&self, name: &str) -> Option<&[Expr]> {
-        self.values.get(name).map(Vec::as_slice)
+    pub(crate) fn get(&self, name: &str) -> Option<&Entry> {
+        self.values.get(name)
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        name == "omitempty" || self.values.contains_key(name)
     }
 
     #[cfg(test)]
-    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
-        self.values.keys().map(String::as_str)
+    pub(crate) fn rule_names(&self) -> impl Iterator<Item = &str> {
+        self.values
+            .iter()
+            .filter_map(|(name, entry)| matches!(entry, Entry::Rule(_)).then_some(name.as_str()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn alias_names(&self) -> impl Iterator<Item = &str> {
+        self.values
+            .iter()
+            .filter_map(|(name, entry)| matches!(entry, Entry::Alias(_)).then_some(name.as_str()))
     }
 }
 

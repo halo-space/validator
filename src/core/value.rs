@@ -103,11 +103,11 @@ pub trait Value {
             .or_else(|| self.float().map(Number::Float))
     }
 
-    fn array_items(&self) -> Option<Vec<&dyn Value>> {
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
         None
     }
 
-    fn map_values(&self) -> Option<Vec<&dyn Value>> {
+    fn map_values(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
         None
     }
 }
@@ -153,11 +153,11 @@ impl<T: Value> Value for Option<T> {
         self.as_ref().and_then(Value::time)
     }
 
-    fn array_items(&self) -> Option<Vec<&dyn Value>> {
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
         self.as_ref().and_then(Value::array_items)
     }
 
-    fn map_values(&self) -> Option<Vec<&dyn Value>> {
+    fn map_values(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
         self.as_ref().and_then(Value::map_values)
     }
 }
@@ -330,21 +330,25 @@ impl Value for SystemTime {
     }
 }
 
-impl<T> Value for Vec<T> {
+impl<T: Value> Value for Vec<T> {
     fn kind(&self) -> Kind {
         Kind::Vec
     }
 
     fn required(&self) -> bool {
-        !self.is_empty()
+        !Vec::is_empty(self)
     }
 
     fn len(&self) -> Option<usize> {
         Some(self.len())
     }
+
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        Some(Box::new(self.iter().map(|item| item as &dyn Value)))
+    }
 }
 
-impl<T, const N: usize> Value for [T; N] {
+impl<T: Value, const N: usize> Value for [T; N] {
     fn kind(&self) -> Kind {
         Kind::Array
     }
@@ -356,9 +360,13 @@ impl<T, const N: usize> Value for [T; N] {
     fn len(&self) -> Option<usize> {
         Some(N)
     }
+
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        Some(Box::new(self.iter().map(|item| item as &dyn Value)))
+    }
 }
 
-impl<T> Value for [T] {
+impl<T: Value> Value for [T] {
     fn kind(&self) -> Kind {
         Kind::Slice
     }
@@ -370,9 +378,31 @@ impl<T> Value for [T] {
     fn len(&self) -> Option<usize> {
         Some(self.len())
     }
+
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        Some(Box::new(self.iter().map(|item| item as &dyn Value)))
+    }
 }
 
-impl<K, V> Value for BTreeMap<K, V> {
+impl<T: Value> Value for &[T] {
+    fn kind(&self) -> Kind {
+        Kind::Slice
+    }
+
+    fn required(&self) -> bool {
+        !<[T]>::is_empty(self)
+    }
+
+    fn len(&self) -> Option<usize> {
+        Some(<[T]>::len(self))
+    }
+
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        Some(Box::new(self.iter().map(|item| item as &dyn Value)))
+    }
+}
+
+impl<K, V: Value> Value for BTreeMap<K, V> {
     fn kind(&self) -> Kind {
         Kind::Map
     }
@@ -384,9 +414,13 @@ impl<K, V> Value for BTreeMap<K, V> {
     fn len(&self) -> Option<usize> {
         Some(self.len())
     }
+
+    fn map_values(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        Some(Box::new(self.values().map(|value| value as &dyn Value)))
+    }
 }
 
-impl<K: Eq + Hash, V> Value for HashMap<K, V> {
+impl<K: Eq + Hash, V: Value> Value for HashMap<K, V> {
     fn kind(&self) -> Kind {
         Kind::Map
     }
@@ -397,6 +431,10 @@ impl<K: Eq + Hash, V> Value for HashMap<K, V> {
 
     fn len(&self) -> Option<usize> {
         Some(self.len())
+    }
+
+    fn map_values(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
+        Some(Box::new(self.values().map(|value| value as &dyn Value)))
     }
 }
 
@@ -510,21 +548,17 @@ impl Value for JsonValue {
         self.as_bool()
     }
 
-    fn array_items(&self) -> Option<Vec<&dyn Value>> {
+    fn array_items(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
         self.as_array().map(|items| {
-            items
-                .iter()
-                .map(|item| item as &dyn Value)
-                .collect::<Vec<_>>()
+            Box::new(items.iter().map(|item| item as &dyn Value))
+                as Box<dyn Iterator<Item = &dyn Value>>
         })
     }
 
-    fn map_values(&self) -> Option<Vec<&dyn Value>> {
+    fn map_values(&self) -> Option<Box<dyn Iterator<Item = &dyn Value> + '_>> {
         self.as_object().map(|object| {
-            object
-                .values()
-                .map(|value| value as &dyn Value)
-                .collect::<Vec<_>>()
+            Box::new(object.values().map(|value| value as &dyn Value))
+                as Box<dyn Iterator<Item = &dyn Value>>
         })
     }
 }

@@ -56,5 +56,5 @@ fn value_and_expected<'a>(
     field: &'a Field<'_>,
     expected_name: &str,
 ) -> Option<(Cow<'a, str>, &'a str)> {
-    Some((field.value().string()?, field.params().get(expected_name)?))
+    Some((field.value().string()?, field.params().text(expected_name)?))
 }

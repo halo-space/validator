@@ -8,24 +8,6 @@ impl Rule for HostnameRfc1123 {
         Ok(field
             .value()
             .string()
-            .is_some_and(|value| valid(value.as_ref())))
+            .is_some_and(|value| super::host::valid_rfc1123(value.as_ref())))
     }
-}
-
-pub(super) fn valid(value: &str) -> bool {
-    if value.is_empty() || value.len() > 253 || value.starts_with('.') || value.ends_with('.') {
-        return false;
-    }
-
-    value.split('.').all(is_label)
-}
-
-fn is_label(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 63
-        && !value.starts_with('-')
-        && !value.ends_with('-')
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }

@@ -25,13 +25,10 @@ impl Rule for HttpsUrl {
 }
 
 fn valid_http(value: &str) -> bool {
-    super::url::has_scheme_and_host(value)
-        && super::url::scheme(value).is_some_and(|scheme| {
-            scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")
-        })
+    super::url::parse(value)
+        .is_some_and(|url| url.has_host() && matches!(url.scheme(), "http" | "https"))
 }
 
 fn valid_https(value: &str) -> bool {
-    super::url::has_scheme_and_host(value)
-        && super::url::scheme(value).is_some_and(|scheme| scheme.eq_ignore_ascii_case("https"))
+    super::url::parse(value).is_some_and(|url| url.has_host() && url.scheme() == "https")
 }

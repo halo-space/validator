@@ -90,12 +90,16 @@ pub enum Error {
     InvalidRuleName { name: String },
     #[error("invalid alias name '{name}'")]
     InvalidAliasName { name: String },
+    #[error("validation name '{name}' is already registered")]
+    DuplicateName { name: String },
     #[error("invalid rule expression '{expression}': {reason}")]
     InvalidRuleExpression { expression: String, reason: String },
     #[error("unknown rule '{name}'")]
     UnknownRule { name: String },
-    #[error("unknown alias '{name}'")]
-    UnknownAlias { name: String },
+    #[error("rule '{name}' requires sibling field context")]
+    MissingFieldContext { name: String },
+    #[error("recursive alias '{name}'")]
+    RecursiveAlias { name: String },
     #[error("invalid data: {reason}")]
     InvalidData { reason: String },
     #[error("invalid schema: {reason}")]

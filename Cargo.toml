@@ -6,17 +6,20 @@ description = "Rust 2024 validation library with derive macros, schema validatio
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/halo-space/validator"
 readme = "README.md"
-rust-version = "1.96.1"
+rust-version = "1.97"
 publish = false
 keywords = ["validation", "validator", "derive", "schema", "i18n"]
 categories = ["data-structures", "parsing"]
 
 [dependencies]
+http = "1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 thiserror = "2"
+url = "2"
 validator-derive = { version = "0.1.0", path = "derive" }
 
 [dev-dependencies]
+trybuild = "1"

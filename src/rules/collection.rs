@@ -1,10 +1,22 @@
 mod unique;
 
+use std::borrow::Cow;
 use std::collections::HashSet;
+use std::hash::Hash;
 
 use crate::{Kind, Value};
 
 pub(super) use unique::Unique;
+
+#[derive(Eq, Hash, PartialEq)]
+enum UniqueKey<'a> {
+    None,
+    String(Cow<'a, str>),
+    Bool(bool),
+    Int(i128),
+    Uint(u128),
+    Float(u64),
+}
 
 pub(crate) fn values_are_unique<'a>(items: impl IntoIterator<Item = &'a dyn Value>) -> bool {
     let mut seen = HashSet::new();
@@ -22,17 +34,17 @@ pub(crate) fn values_are_unique<'a>(items: impl IntoIterator<Item = &'a dyn Valu
     true
 }
 
-fn unique_key(value: &dyn Value) -> Option<String> {
+fn unique_key(value: &dyn Value) -> Option<UniqueKey<'_>> {
     if value.is_none() {
-        return Some("none".to_owned());
+        return Some(UniqueKey::None);
     }
 
     match value.kind() {
-        Kind::String => value.string().map(|value| format!("s:{}", value.as_ref())),
-        Kind::Bool => value.boolean().map(|value| format!("b:{value}")),
-        Kind::Int(_) => value.int().map(|value| format!("i:{value}")),
-        Kind::Uint(_) => value.uint().map(|value| format!("u:{value}")),
-        Kind::Float(_) => value.float().map(float_key),
+        Kind::String => value.string().map(UniqueKey::String),
+        Kind::Bool => value.boolean().map(UniqueKey::Bool),
+        Kind::Int(_) => value.int().map(UniqueKey::Int),
+        Kind::Uint(_) => value.uint().map(UniqueKey::Uint),
+        Kind::Float(_) => value.float().map(float_key).map(UniqueKey::Float),
         Kind::Vec
         | Kind::Array
         | Kind::Slice
@@ -43,8 +55,8 @@ fn unique_key(value: &dyn Value) -> Option<String> {
     }
 }
 
-fn float_key(value: f64) -> String {
+fn float_key(value: f64) -> u64 {
     let value = if value == 0.0 { 0.0 } else { value };
 
-    format!("f:{}", value.to_bits())
+    value.to_bits()
 }

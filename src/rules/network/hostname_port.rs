@@ -24,7 +24,7 @@ fn valid(value: &str) -> bool {
         return false;
     }
 
-    host.is_empty() || super::hostname_rfc1123::valid(host)
+    host.is_empty() || super::host::valid_rfc1123(host)
 }
 
 fn split_host_port(value: &str) -> Option<(&str, &str)> {

@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use super::{Context, Namespace, Params, Value};
+use super::{Access, Context, Namespace, Params, Value};
 
 pub struct Field<'a> {
     namespace: &'a Namespace,
@@ -9,6 +9,7 @@ pub struct Field<'a> {
     struct_field: &'a str,
     params: &'a Params,
     value: &'a dyn Value,
+    access: Option<&'a dyn Access>,
     now: SystemTime,
 }
 
@@ -28,28 +29,19 @@ impl<'a> Field<'a> {
             struct_field,
             params,
             value,
+            access: None,
             now: SystemTime::now(),
         }
     }
 
     pub(crate) fn with_context(
-        namespace: &'a Namespace,
-        struct_namespace: &'a Namespace,
-        field: &'a str,
-        struct_field: &'a str,
-        params: &'a Params,
-        value: &'a dyn Value,
+        mut self,
         context: &Context,
+        access: Option<&'a dyn Access>,
     ) -> Self {
-        Self {
-            namespace,
-            struct_namespace,
-            field,
-            struct_field,
-            params,
-            value,
-            now: context.now(),
-        }
+        self.access = access;
+        self.now = context.now();
+        self
     }
 
     pub fn namespace(&self) -> &Namespace {
@@ -74,6 +66,12 @@ impl<'a> Field<'a> {
 
     pub fn value(&self) -> &dyn Value {
         self.value
+    }
+
+    pub fn sibling<'b>(&'b self, name: &'b str) -> Option<&'b dyn Value> {
+        self.access
+            .and_then(|access| access.field(name))
+            .map(|field| field.value())
     }
 
     pub fn now(&self) -> SystemTime {

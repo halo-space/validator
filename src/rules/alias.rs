@@ -1,6 +1,6 @@
-use crate::core::{Aliases, Error};
+use crate::core::{Error, Registry};
 
-pub(crate) fn load(aliases: &mut Aliases) -> Result<(), Error> {
-    aliases.insert("iscolor", "hexcolor|rgb|rgba|hsl|hsla|cmyk")?;
+pub(crate) fn load(aliases: &mut Registry) -> Result<(), Error> {
+    aliases.alias("iscolor", "hexcolor|rgb|rgba|hsl|hsla|cmyk")?;
     Ok(())
 }

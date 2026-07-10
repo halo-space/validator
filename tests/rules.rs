@@ -2,6 +2,16 @@ use std::collections::{BTreeMap, HashMap};
 
 use validator::prelude::*;
 
+fn param_list<'a>(field: &'a FieldError, name: &str) -> Vec<&'a str> {
+    field
+        .params()
+        .list(name)
+        .expect("expected list parameter")
+        .iter()
+        .map(String::as_str)
+        .collect()
+}
+
 #[derive(Debug, Validate)]
 struct Bounds {
     #[validate(min = 3)]
@@ -41,12 +51,12 @@ fn min_max_range_fail() {
 
     assert_eq!(fields.len(), 3);
     assert_eq!(fields[0].rule(), "min");
-    assert_eq!(fields[0].params().get("min"), Some("3"));
+    assert_eq!(fields[0].params().text("min"), Some("3"));
     assert_eq!(fields[1].rule(), "max");
-    assert_eq!(fields[1].params().get("max"), Some("2"));
+    assert_eq!(fields[1].params().text("max"), Some("2"));
     assert_eq!(fields[2].rule(), "range");
-    assert_eq!(fields[2].params().get("min"), Some("10"));
-    assert_eq!(fields[2].params().get("max"), Some("20"));
+    assert_eq!(fields[2].params().text("min"), Some("10"));
+    assert_eq!(fields[2].params().text("max"), Some("20"));
 }
 
 #[derive(Debug, Validate)]
@@ -98,9 +108,9 @@ fn comparison_rules_report_type_specific_failures() {
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
 
     assert_eq!(rules, vec!["lte", "gte", "gt", "lt", "lte"]);
-    assert_eq!(fields[0].params().get("value"), Some("130"));
-    assert_eq!(fields[2].params().get("value"), Some("-10"));
-    assert_eq!(fields[3].params().get("value"), Some("3.5"));
+    assert_eq!(fields[0].params().text("value"), Some("130"));
+    assert_eq!(fields[2].params().text("value"), Some("-10"));
+    assert_eq!(fields[3].params().text("value"), Some("3.5"));
 }
 
 #[derive(Debug, Validate)]
@@ -200,7 +210,7 @@ fn email_url_regex_fail() {
     assert_eq!(fields[1].rule(), "url");
     assert_eq!(fields[2].rule(), "uri");
     assert_eq!(fields[3].rule(), "regex");
-    assert_eq!(fields[3].params().get("pattern"), Some("^[a-z0-9-]+$"));
+    assert_eq!(fields[3].params().text("pattern"), Some("^[a-z0-9-]+$"));
 }
 
 #[test]
@@ -379,6 +389,50 @@ fn hostname_rfc1123_accepts_digit_prefix_and_rejects_invalid_boundaries() {
 }
 
 #[test]
+fn url_uri_and_hostname_rules_match_go_boundaries() {
+    let validator = Validator::new();
+
+    for value in [
+        "https://example.com/posts/1",
+        "http://foobar.中文网/",
+        "http://www.foo_bar.com/",
+        "http://www.-foobar.com/",
+        "mailto:someone@example.com",
+        "irc://#channel@network",
+        "file://path/to/file.txt",
+        "file:///c:/Windows/file.txt",
+        "file:////remotehost/path/file.txt",
+    ] {
+        validator.value(&value, "url").unwrap();
+    }
+    for value in ["/abs/test/dir", "1://example.com", "file:", "file:/"] {
+        assert!(validator.value(&value, "url").is_err());
+    }
+
+    for value in [
+        "https://example.com/path#fragment",
+        "http://foobar.中文网/",
+        "http://www.foo_bar.com/",
+        "mailto:someone@example.com",
+        "irc://#channel@network",
+        "/abs/test/dir",
+    ] {
+        validator.value(&value, "uri").unwrap();
+    }
+    for value in ["foobar.com", "./rel/test/dir", ""] {
+        assert!(validator.value(&value, "uri").is_err());
+    }
+
+    assert!(validator.value(&"1.foo.com", "hostname").is_err());
+    validator.value(&"abc1234", "hostname").unwrap();
+    validator.value(&"1.foo.com", "hostname_rfc1123").unwrap();
+    validator.value(&"api.example.com.", "fqdn").unwrap();
+    validator.value(&"test-site.test-site", "fqdn").unwrap();
+    assert!(validator.value(&"api.example.123", "fqdn").is_err());
+    assert!(validator.value(&"example", "fqdn").is_err());
+}
+
+#[test]
 fn ulid_rejects_ambiguous_characters_and_wrong_length() {
     let validator = Validator::new();
 
@@ -432,12 +486,12 @@ fn rfc4122_uuid_rules_accept_uppercase_and_version_boundaries() {
 }
 
 #[test]
-fn address_compatibility_rules_match_ip_literal_socket_semantics() {
+fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
     let validator = Validator::new();
 
-    validator.value(&"127.0.0.1", "ip4_addr").unwrap();
-    validator.value(&"::1", "ip6_addr").unwrap();
-    validator.value(&"::1", "ip_addr").unwrap();
+    validator.value(&"127.0.0.1", "ipv4").unwrap();
+    validator.value(&"::1", "ipv6").unwrap();
+    validator.value(&"::1", "ip").unwrap();
     validator.value(&"127.0.0.1:80", "tcp4_addr").unwrap();
     validator.value(&"[::1]:80", "tcp6_addr").unwrap();
     validator.value(&"127.0.0.1:80", "tcp_addr").unwrap();
@@ -446,7 +500,7 @@ fn address_compatibility_rules_match_ip_literal_socket_semantics() {
     validator.value(&"[::1]:80", "udp6_addr").unwrap();
 
     for (value, rule) in [
-        ("127.0.0.1:80", "ip4_addr"),
+        ("127.0.0.1:80", "ipv4"),
         ("[::1]:80", "tcp4_addr"),
         ("127.0.0.1:80", "tcp6_addr"),
         (":80", "udp_addr"),
@@ -459,6 +513,11 @@ fn address_compatibility_rules_match_ip_literal_socket_semantics() {
             .unwrap();
 
         assert_eq!(fields[0].rule(), rule);
+    }
+
+    for rule in ["ip_addr", "ip4_addr", "ip6_addr"] {
+        let error = validator.value(&"127.0.0.1", rule).unwrap_err();
+        assert!(matches!(error, Error::UnknownRule { name } if name == rule));
     }
 }
 
@@ -550,6 +609,29 @@ fn direct_json_array_unique_rule_works() {
 }
 
 #[test]
+fn direct_json_unique_preserves_scalar_families_and_float_zero() {
+    let validator = Validator::new();
+
+    validator
+        .value(&serde_json::json!([1, "1", true, null]), "unique")
+        .unwrap();
+
+    for value in [
+        serde_json::json!([true, true]),
+        serde_json::json!([0.0, -0.0]),
+        serde_json::json!([null, null]),
+    ] {
+        let fields = validator
+            .value(&value, "unique")
+            .unwrap_err()
+            .into_fields()
+            .unwrap();
+
+        assert_eq!(fields[0].rule(), "unique");
+    }
+}
+
+#[test]
 fn direct_json_object_unique_rule_checks_values() {
     Validator::new()
         .value(
@@ -566,6 +648,44 @@ fn direct_json_object_unique_rule_checks_values() {
 
     assert_eq!(fields[0].namespace().as_str(), "$value");
     assert_eq!(fields[0].rule(), "unique");
+}
+
+#[test]
+fn direct_native_collections_unique_rule_works() {
+    let validator = Validator::new();
+    let array = ["rust", "validator"];
+    let slice = &array[..];
+    let hash_map = HashMap::from([("a", "rust"), ("b", "validator")]);
+    let btree_map = BTreeMap::from([("a", 1_u8), ("b", 2_u8)]);
+
+    validator
+        .value(&vec!["rust", "validator"], "unique")
+        .unwrap();
+    validator.value(&array, "unique").unwrap();
+    validator.value(&slice, "unique").unwrap();
+    validator.value(&hash_map, "unique").unwrap();
+    validator.value(&btree_map, "unique").unwrap();
+
+    for fields in [
+        validator
+            .value(&vec!["rust", "rust"], "unique")
+            .unwrap_err()
+            .into_fields()
+            .unwrap(),
+        validator
+            .value(&[1_u8, 1_u8], "unique")
+            .unwrap_err()
+            .into_fields()
+            .unwrap(),
+        validator
+            .value(&HashMap::from([("a", 1_u8), ("b", 1_u8)]), "unique")
+            .unwrap_err()
+            .into_fields()
+            .unwrap(),
+    ] {
+        assert_eq!(fields[0].namespace().as_str(), "$value");
+        assert_eq!(fields[0].rule(), "unique");
+    }
 }
 
 #[test]
@@ -1010,7 +1130,7 @@ fn oneof_reports_values() {
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "oneof");
-    assert_eq!(fields[0].params().get("values"), Some("draft,published"));
+    assert_eq!(param_list(&fields[0], "values"), vec!["draft", "published"]);
 }
 
 #[test]
@@ -1055,7 +1175,7 @@ fn noneof_reports_values() {
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "noneof");
-    assert_eq!(fields[0].params().get("values"), Some("root,admin"));
+    assert_eq!(param_list(&fields[0], "values"), vec!["root", "admin"]);
 }
 
 #[test]
@@ -1073,7 +1193,7 @@ fn noneof_dispatches_integer_candidates_by_field_type() {
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "noneof");
-    assert_eq!(fields[0].params().get("values"), Some("1,2,3"));
+    assert_eq!(param_list(&fields[0], "values"), vec!["1", "2", "3"]);
 }
 
 #[test]
@@ -1093,7 +1213,7 @@ fn case_insensitive_choice_rules_work_for_strings() {
         .unwrap();
 
     assert_eq!(fields[0].rule(), "noneofci");
-    assert_eq!(fields[0].params().get("values"), Some("red,green"));
+    assert_eq!(param_list(&fields[0], "values"), vec!["red", "green"]);
 }
 
 #[derive(Debug, Validate)]
@@ -1144,7 +1264,7 @@ fn oneof_works_inside_alias_expression() -> Result<(), Box<dyn std::error::Error
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "publish_state");
     assert_eq!(fields[0].reason(), "oneof");
-    assert_eq!(fields[0].params().get("values"), Some("draft,published"));
+    assert_eq!(param_list(&fields[0], "values"), vec!["draft", "published"]);
 
     Ok(())
 }
@@ -1238,7 +1358,7 @@ fn string_helpers_fail() {
             "endsnotwith",
         ]
     );
-    assert_eq!(fields[1].params().get("value"), Some("!@#?"));
+    assert_eq!(fields[1].params().text("value"), Some("!@#?"));
 }
 
 #[derive(Debug, Validate)]
@@ -1390,7 +1510,7 @@ fn extended_character_classes_fail() {
             "ne_ignore_case",
         ]
     );
-    assert_eq!(fields[4].params().get("value"), Some("Rust"));
+    assert_eq!(fields[4].params().text("value"), Some("Rust"));
 }
 
 #[derive(Debug, Validate)]
@@ -1437,10 +1557,10 @@ fn equality_rules_fail() {
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
 
     assert_eq!(rules, vec!["eq", "ne", "eq", "eq"]);
-    assert_eq!(fields[0].params().get("value"), Some("published"));
-    assert_eq!(fields[1].params().get("value"), Some("0"));
-    assert_eq!(fields[2].params().get("value"), Some("true"));
-    assert_eq!(fields[3].params().get("value"), Some("2"));
+    assert_eq!(fields[0].params().text("value"), Some("published"));
+    assert_eq!(fields[1].params().text("value"), Some("0"));
+    assert_eq!(fields[2].params().text("value"), Some("true"));
+    assert_eq!(fields[3].params().text("value"), Some("2"));
 }
 
 #[derive(Debug, Validate)]

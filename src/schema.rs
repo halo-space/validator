@@ -4,10 +4,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value as JsonValue;
 
-use crate::core::{Aliases, Context, Expr, Group, Rules, Spec, parse_expression};
-use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, field_error, field_targets};
+use crate::core::{Context, Entry, Expr, Group, Registry, Spec, parse_expression};
+use crate::{Error, FieldError, FieldTarget, Kind, Params, Value, field_error};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+pub(crate) const TYPE_RULE: &str = "type";
+
+#[cfg(test)]
+pub(crate) fn internal_rule_names() -> impl Iterator<Item = &'static str> {
+    [TYPE_RULE].into_iter()
+}
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) struct SchemaId(u64);
@@ -54,12 +60,19 @@ impl Schema {
         self.inner.id
     }
 
-    pub(crate) fn compile(&self, rules: &Rules, aliases: &Aliases) -> Result<Tree, Error> {
-        Tree::compile(&self.inner.fields, rules, aliases)
+    pub(crate) fn compile(&self, registry: &Registry) -> Result<Tree, Error> {
+        Tree::compile(&self.inner.fields, registry)
     }
 
     fn from_value(value: JsonValue) -> Result<Self, Error> {
-        let fields = required_object(&value, "fields")?
+        let object = value
+            .as_object()
+            .ok_or_else(|| invalid("schema must be an object"))?;
+        reject_unknown_keys(object, &["fields"], "schema")?;
+        let fields = object
+            .get("fields")
+            .and_then(JsonValue::as_object)
+            .ok_or_else(|| invalid("schema must contain object 'fields'"))?
             .iter()
             .map(|(name, field)| Ok((name.clone(), FieldDef::from_value(name, field)?)))
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
@@ -90,6 +103,11 @@ impl FieldDef {
                 "field '{name}' uses unsupported key 'types'; use 'type'"
             )));
         }
+        reject_unknown_keys(
+            object,
+            &["type", "rules", "fields"],
+            &format!("field '{name}'"),
+        )?;
         let fields = object
             .get("fields")
             .map(|fields| parse_fields(name, fields))
@@ -135,12 +153,12 @@ impl Type {
 
         match name {
             "string" => Ok(Self::String),
-            "bool" | "boolean" => Ok(Self::Bool),
-            "int" | "integer" => Ok(Self::Int),
+            "boolean" => Ok(Self::Bool),
+            "integer" => Ok(Self::Int),
             "uint" => Ok(Self::Uint),
-            "float" | "number" => Ok(Self::Float),
+            "number" => Ok(Self::Float),
             "array" => Ok(Self::Array),
-            "object" | "map" => Ok(Self::Object),
+            "object" => Ok(Self::Object),
             _ => Err(invalid(format!(
                 "field '{field}' has unsupported type '{name}'"
             ))),
@@ -177,14 +195,10 @@ pub(crate) struct Tree {
 }
 
 impl Tree {
-    fn compile(
-        fields: &BTreeMap<String, FieldDef>,
-        rules: &Rules,
-        aliases: &Aliases,
-    ) -> Result<Self, Error> {
+    fn compile(fields: &BTreeMap<String, FieldDef>, registry: &Registry) -> Result<Self, Error> {
         let fields = fields
             .iter()
-            .map(|(name, field)| Ok((name.clone(), Node::compile(field, fields, rules, aliases)?)))
+            .map(|(name, field)| Ok((name.clone(), Node::compile(field, fields, registry)?)))
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
 
         Ok(Self { fields })
@@ -202,8 +216,8 @@ impl Tree {
             errors.push(field_error(
                 FieldTarget::value(),
                 Kind::Other,
-                "type",
-                "type",
+                TYPE_RULE,
+                TYPE_RULE,
                 params,
             ));
             return Ok(());
@@ -223,20 +237,14 @@ impl Node {
     fn compile(
         field: &FieldDef,
         siblings: &BTreeMap<String, FieldDef>,
-        rules: &Rules,
-        aliases: &Aliases,
+        registry: &Registry,
     ) -> Result<Self, Error> {
-        ensure_field_targets(&field.exprs, siblings)?;
-        let group = Group::compile_with_fields(&field.exprs, rules, aliases)?;
+        ensure_field_targets(&field.exprs, siblings, registry, &mut Vec::new())?;
+        let group = Group::compile_with_fields(&field.exprs, registry)?;
         let children = &field.fields;
         let fields = children
             .iter()
-            .map(|(name, field)| {
-                Ok((
-                    name.clone(),
-                    Self::compile(field, children, rules, aliases)?,
-                ))
-            })
+            .map(|(name, field)| Ok((name.clone(), Self::compile(field, children, registry)?)))
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
 
         Ok(Self {
@@ -247,16 +255,21 @@ impl Node {
     }
 }
 
-fn ensure_field_targets(exprs: &[Expr], fields: &BTreeMap<String, FieldDef>) -> Result<(), Error> {
+fn ensure_field_targets(
+    exprs: &[Expr],
+    fields: &BTreeMap<String, FieldDef>,
+    registry: &Registry,
+    aliases: &mut Vec<String>,
+) -> Result<(), Error> {
     for expr in exprs {
         if let Some(spec) = expr.single() {
-            ensure_field_target(spec, fields)?;
+            ensure_field_target(spec, fields, registry, aliases)?;
             continue;
         }
 
         if let Some(alternatives) = expr.alternatives() {
             for spec in alternatives {
-                ensure_field_target(spec, fields)?;
+                ensure_field_target(spec, fields, registry, aliases)?;
             }
         }
     }
@@ -264,12 +277,47 @@ fn ensure_field_targets(exprs: &[Expr], fields: &BTreeMap<String, FieldDef>) -> 
     Ok(())
 }
 
-fn ensure_field_target(spec: &Spec, fields: &BTreeMap<String, FieldDef>) -> Result<(), Error> {
-    if !crate::is_field_rule(spec.name()) {
-        return Ok(());
-    }
-
-    let targets = field_targets(spec.name(), spec.params());
+fn ensure_field_target(
+    spec: &Spec,
+    fields: &BTreeMap<String, FieldDef>,
+    registry: &Registry,
+    aliases: &mut Vec<String>,
+) -> Result<(), Error> {
+    let params = match registry.get(spec.name()) {
+        Some(Entry::Rule(rule)) if rule.signature().requires_fields() => {
+            rule.signature().bind(spec.name(), spec.params())?
+        }
+        Some(Entry::Rule(_)) | None => return Ok(()),
+        Some(Entry::Alias(exprs)) => {
+            if aliases.iter().any(|name| name == spec.name()) {
+                return Err(Error::RecursiveAlias {
+                    name: spec.name().to_owned(),
+                });
+            }
+            aliases.push(spec.name().to_owned());
+            ensure_field_targets(exprs, fields, registry, aliases)?;
+            aliases.pop();
+            return Ok(());
+        }
+    };
+    let targets = params
+        .text("compare")
+        .into_iter()
+        .chain(
+            params
+                .list("fields")
+                .into_iter()
+                .flatten()
+                .map(String::as_str),
+        )
+        .chain(
+            params
+                .pairs("conditions")
+                .into_iter()
+                .flatten()
+                .map(|(name, _)| name.as_str()),
+        )
+        .collect::<Vec<_>>();
     if targets.is_empty() {
         return Err(invalid(format!(
             "field rule '{}' must define target field",
@@ -304,9 +352,7 @@ fn validate_fields(
         if value.is_null() {
             field
                 .group
-                .execute_with_fields(errors, target, value, context, |compare| {
-                    object.get(compare).map(|value| value as &dyn Value)
-                })?;
+                .execute_with_fields(errors, target, value, context, object)?;
             continue;
         }
 
@@ -315,15 +361,19 @@ fn validate_fields(
         {
             let mut params = Params::new();
             params.insert("expected", ty.name());
-            errors.push(field_error(target, value.kind(), "type", "type", params));
+            errors.push(field_error(
+                target,
+                value.kind(),
+                TYPE_RULE,
+                TYPE_RULE,
+                params,
+            ));
             continue;
         }
 
         field
             .group
-            .execute_with_fields(errors, target.clone(), value, context, |compare| {
-                object.get(compare).map(|value| value as &dyn Value)
-            })?;
+            .execute_with_fields(errors, target.clone(), value, context, object)?;
 
         if !field.fields.is_empty()
             && let Some(child) = value.as_object()
@@ -391,12 +441,24 @@ fn parse_rule_object(name: &str, params: &JsonValue) -> Result<Spec, Error> {
     if let Some(object) = params.as_object() {
         let mut spec = Spec::new(name);
         for (key, value) in object {
-            spec = spec.param(key, param_value(value)?);
+            spec = match value {
+                JsonValue::Array(values) => spec.named_list(key, param_list(values)?),
+                _ => spec.named(key, param_value(value)?),
+            };
         }
         return Ok(spec);
     }
 
-    Ok(Spec::new(name).param(default_param_name(name), param_value(params)?))
+    match params {
+        JsonValue::Array(values) => {
+            let mut spec = Spec::new(name);
+            for value in param_list(values)? {
+                spec = spec.positional(value);
+            }
+            Ok(spec)
+        }
+        _ => Ok(Spec::new(name).positional(param_value(params)?)),
+    }
 }
 
 fn param_value(value: &JsonValue) -> Result<String, Error> {
@@ -404,45 +466,26 @@ fn param_value(value: &JsonValue) -> Result<String, Error> {
         JsonValue::String(value) => Ok(value.clone()),
         JsonValue::Number(value) => Ok(value.to_string()),
         JsonValue::Bool(value) => Ok(value.to_string()),
-        JsonValue::Array(values) => values
-            .iter()
-            .map(param_value)
-            .collect::<Result<Vec<_>, _>>()
-            .map(|values| values.join(",")),
-        JsonValue::Null | JsonValue::Object(_) => Err(invalid(
-            "rule parameters must be strings, numbers, booleans, or arrays",
+        JsonValue::Null | JsonValue::Array(_) | JsonValue::Object(_) => Err(invalid(
+            "rule parameter must be a string, number, or boolean",
         )),
     }
 }
 
-fn default_param_name(rule: &str) -> &'static str {
-    match rule {
-        "min" => "min",
-        "max" => "max",
-        "regex" => "pattern",
-        "oneof" => "values",
-        "eq_field" | "ne_field" | "gt_field" | "gte_field" | "lt_field" | "lte_field"
-        | "fieldcontains" | "fieldexcludes" => "compare",
-        "required_with"
-        | "required_with_all"
-        | "required_without"
-        | "required_without_all"
-        | "excluded_with"
-        | "excluded_with_all"
-        | "excluded_without"
-        | "excluded_without_all" => "fields",
-        _ => "value",
-    }
+fn param_list(values: &[JsonValue]) -> Result<Vec<String>, Error> {
+    values.iter().map(param_value).collect()
 }
 
-fn required_object<'a>(
-    value: &'a JsonValue,
-    field: &'static str,
-) -> Result<&'a serde_json::Map<String, JsonValue>, Error> {
-    value
-        .get(field)
-        .and_then(JsonValue::as_object)
-        .ok_or_else(|| invalid(format!("schema must contain object '{field}'")))
+fn reject_unknown_keys(
+    object: &serde_json::Map<String, JsonValue>,
+    allowed: &[&str],
+    context: &str,
+) -> Result<(), Error> {
+    if let Some(key) = object.keys().find(|key| !allowed.contains(&key.as_str())) {
+        return Err(invalid(format!("{context} uses unknown key '{key}'")));
+    }
+
+    Ok(())
 }
 
 fn namespace(parent: &str, field: &str) -> String {

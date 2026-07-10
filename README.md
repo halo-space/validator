@@ -38,7 +38,7 @@ application chooses the locale and passes field errors to i18n rendering.
 ## Requirements
 
 - Rust edition: `2024`
-- Minimum supported rustc: `1.96.1`
+- Minimum supported rustc: `1.97`
 
 ## Git Dependency
 
@@ -184,6 +184,45 @@ struct Labels {
 
 Map entry errors include the key, such as `Labels.labels["source"]`.
 For maps, `unique` checks map values because map keys are already unique.
+
+Native collections participate in rules outside `dive(...)` through `Value`.
+Built-in scalar elements such as strings and numbers already implement it. A
+custom element type must implement `Value` before its collection can use
+generic collection rules such as `required`, `min`, or `unique`:
+
+```rust
+use validator::prelude::*;
+
+#[derive(Debug)]
+struct Item {
+    id: u64,
+}
+
+impl Value for Item {
+    fn kind(&self) -> Kind {
+        Kind::Uint(UintKind::U64)
+    }
+
+    fn required(&self) -> bool {
+        self.id != 0
+    }
+
+    fn uint(&self) -> Option<u128> {
+        Some(u128::from(self.id))
+    }
+}
+
+#[derive(Debug, Validate)]
+struct Basket {
+    #[validate(required, min = 1, unique)]
+    items: Vec<Item>,
+}
+```
+
+This bound comes from the current static `Value` dispatch model; no runtime
+reflection or hidden fallback is used. A collection field that only uses
+`dive(nested)` is independent from this bound: its elements only need to
+implement `Validate`.
 
 ## Cross-Field Validation
 
@@ -377,6 +416,11 @@ struct Theme {
 }
 ```
 
+Rules and aliases share one name namespace. `.rule(...)` and `.alias(...)` only
+add new names; they cannot replace built-ins or existing entries. A collision
+returns `Error::DuplicateName`. Aliases may reference other aliases, but direct
+or indirect cycles return `Error::RecursiveAlias`.
+
 ## Custom Rules
 
 Custom rules implement the `Rule` trait and are registered directly on
@@ -403,7 +447,7 @@ impl Rule for Slug {
 
 #[derive(Debug, Validate)]
 struct Post {
-    #[validate(alias = "slug_alias")]
+    #[validate(slug)]
     slug: String,
 }
 
@@ -413,13 +457,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     Validator::new()
-        .alias("slug_alias", "slug")?
         .rule("slug", Slug)?
         .validate(&post)?;
 
     Ok(())
 }
 ```
+
+The default `Rule::signature()` accepts no parameters. Parameterized custom
+rules declare a `Signature`; derive, direct value, and Schema validation all
+bind against it before `check(...)` runs. Unknown, missing, extra, or
+wrong-shaped parameters return `Error::InvalidRuleExpression`.
+
+```rust
+struct StartsWith;
+
+impl Rule for StartsWith {
+    fn signature(&self) -> Signature {
+        Signature::text("prefix")
+    }
+
+    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+        let Some(prefix) = field.params().text("prefix") else {
+            return Ok(false);
+        };
+        Ok(field
+            .value()
+            .string()
+            .is_some_and(|value| value.starts_with(prefix)))
+    }
+}
+```
+
+After registration, use `#[validate(starts_with = "post-")]` directly. List
+parameters use `#[validate(custom("a", "b"))]`, and named parameters use
+`#[validate(custom(min = 1, max = 10))]`; the Rule `Signature` decides which
+shape is valid.
+
+`Signature` supports no parameters, text, optional text, lists, fixed named
+parameters, and field-condition pairs. Bound `Params` preserve those shapes
+and expose them through `text(...)`, `list(...)`, and `pairs(...)`; rules do not
+split comma-encoded strings.
 
 ## Dynamic Schema Validation
 
@@ -460,6 +538,13 @@ fields:
 
 This path reuses the same rule registry, aliases, `Value` dispatch, `Error`,
 and `Namespace` model as code-level validation.
+
+Schema resources are strict. The top level accepts only `fields`, and each
+field definition accepts only `type`, `rules`, and `fields`. The only type names
+are `string`, `boolean`, `integer`, `uint`, `number`, `array`, and `object`.
+Unknown keys and unknown types return `Error::InvalidSchema`. Parameters that
+violate a Rule `Signature` return `Error::InvalidRuleExpression` when the
+Schema is compiled.
 
 Schema validation is JSON/YAML-data oriented. It supports `datetime` as a string
 rule, but does not support native `SystemTime` values or `type: time`.
@@ -558,6 +643,11 @@ let messages = validator::i18n::new()
     .render(error.fields().unwrap());
 ```
 
+Locale resources are also strict: unknown keys return `Error::InvalidData`.
+The language identifier key is only `locale`; `name` is not accepted as a
+compatibility spelling. `Locale::locale()` returns the identifier of a
+programmatically constructed locale.
+
 ## Built-In Rules
 
 Current built-in rules:
@@ -589,7 +679,7 @@ Current built-in rules:
   `credit_card`, `luhn_checksum`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`,
   `cmyk`
 - Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`,
-  `ip_addr`, `ip4_addr`, `ip6_addr`, `cidr`, `cidrv4`, `cidrv6`, `hostname`,
+  `cidr`, `cidrv4`, `cidrv6`, `hostname`,
   `hostname_port`, `hostname_rfc1123`, `fqdn`, `port`, `uuid`, `uuid3`,
   `uuid4`, `uuid5`, `uuid_rfc4122`, `uuid3_rfc4122`, `uuid4_rfc4122`,
   `uuid5_rfc4122`, `ulid`, `tcp4_addr`, `tcp6_addr`, `tcp_addr`,
@@ -606,12 +696,17 @@ Comparison and size rules dispatch by field type:
 - `Option::None` skips non-`required` rules and fails `required`.
 
 Choice rules dispatch by field type for strings, signed integers, and unsigned integers.
+URL and URI rules use structured parsers. `hostname` follows RFC952, while
+`hostname_rfc1123` permits a leading digit and `fqdn` requires a non-numeric TLD.
 
 ## Current Limits
 
 These are intentional limits in the current API surface:
 
 - `unique` supports whole collections and map values, but not `unique=field`.
+- Native collections using generic rules outside `dive(...)` require their
+  element or map value type to implement `Value`; pure `dive(nested)` only
+  requires `Validate`.
 - Native time validation is limited to `std::time::SystemTime`; `Duration`,
   `chrono`, and `time` crate values are not built in.
 - `country_code` and related country aliases are not built in yet.
@@ -624,8 +719,8 @@ These are intentional limits in the current API surface:
 
 All public validation entry points return `Error`. Validation failures use
 `Error::Failed(Vec<FieldError>)`; configuration errors use other `Error`
-variants such as `UnknownRule`, `UnknownAlias`, `InvalidSchema`, or
-`InvalidData`.
+variants for unknown rules, duplicate names, invalid parameters, missing field
+context, recursive aliases, invalid schemas, or invalid data.
 
 ```rust
 let error = Validator::new().validate(&value).unwrap_err();

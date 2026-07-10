@@ -11,6 +11,34 @@ fn fields(error: validator::Error) -> Vec<validator::FieldError> {
         .unwrap_or_else(|| panic!("expected validation errors"))
 }
 
+fn param_list<'a>(field: &'a validator::FieldError, name: &str) -> Vec<&'a str> {
+    field
+        .params()
+        .list(name)
+        .expect("expected list parameter")
+        .iter()
+        .map(String::as_str)
+        .collect()
+}
+
+fn param_pairs<'a>(field: &'a validator::FieldError, name: &str) -> Vec<(&'a str, &'a str)> {
+    field
+        .params()
+        .pairs(name)
+        .expect("expected pair parameter")
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect()
+}
+
+fn param_pair<'a>(field: &'a validator::FieldError, name: &str) -> Option<&'a str> {
+    field
+        .params()
+        .pairs("conditions")?
+        .iter()
+        .find_map(|(field, value)| (field == name).then_some(value.as_str()))
+}
+
 #[derive(Debug, Validate)]
 struct User {
     #[validate(required, length(min = 3, max = 20))]
@@ -66,8 +94,8 @@ fn length_reports_params() {
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "length");
-    assert_eq!(fields[0].params().get("min"), Some("3"));
-    assert_eq!(fields[0].params().get("max"), Some("20"));
+    assert_eq!(fields[0].params().text("min"), Some("3"));
+    assert_eq!(fields[0].params().text("max"), Some("20"));
 }
 
 #[derive(Debug, Validate)]
@@ -442,7 +470,7 @@ fn struct_level_check_reports_compare_param() {
     assert_eq!(fields[0].field(), "end_at");
     assert_eq!(fields[0].rule(), "gt_field");
     assert_eq!(fields[0].reason(), "gt_field");
-    assert_eq!(fields[0].params().get("compare"), Some("start_at"));
+    assert_eq!(fields[0].params().text("compare"), Some("start_at"));
 }
 
 #[derive(Debug, Validate)]
@@ -481,7 +509,7 @@ fn eq_field_reports_current_field_error() {
     assert_eq!(fields[0].field(), "confirm_password");
     assert_eq!(fields[0].rule(), "eq_field");
     assert_eq!(fields[0].reason(), "eq_field");
-    assert_eq!(fields[0].params().get("compare"), Some("password"));
+    assert_eq!(fields[0].params().text("compare"), Some("password"));
 }
 
 #[derive(Debug, Validate)]
@@ -513,7 +541,7 @@ fn gt_field_compares_sibling_values() {
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].namespace().as_str(), "EventWindow.end_at");
     assert_eq!(fields[0].rule(), "gt_field");
-    assert_eq!(fields[0].params().get("compare"), Some("start_at"));
+    assert_eq!(fields[0].params().text("compare"), Some("start_at"));
 }
 
 #[derive(Debug, Validate)]
@@ -635,8 +663,8 @@ fn field_string_rules_compare_sibling_fields() {
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
 
     assert_eq!(rules, vec!["fieldcontains", "fieldexcludes"]);
-    assert_eq!(fields[0].params().get("compare"), Some("needle"));
-    assert_eq!(fields[1].params().get("compare"), Some("forbidden"));
+    assert_eq!(fields[0].params().text("compare"), Some("needle"));
+    assert_eq!(fields[1].params().text("compare"), Some("forbidden"));
 }
 
 #[derive(Debug, Validate)]
@@ -760,21 +788,21 @@ fn conditional_field_rules_validate_sibling_fields() {
             "excluded_if"
         ]
     );
-    assert_eq!(fields[0].params().get("status"), Some("draft"));
-    assert_eq!(fields[1].params().get("status"), Some("archived"));
-    assert_eq!(fields[2].params().get("fields"), Some("email,phone"));
-    assert_eq!(fields[3].params().get("fields"), Some("email,phone"));
-    assert_eq!(fields[4].params().get("status"), Some("archived"));
-    assert_eq!(fields[5].params().get("status"), Some("draft"));
+    assert_eq!(param_pair(&fields[0], "status"), Some("draft"));
+    assert_eq!(param_pair(&fields[1], "status"), Some("archived"));
+    assert_eq!(param_list(&fields[2], "fields"), vec!["email", "phone"]);
+    assert_eq!(param_list(&fields[3], "fields"), vec!["email", "phone"]);
+    assert_eq!(param_pair(&fields[4], "status"), Some("archived"));
+    assert_eq!(param_pair(&fields[5], "status"), Some("draft"));
     assert_eq!(
-        fields[6].params().get("fields"),
-        Some("backup_email,backup_phone")
+        param_list(&fields[6], "fields"),
+        vec!["backup_email", "backup_phone"]
     );
     assert_eq!(
-        fields[7].params().get("fields"),
-        Some("backup_email,backup_phone")
+        param_list(&fields[7], "fields"),
+        vec!["backup_email", "backup_phone"]
     );
-    assert_eq!(fields[8].params().get("mode"), Some("private"));
+    assert_eq!(param_pair(&fields[8], "mode"), Some("private"));
 }
 
 #[derive(Debug, Validate)]
@@ -851,14 +879,16 @@ fn conditional_all_rules_distinguish_any_and_all_fields() {
     );
     for field in fields {
         let expected = match field.rule() {
-            "required_with_all" | "excluded_with" | "excluded_with_all" => "email,phone",
+            "required_with_all" | "excluded_with" | "excluded_with_all" => {
+                vec!["email", "phone"]
+            }
             "required_without_all" | "excluded_without" | "excluded_without_all" => {
-                "backup_email,backup_phone"
+                vec!["backup_email", "backup_phone"]
             }
             rule => panic!("unexpected rule {rule}"),
         };
 
-        assert_eq!(field.params().get("fields"), Some(expected));
+        assert_eq!(param_list(&field, "fields"), expected);
     }
 }
 
@@ -890,7 +920,7 @@ fn conditional_pair_rule_compares_typed_values() {
 
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "required_if");
-    assert_eq!(fields[0].params().get("level"), Some("3"));
+    assert_eq!(param_pairs(&fields[0], "conditions"), vec![("level", "3")]);
 }
 
 #[derive(Debug, Validate)]
@@ -931,10 +961,10 @@ fn struct_level_check_pushes_multiple_param_errors() {
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0].namespace().as_str(), "Draft.name");
     assert_eq!(fields[0].rule(), "required_without");
-    assert_eq!(fields[0].params().get("field"), Some("title"));
+    assert_eq!(fields[0].params().text("field"), Some("title"));
     assert_eq!(fields[1].namespace().as_str(), "Draft.title");
     assert_eq!(fields[1].rule(), "required_without");
-    assert_eq!(fields[1].params().get("field"), Some("name"));
+    assert_eq!(fields[1].params().text("field"), Some("name"));
 }
 
 #[derive(Debug, Validate)]
@@ -958,7 +988,7 @@ fn alias_expands_to_rules() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "username");
     assert_eq!(fields[0].reason(), "length");
-    assert_eq!(fields[0].params().get("min"), Some("3"));
+    assert_eq!(fields[0].params().text("min"), Some("3"));
 
     Ok(())
 }
@@ -990,7 +1020,7 @@ fn derive_unknown_alias_returns_error() {
 
     assert!(matches!(
         error,
-        validator::Error::UnknownAlias { name } if name == "username"
+        validator::Error::UnknownRule { name } if name == "username"
     ));
 }
 
@@ -1089,7 +1119,7 @@ fn direct_value_alias_preserves_rule_and_reason() -> Result<(), Box<dyn std::err
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "username");
     assert_eq!(fields[0].reason(), "length");
-    assert_eq!(fields[0].params().get("min"), Some("3"));
+    assert_eq!(fields[0].params().text("min"), Some("3"));
 
     Ok(())
 }
@@ -1099,6 +1129,62 @@ fn direct_value_alias_omitempty_skips_empty_value() -> Result<(), Box<dyn std::e
     Validator::new()
         .alias("optional_email", "omitempty,email")?
         .value(&String::new(), "optional_email")?;
+
+    Ok(())
+}
+
+#[test]
+fn direct_value_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new()
+        .alias("optional_email", "omitempty,email")?
+        .value(&String::new(), "optional_email,required")?;
+
+    Ok(())
+}
+
+#[test]
+fn alias_omitempty_in_alternative_skips_following_rules() -> Result<(), Box<dyn std::error::Error>>
+{
+    Validator::new()
+        .alias("optional_email", "omitempty,email")?
+        .value(&String::new(), "email|optional_email,required")?;
+
+    Ok(())
+}
+
+#[derive(Debug, Validate)]
+struct OptionalAliasEmail {
+    #[validate(alias = "optional_email", required)]
+    email: String,
+}
+
+#[test]
+fn derive_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new()
+        .alias("optional_email", "omitempty,email")?
+        .validate(&OptionalAliasEmail {
+            email: String::new(),
+        })?;
+
+    Ok(())
+}
+
+#[test]
+fn schema_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  email:
+    type: string
+    rules:
+      - optional_email
+      - required
+"#,
+    )?;
+
+    Validator::with_schema(schema)
+        .alias("optional_email", "omitempty,email")?
+        .validate_map(&serde_json::json!({ "email": "" }))?;
 
     Ok(())
 }
@@ -1127,12 +1213,14 @@ fn direct_value_reuses_alias_and_custom_rule() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn direct_value_cache_is_generation_scoped() -> Result<(), Box<dyn std::error::Error>> {
+fn direct_value_rejects_rule_alias_name_collision() -> Result<(), Box<dyn std::error::Error>> {
     let validator = Validator::new().alias("slug", "required")?;
     assert!(validator.value(&String::new(), "slug").is_err());
 
-    let validator = validator.rule("slug", Slug)?;
-    validator.value(&String::new(), "slug")?;
+    let Err(error) = validator.rule("slug", Slug) else {
+        panic!("expected duplicate name error");
+    };
+    assert!(matches!(error, Error::DuplicateName { name } if name == "slug"));
 
     Ok(())
 }
@@ -1325,7 +1413,7 @@ fields:
     assert_eq!(fields[0].namespace().as_str(), "title");
     assert_eq!(fields[0].rule(), "type");
     assert_eq!(fields[0].reason(), "type");
-    assert_eq!(fields[0].params().get("expected"), Some("string"));
+    assert_eq!(fields[0].params().text("expected"), Some("string"));
 
     Ok(())
 }
@@ -1378,8 +1466,7 @@ fields:
 }
 
 #[test]
-fn schema_cache_is_generation_scoped_after_rule_registration()
--> Result<(), Box<dyn std::error::Error>> {
+fn schema_rejects_alias_rule_name_collision() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -1396,24 +1483,16 @@ fields:
     assert_eq!(first[0].rule(), "slug");
     assert_eq!(first[0].reason(), "required");
 
-    let validator = validator.rule("slug", Slug)?;
-    validator.validate_map(&json!({ "slug": "" }))?;
-
-    let second = fields(
-        validator
-            .validate_map(&json!({ "slug": "Hello World" }))
-            .unwrap_err(),
-    );
-    assert_eq!(second.len(), 1);
-    assert_eq!(second[0].rule(), "slug");
-    assert_eq!(second[0].reason(), "slug");
+    let Err(error) = validator.rule("slug", Slug) else {
+        panic!("expected duplicate name error");
+    };
+    assert!(matches!(error, Error::DuplicateName { name } if name == "slug"));
 
     Ok(())
 }
 
 #[test]
-fn schema_cache_is_generation_scoped_after_alias_update() -> Result<(), Box<dyn std::error::Error>>
-{
+fn schema_rejects_duplicate_alias_name() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -1431,8 +1510,10 @@ fields:
     assert_eq!(first[0].reason(), "required");
     assert_eq!(first[1].reason(), "email");
 
-    let validator = validator.alias("contact", "omitempty,email")?;
-    validator.validate_map(&json!({ "email": "" }))?;
+    let Err(error) = validator.alias("contact", "omitempty,email") else {
+        panic!("expected duplicate name error");
+    };
+    assert!(matches!(error, Error::DuplicateName { name } if name == "contact"));
 
     Ok(())
 }
@@ -1455,6 +1536,104 @@ fields:
         validator::Error::InvalidSchema { reason }
             if reason.contains("unsupported key 'types'")
     ));
+
+    Ok(())
+}
+
+#[test]
+fn schema_rejects_compatibility_type_names() {
+    for ty in ["bool", "int", "float", "map"] {
+        let error = Schema::from_yaml(format!("fields:\n  value:\n    type: {ty}\n")).unwrap_err();
+
+        assert!(matches!(
+            error,
+            Error::InvalidSchema { reason }
+                if reason.contains(&format!("unsupported type '{ty}'"))
+        ));
+    }
+}
+
+#[test]
+fn schema_rejects_unknown_field_key() {
+    let error = Schema::from_yaml(
+        r#"
+fields:
+  title:
+    type: string
+    rulse:
+      - required
+"#,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::InvalidSchema { reason }
+            if reason.contains("field 'title'") && reason.contains("unknown key 'rulse'")
+    ));
+}
+
+#[test]
+fn schema_rejects_unknown_top_level_key() {
+    let error = Schema::from_json(
+        r#"{
+  "fields": {},
+  "version": 1
+}"#,
+    )
+    .unwrap_err();
+
+    assert!(matches!(
+        error,
+        Error::InvalidSchema { reason } if reason.contains("unknown key 'version'")
+    ));
+}
+
+#[test]
+fn schema_choice_shorthand_uses_values_param() -> Result<(), Box<dyn std::error::Error>> {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  role:
+    type: string
+    rules:
+      - noneof: [root, admin]
+  state:
+    type: string
+    rules:
+      - oneofci: [draft, published]
+  username:
+    type: string
+    rules:
+      - noneofci: [root, admin]
+"#,
+    )?;
+    let fields = fields(
+        Validator::with_schema(schema)
+            .validate_map(&json!({
+                "role": "root",
+                "state": "archived",
+                "username": "ADMIN"
+            }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 3);
+    assert_eq!(param_list(&fields[0], "values"), vec!["root", "admin"]);
+    assert_eq!(param_list(&fields[1], "values"), vec!["draft", "published"]);
+    assert_eq!(param_list(&fields[2], "values"), vec!["root", "admin"]);
+    assert!(
+        fields
+            .iter()
+            .all(|field| field.params().text("value").is_none())
+    );
+
+    let messages = validator::i18n::en().render(&fields);
+    assert!(
+        messages
+            .iter()
+            .all(|message| !message.text.contains("{values}"))
+    );
 
     Ok(())
 }
@@ -1684,7 +1863,7 @@ fields:
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].namespace().as_str(), "$value");
     assert_eq!(fields[0].rule(), "type");
-    assert_eq!(fields[0].params().get("expected"), Some("object"));
+    assert_eq!(fields[0].params().text("expected"), Some("object"));
 
     Ok(())
 }
@@ -1791,9 +1970,9 @@ fn direct_value_reports_new_string_choice_rules() {
 
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0].rule(), "containsany");
-    assert_eq!(fields[0].params().get("value"), Some("!@#?"));
+    assert_eq!(fields[0].params().text("value"), Some("!@#?"));
     assert_eq!(fields[1].rule(), "noneof");
-    assert_eq!(fields[1].params().get("values"), Some("root,admin"));
+    assert_eq!(param_list(&fields[1], "values"), vec!["root", "admin"]);
 }
 
 #[test]
@@ -1932,10 +2111,10 @@ fields:
             ("username", "noneof"),
         ]
     );
-    assert_eq!(fields[2].params().get("value"), Some("-"));
-    assert_eq!(fields[10].params().get("values"), Some("1,2,3"));
-    assert_eq!(fields[16].params().get("value"), Some("published"));
-    assert_eq!(fields[18].params().get("values"), Some("root,admin"));
+    assert_eq!(fields[2].params().text("value"), Some("-"));
+    assert_eq!(param_list(&fields[10], "values"), vec!["1", "2", "3"]);
+    assert_eq!(fields[16].params().text("value"), Some("published"));
+    assert_eq!(param_list(&fields[18], "values"), vec!["root", "admin"]);
 
     Ok(())
 }
@@ -1973,10 +2152,10 @@ fields:
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0].namespace().as_str(), "confirm_password");
     assert_eq!(fields[0].rule(), "eq_field");
-    assert_eq!(fields[0].params().get("compare"), Some("password"));
+    assert_eq!(fields[0].params().text("compare"), Some("password"));
     assert_eq!(fields[1].namespace().as_str(), "end_at");
     assert_eq!(fields[1].rule(), "gt_field");
-    assert_eq!(fields[1].params().get("compare"), Some("start_at"));
+    assert_eq!(fields[1].params().text("compare"), Some("start_at"));
 
     Ok(())
 }
@@ -2032,8 +2211,8 @@ fields:
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
 
     assert_eq!(rules, vec!["fieldcontains", "fieldexcludes"]);
-    assert_eq!(fields[0].params().get("compare"), Some("needle"));
-    assert_eq!(fields[1].params().get("compare"), Some("forbidden"));
+    assert_eq!(fields[0].params().text("compare"), Some("needle"));
+    assert_eq!(fields[1].params().text("compare"), Some("forbidden"));
 
     Ok(())
 }
@@ -2107,30 +2286,28 @@ fields:
         fields
             .iter()
             .find(|field| field.rule() == "required_if")
-            .and_then(|field| field.params().get("status")),
+            .and_then(|field| param_pair(field, "status")),
         Some("published")
     );
     assert_eq!(
         fields
             .iter()
             .find(|field| field.rule() == "required_unless")
-            .and_then(|field| field.params().get("status")),
+            .and_then(|field| param_pair(field, "status")),
         Some("draft")
     );
     for rule in ["required_with", "required_without"] {
-        assert_eq!(
-            fields
-                .iter()
-                .find(|field| field.rule() == rule)
-                .and_then(|field| field.params().get("fields")),
-            Some("email,phone")
-        );
+        let field = fields
+            .iter()
+            .find(|field| field.rule() == rule)
+            .expect("expected conditional field error");
+        assert_eq!(param_list(field, "fields"), vec!["email", "phone"]);
     }
     assert_eq!(
         fields
             .iter()
             .find(|field| field.rule() == "skip_unless")
-            .and_then(|field| field.params().get("status")),
+            .and_then(|field| param_pair(field, "status")),
         Some("published")
     );
 
@@ -2235,7 +2412,15 @@ fields:
     );
     let mut failures = fields
         .iter()
-        .map(|field| (field.rule(), field.params().get("fields")))
+        .map(|field| {
+            (
+                field.rule(),
+                field
+                    .params()
+                    .list("fields")
+                    .map(|values| values.iter().map(String::as_str).collect::<Vec<_>>()),
+            )
+        })
         .collect::<Vec<_>>();
     failures.sort_unstable();
 
@@ -2245,12 +2430,21 @@ fields:
             ("excluded_if", None),
             ("excluded_if", None),
             ("excluded_unless", None),
-            ("excluded_with", Some("email,phone")),
-            ("excluded_with_all", Some("email,phone")),
-            ("excluded_without", Some("backup_email,backup_phone")),
-            ("excluded_without_all", Some("backup_email,backup_phone")),
-            ("required_with_all", Some("email,phone")),
-            ("required_without_all", Some("backup_email,backup_phone")),
+            ("excluded_with", Some(vec!["email", "phone"])),
+            ("excluded_with_all", Some(vec!["email", "phone"])),
+            (
+                "excluded_without",
+                Some(vec!["backup_email", "backup_phone"])
+            ),
+            (
+                "excluded_without_all",
+                Some(vec!["backup_email", "backup_phone"])
+            ),
+            ("required_with_all", Some(vec!["email", "phone"])),
+            (
+                "required_without_all",
+                Some(vec!["backup_email", "backup_phone"])
+            ),
         ]
     );
 
@@ -2357,7 +2551,7 @@ fields:
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].namespace().as_str(), "confirm_password");
     assert_eq!(fields[0].rule(), "eq_field");
-    assert_eq!(fields[0].params().get("compare"), Some("password"));
+    assert_eq!(fields[0].params().text("compare"), Some("password"));
 
     Ok(())
 }

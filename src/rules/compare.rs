@@ -34,10 +34,7 @@ pub(super) fn satisfies(
     limit_name: &str,
     relation: Relation,
 ) -> Result<bool, Error> {
-    let limit = field
-        .params()
-        .get(limit_name)
-        .or_else(|| field.params().get("value"));
+    let limit = field.params().text(limit_name);
 
     if field.value().kind() == Kind::Time {
         if let Some(limit) = limit {
@@ -60,15 +57,22 @@ pub(super) fn not_equals(field: &Field<'_>) -> Result<bool, Error> {
 
 fn equality(field: &Field<'_>, rule: &str) -> Result<Option<bool>, Error> {
     if field.value().kind() == Kind::Time {
-        if let Some(value) = field.params().get("value") {
+        if let Some(value) = field.params().text("value") {
             return Err(invalid_time_parameter("value", value));
         }
         return Err(invalid_time_equality(rule));
     }
 
+    if field.params().text("value").is_none() {
+        return Err(Error::InvalidRuleExpression {
+            expression: rule.to_owned(),
+            reason: "rule requires exactly one 'value' parameter".to_owned(),
+        });
+    }
+
     Ok(field
         .params()
-        .get("value")
+        .text("value")
         .and_then(|value| value_equals(field, value)))
 }
 

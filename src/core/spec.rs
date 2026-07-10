@@ -1,21 +1,40 @@
-use super::{Error, Params};
+use super::{Error, RawParams};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct Spec {
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[doc(hidden)]
+pub struct Spec {
     name: String,
-    params: Params,
+    params: RawParams,
 }
 
 impl Spec {
     pub(crate) fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            params: Params::new(),
+            params: RawParams::new(),
         }
     }
 
-    pub(crate) fn param(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
-        self.params.insert(name, value);
+    #[doc(hidden)]
+    pub fn with_params(name: impl Into<String>, params: RawParams) -> Self {
+        Self {
+            name: name.into(),
+            params,
+        }
+    }
+
+    pub(crate) fn positional(mut self, value: impl Into<String>) -> Self {
+        self.params.positional(value);
+        self
+    }
+
+    pub(crate) fn named(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.params.named(name, value);
+        self
+    }
+
+    pub(crate) fn named_list(mut self, name: impl Into<String>, values: Vec<String>) -> Self {
+        self.params.named_list(name, values);
         self
     }
 
@@ -23,7 +42,7 @@ impl Spec {
         &self.name
     }
 
-    pub(crate) fn params(&self) -> &Params {
+    pub(crate) fn params(&self) -> &RawParams {
         &self.params
     }
 }
@@ -88,64 +107,25 @@ fn parse_rule(item: &str) -> Result<Spec, Error> {
             .strip_suffix(')')
             .ok_or_else(|| invalid_rule_expression(item, "missing closing ')'"))?;
         let mut spec = Spec::new(name);
-        let mut positional = Vec::new();
 
         for pair in split_top_level(params, ',') {
             let pair = pair.trim();
             if pair.is_empty() {
                 continue;
             }
-            if let Some((key, value)) = pair.split_once('=') {
-                spec = spec.param(key.trim(), trim_quotes(value.trim()));
+            if let Some((key, value)) = split_top_level_once(pair, '=') {
+                spec = spec.named(key.trim(), trim_quotes(value.trim()));
             } else {
-                positional.push(trim_quotes(pair).to_owned());
+                spec = spec.positional(trim_quotes(pair));
             }
-        }
-
-        if !positional.is_empty() {
-            let param = match name {
-                "oneof" | "oneofci" | "noneof" | "noneofci" => "values",
-                "required_with"
-                | "required_with_all"
-                | "required_without"
-                | "required_without_all"
-                | "excluded_with"
-                | "excluded_with_all"
-                | "excluded_without"
-                | "excluded_without_all" => "fields",
-                _ => {
-                    return Err(invalid_rule_expression(
-                        item,
-                        "expected key=value parameter",
-                    ));
-                }
-            };
-            spec = spec.param(param, positional.join(","));
         }
 
         return Ok(spec);
     }
 
-    if let Some((name, value)) = item.split_once('=') {
+    if let Some((name, value)) = split_top_level_once(item, '=') {
         let name = name.trim();
-        let param = match name {
-            "min" => "min",
-            "max" => "max",
-            "regex" => "pattern",
-            "oneof" | "oneofci" | "noneof" | "noneofci" => "values",
-            "eq_field" | "ne_field" | "gt_field" | "gte_field" | "lt_field" | "lte_field"
-            | "fieldcontains" | "fieldexcludes" => "compare",
-            "required_with"
-            | "required_with_all"
-            | "required_without"
-            | "required_without_all"
-            | "excluded_with"
-            | "excluded_with_all"
-            | "excluded_without"
-            | "excluded_without_all" => "fields",
-            _ => "value",
-        };
-        return Ok(Spec::new(name).param(param, trim_quotes(value.trim())));
+        return Ok(Spec::new(name).positional(trim_quotes(value.trim())));
     }
 
     Ok(Spec::new(item.trim()))
@@ -186,6 +166,38 @@ fn split_top_level(input: &str, separator: char) -> Vec<&str> {
     parts
 }
 
+fn split_top_level_once(input: &str, separator: char) -> Option<(&str, &str)> {
+    let mut depth = 0;
+    let mut quote = None;
+    let mut escaped = false;
+
+    for (index, ch) in input.char_indices() {
+        if let Some(current_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == current_quote {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => quote = Some(ch),
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
+            ch if ch == separator && depth == 0 => {
+                let value = index + ch.len_utf8();
+                return Some((&input[..index], &input[value..]));
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
 fn trim_quotes(value: &str) -> &str {
     if let Some(value) = value
         .strip_prefix('"')
@@ -221,8 +233,7 @@ mod tests {
 
         assert_eq!(required.name(), "required");
         assert_eq!(length.name(), "length");
-        assert_eq!(length.params().get("min"), Some("3"));
-        assert_eq!(length.params().get("max"), Some("20"));
+        assert_eq!(length.params().named_values().len(), 2);
     }
 
     #[test]
@@ -232,7 +243,7 @@ mod tests {
 
         assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "oneof");
-        assert_eq!(spec.params().get("values"), Some("draft,published"));
+        assert_eq!(spec.params().positional_values(), ["draft", "published"]);
     }
 
     #[test]
@@ -242,28 +253,28 @@ mod tests {
 
         assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "required_with");
-        assert_eq!(spec.params().get("fields"), Some("email,phone"));
+        assert_eq!(spec.params().positional_values(), ["email", "phone"]);
 
         let exprs = parse_expression("required_without=email").unwrap();
         let spec = exprs[0].single().unwrap();
 
         assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "required_without");
-        assert_eq!(spec.params().get("fields"), Some("email"));
+        assert_eq!(spec.params().positional_values(), ["email"]);
 
         let exprs = parse_expression(r#"excluded_with_all("email","phone")"#).unwrap();
         let spec = exprs[0].single().unwrap();
 
         assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "excluded_with_all");
-        assert_eq!(spec.params().get("fields"), Some("email,phone"));
+        assert_eq!(spec.params().positional_values(), ["email", "phone"]);
 
         let exprs = parse_expression("required_without_all=email").unwrap();
         let spec = exprs[0].single().unwrap();
 
         assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "required_without_all");
-        assert_eq!(spec.params().get("fields"), Some("email"));
+        assert_eq!(spec.params().positional_values(), ["email"]);
     }
 
     #[test]

@@ -16,7 +16,7 @@ pub(super) use host::{Fqdn, Hostname};
 pub(super) use hostname_port::HostnamePort;
 pub(super) use hostname_rfc1123::HostnameRfc1123;
 pub(super) use http_url::{HttpUrl, HttpsUrl};
-pub(super) use ip::{Ip, Ip4Address, Ip6Address, IpAddress, Ipv4, Ipv6};
+pub(super) use ip::{Ip, Ipv4, Ipv6};
 pub(super) use port::Port;
 pub(super) use socket::{
     Tcp4Address, Tcp6Address, TcpAddress, Udp4Address, Udp6Address, UdpAddress,

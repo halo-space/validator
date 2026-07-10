@@ -145,18 +145,23 @@ fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn locale_loader_accepts_name_alias() -> Result<(), Box<dyn std::error::Error>> {
-    let locale = validator::i18n::Locale::from_yaml(
+fn locale_loader_rejects_name_alias() {
+    let Err(error) = validator::i18n::Locale::from_yaml(
         r#"
 name: zh-CN
 rules:
   email: "{field}格式不正确"
 "#,
-    )?;
+    ) else {
+        panic!("expected locale loading to fail");
+    };
 
-    assert_eq!(locale.name(), "zh-CN");
-
-    Ok(())
+    assert!(matches!(
+        error,
+        validator::Error::InvalidData { reason }
+            if reason.contains("unknown field `name`")
+                || reason.contains("unknown field 'name'")
+    ));
 }
 
 #[test]
@@ -220,6 +225,25 @@ rules:
         error,
         validator::Error::InvalidData { reason }
             if reason.contains("invalid locale resource")
+    ));
+}
+
+#[test]
+fn locale_loader_rejects_unknown_key() {
+    let Err(error) = validator::i18n::Locale::from_yaml(
+        r#"
+locale: zh-CN
+rulse:
+  email: "{field}格式不正确"
+"#,
+    ) else {
+        panic!("expected locale loading to fail");
+    };
+
+    assert!(matches!(
+        error,
+        validator::Error::InvalidData { reason }
+            if reason.contains("unknown field `rulse`")
     ));
 }
 

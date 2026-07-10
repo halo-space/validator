@@ -10,7 +10,7 @@ impl<'a> FieldRef<'a> {
         Self { name, value }
     }
 
-    pub fn name(&self) -> &'a str {
+    pub fn name(&self) -> &str {
         self.name
     }
 
@@ -20,5 +20,11 @@ impl<'a> FieldRef<'a> {
 }
 
 pub trait Access {
-    fn field(&self, name: &str) -> Option<FieldRef<'_>>;
+    fn field<'a>(&'a self, name: &'a str) -> Option<FieldRef<'a>>;
+}
+
+impl Access for serde_json::Map<String, serde_json::Value> {
+    fn field<'a>(&'a self, name: &'a str) -> Option<FieldRef<'a>> {
+        self.get(name).map(|value| FieldRef::new(name, value))
+    }
 }

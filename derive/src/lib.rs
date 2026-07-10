@@ -67,7 +67,6 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
         let is_option = is_option_type(&field.ty);
         let item_is_option = collection_item_type(&field.ty).is_some_and(is_option_type);
         let map_value_is_option = map_value_type(&field.ty).is_some_and(is_option_type);
-        let collection_kind = collection_kind(&field.ty);
         let Some(field_ident) = field.ident.as_ref() else {
             continue;
         };
@@ -90,7 +89,6 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             is_option,
             Some(item_is_option),
             Some(map_value_is_option),
-            collection_kind,
         )?;
 
         if !field_checks.is_empty() {
@@ -144,7 +142,10 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
         }
 
         impl #impl_generics ::validator::__private::Access for #name #ty_generics #where_clause {
-            fn field(&self, name: &str) -> Option<::validator::__private::FieldRef<'_>> {
+            fn field<'__validator>(
+                &'__validator self,
+                name: &'__validator str,
+            ) -> Option<::validator::__private::FieldRef<'__validator>> {
                 match name {
                     #(#access_arms)*
                     _ => None,
@@ -181,16 +182,23 @@ fn parse_struct_checks(attrs: &[syn::Attribute]) -> syn::Result<Vec<syn::Path>> 
 enum RuleAttr {
     Rule {
         name: String,
-        params: Vec<(String, String)>,
+        params: Vec<ParamAttr>,
     },
     Alias(String),
     FieldRule {
         name: String,
-        params: Vec<(String, String)>,
+        params: Vec<ParamAttr>,
     },
     OmitEmpty,
     Nested,
     Dive(DiveAttr),
+}
+
+#[derive(Clone, Debug)]
+enum ParamAttr {
+    Positional(String),
+    Named(String, String),
+    List(String, Vec<String>),
 }
 
 #[derive(Clone, Debug)]
@@ -202,33 +210,11 @@ enum DiveAttr {
     },
 }
 
-#[derive(Clone, Debug)]
-enum UniqueCollection {
-    Items(proc_macro2::TokenStream),
-    MapValues,
-}
-
-impl UniqueCollection {
-    fn kind(&self) -> proc_macro2::TokenStream {
-        match self {
-            Self::Items(kind) => kind.clone(),
-            Self::MapValues => quote!(::validator::Kind::Map),
-        }
-    }
-
-    fn values(&self, value: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
-        match self {
-            Self::Items(_) => quote!((#value).iter()),
-            Self::MapValues => quote!((#value).values()),
-        }
-    }
-}
-
 fn exposes_value_access(rules: &[RuleAttr]) -> bool {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
 
     rules.iter().any(|rule| match rule {
-        RuleAttr::Rule { name, .. } => !(has_nested && name == "required") && name != "unique",
+        RuleAttr::Rule { name, .. } => !(has_nested && name == "required"),
         RuleAttr::Alias(_) => true,
         RuleAttr::FieldRule { .. } => true,
         RuleAttr::OmitEmpty => !has_nested,
@@ -267,7 +253,7 @@ fn validate_field_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) ->
     Ok(())
 }
 
-fn field_targets<'a>(rule: &str, params: &'a [(String, String)]) -> Vec<&'a str> {
+fn field_targets<'a>(rule: &str, params: &'a [ParamAttr]) -> Vec<&'a str> {
     match rule {
         "required_with"
         | "required_with_all"
@@ -278,22 +264,30 @@ fn field_targets<'a>(rule: &str, params: &'a [(String, String)]) -> Vec<&'a str>
         | "excluded_without"
         | "excluded_without_all" => params
             .iter()
-            .find(|(name, _)| name == "fields")
+            .find_map(|param| match param {
+                ParamAttr::List(name, values) if name == "fields" => Some(values),
+                _ => None,
+            })
             .into_iter()
-            .flat_map(|(_, fields)| fields.split(','))
-            .map(str::trim)
-            .filter(|field| !field.is_empty())
+            .flatten()
+            .map(String::as_str)
             .collect(),
         "required_if" | "required_unless" | "skip_unless" | "excluded_if" | "excluded_unless" => {
             params
                 .iter()
-                .map(|(field, _)| field.as_str())
+                .filter_map(|param| match param {
+                    ParamAttr::Named(field, _) => Some(field.as_str()),
+                    _ => None,
+                })
                 .collect::<Vec<_>>()
         }
         _ => params
             .iter()
-            .find(|(name, _)| name == "compare")
-            .map(|(_, compare)| vec![compare.as_str()])
+            .find_map(|param| match param {
+                ParamAttr::Named(name, compare) if name == "compare" => Some(compare.as_str()),
+                _ => None,
+            })
+            .map(|compare| vec![compare])
             .unwrap_or_default(),
     }
 }
@@ -331,7 +325,8 @@ fn reject_field_rules(rules: &[RuleAttr]) -> syn::Result<()> {
                 reject_field_rules(keys)?;
                 reject_field_rules(values)?;
             }
-            RuleAttr::Rule { .. } | RuleAttr::Alias(_) | RuleAttr::OmitEmpty | RuleAttr::Nested => {}
+            RuleAttr::Rule { .. } | RuleAttr::Alias(_) | RuleAttr::OmitEmpty | RuleAttr::Nested => {
+            }
         }
     }
 
@@ -345,7 +340,6 @@ fn build_checks(
     is_option: bool,
     dive_item_is_option: Option<bool>,
     map_value_is_option: Option<bool>,
-    collection_kind: Option<UniqueCollection>,
 ) -> syn::Result<Vec<proc_macro2::TokenStream>> {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
     let is_nested_option = has_nested && is_option;
@@ -354,22 +348,6 @@ fn build_checks(
     for rule in rules {
         match rule {
             RuleAttr::Rule { name, params } => {
-                if name == "unique" && let Some(collection) = collection_kind.clone() {
-                    let kind = collection.kind();
-                    let values = collection.values(&value);
-                    checks.push(quote! {
-                        if !skip_rest {
-                            validator.__validate_unique_items(
-                                &mut errors,
-                                #target,
-                                #kind,
-                                #values,
-                            );
-                        }
-                    });
-                    continue;
-                }
-
                 if has_nested && name == "required" {
                     if is_option {
                         checks.push(quote! {
@@ -385,63 +363,62 @@ fn build_checks(
                     continue;
                 }
 
-                let inserts = params.iter().map(|(key, value)| {
-                    quote! {
-                        params.insert(#key, #value);
-                    }
-                });
+                let inserts = build_params(&params);
                 checks.push(quote! {
                     if !skip_rest {
-                        let mut params = ::validator::Params::new();
+                        let mut params = ::validator::__private::RawParams::new();
                         #(#inserts)*
-                        validator.__validate_rule(
+                        let spec = ::validator::__private::Spec::with_params(#name, params);
+                        if validator.__validate_spec(
                             &mut errors,
                             #target,
                             #value,
-                            #name,
-                            params,
+                            spec,
                             context,
-                        )?;
+                            self,
+                        )? {
+                            skip_rest = true;
+                        }
                     }
                 });
             }
             RuleAttr::Alias(alias) => {
                 checks.push(quote! {
                     if !skip_rest {
-                        validator.__validate_alias(
+                        let spec = ::validator::__private::Spec::with_params(
+                            #alias,
+                            ::validator::__private::RawParams::new(),
+                        );
+                        if validator.__validate_spec(
                             &mut errors,
                             #target,
                             #value,
-                            #alias,
+                            spec,
                             context,
-                        )?;
+                            self,
+                        )? {
+                            skip_rest = true;
+                        }
                     }
                 });
             }
-            RuleAttr::FieldRule {
-                name,
-                params,
-            } => {
-                let inserts = params.iter().map(|(key, value)| {
-                    quote! {
-                        params.insert(#key, #value);
-                    }
-                });
+            RuleAttr::FieldRule { name, params } => {
+                let inserts = build_params(&params);
                 checks.push(quote! {
                     if !skip_rest {
-                        let mut params = ::validator::Params::new();
+                        let mut params = ::validator::__private::RawParams::new();
                         #(#inserts)*
-                        validator.__validate_field_rule(
+                        let spec = ::validator::__private::Spec::with_params(#name, params);
+                        if validator.__validate_spec(
                             &mut errors,
                             #target,
                             #value,
-                            #name,
-                            params,
-                            |field| {
-                                ::validator::__private::Access::field(self, field)
-                                    .map(|field_ref| field_ref.value())
-                            },
-                        );
+                            spec,
+                            context,
+                            self,
+                        )? {
+                            skip_rest = true;
+                        }
                     }
                 });
             }
@@ -495,7 +472,6 @@ fn build_checks(
                         item_is_option,
                         None,
                         None,
-                        None,
                     )?;
 
                     checks.push(quote! {
@@ -517,14 +493,12 @@ fn build_checks(
                         false,
                         None,
                         None,
-                        None,
                     )?;
                     let value_checks = build_checks(
                         values,
                         quote!(value),
                         quote!(entry_target.clone()),
                         value_is_option,
-                        None,
                         None,
                         None,
                     )?;
@@ -545,11 +519,28 @@ fn build_checks(
                         }
                     });
                 }
-            }
+            },
         }
     }
 
     Ok(checks)
+}
+
+fn build_params(params: &[ParamAttr]) -> Vec<proc_macro2::TokenStream> {
+    params
+        .iter()
+        .map(|param| match param {
+            ParamAttr::Positional(value) => quote! {
+                params.positional(#value);
+            },
+            ParamAttr::Named(name, value) => quote! {
+                params.named(#name, #value);
+            },
+            ParamAttr::List(name, values) => quote! {
+                params.named_list(#name, vec![#(#values.to_owned()),*]);
+            },
+        })
+        .collect()
 }
 
 fn parse_rules(attrs: &[syn::Attribute]) -> syn::Result<Vec<RuleAttr>> {
@@ -604,7 +595,7 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
             let target: LitStr = value.parse()?;
             rules.push(RuleAttr::FieldRule {
                 name: (*name).to_owned(),
-                params: vec![("compare".to_owned(), target.value())],
+                params: vec![ParamAttr::Named("compare".to_owned(), target.value())],
             });
             return Ok(());
         }
@@ -624,107 +615,56 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
         if meta.path.is_ident(*name) {
             rules.push(RuleAttr::FieldRule {
                 name: (*name).to_owned(),
-                params: vec![("fields".to_owned(), parse_field_list(meta, name)?)],
+                params: vec![ParamAttr::List(
+                    "fields".to_owned(),
+                    parse_field_list(meta, name)?,
+                )],
             });
             return Ok(());
         }
     }
 
-    if meta.path.is_ident("min") {
-        let value = meta.value()?;
-        rules.push(rule("min", vec![("min".to_owned(), parse_param_value(value)?)]));
-        return Ok(());
+    let Some(name) = meta.path.get_ident().map(ToString::to_string) else {
+        return Err(meta.error("validate rule must be a single identifier"));
+    };
+    rules.push(rule(name, parse_custom_params(meta)?));
+    Ok(())
+}
+
+fn parse_custom_params(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ParamAttr>> {
+    if meta.input.peek(Token![=]) {
+        return Ok(vec![ParamAttr::Positional(parse_param_value(
+            meta.value()?,
+        )?)]);
+    }
+    if !meta.input.peek(syn::token::Paren) {
+        return Ok(Vec::new());
     }
 
-    if meta.path.is_ident("max") {
-        let value = meta.value()?;
-        rules.push(rule("max", vec![("max".to_owned(), parse_param_value(value)?)]));
-        return Ok(());
-    }
+    let content;
+    parenthesized!(content in meta.input);
+    let mut params = Vec::new();
 
-    if meta.path.is_ident("eq") {
-        rules.push(rule("eq", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("ne") {
-        rules.push(rule("ne", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("eq_ignore_case") {
-        rules.push(rule("eq_ignore_case", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("ne_ignore_case") {
-        rules.push(rule("ne_ignore_case", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("gt") {
-        rules.push(rule("gt", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("gte") {
-        rules.push(rule("gte", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("lt") {
-        rules.push(rule("lt", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("lte") {
-        rules.push(rule("lte", parse_optional_value_param(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("length") {
-        rules.push(rule(
-            "length",
-            parse_keyed_params(meta, &["min", "max", "exact"])?,
-        ));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("range") {
-        rules.push(rule("range", parse_keyed_params(meta, &["min", "max"])?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("regex") {
-        rules.push(rule("regex", parse_keyed_params(meta, &["pattern"])?));
-        return Ok(());
-    }
-
-    for name in CHOICE_RULES {
-        if meta.path.is_ident(*name) {
-            rules.push(rule(
-                *name,
-                vec![("values".to_owned(), parse_choice_values(meta, name)?)],
+    while !content.is_empty() {
+        if content.peek(syn::Ident) && content.peek2(Token![=]) {
+            let name: syn::Ident = content.parse()?;
+            content.parse::<Token![=]>()?;
+            params.push(ParamAttr::Named(
+                name.to_string(),
+                parse_param_value(&content)?,
             ));
-            return Ok(());
+        } else {
+            params.push(ParamAttr::Positional(parse_param_value(&content)?));
+        }
+
+        if content.peek(Token![,]) {
+            content.parse::<Token![,]>()?;
+        } else if !content.is_empty() {
+            return Err(content.error("expected ',' between validate parameters"));
         }
     }
 
-    for name in MARKER_RULES {
-        if meta.path.is_ident(*name) {
-            rules.push(rule(*name, Vec::new()));
-            return Ok(());
-        }
-    }
-
-    for name in STRING_PARAM_RULES {
-        if meta.path.is_ident(*name) {
-            rules.push(rule(*name, parse_keyed_params(meta, &["value"])?));
-            return Ok(());
-        }
-    }
-
-    Err(meta.error("unsupported validate rule"))
+    Ok(params)
 }
 
 fn parse_dive_rules(meta: ParseNestedMeta<'_>) -> syn::Result<DiveAttr> {
@@ -782,19 +722,7 @@ fn parse_dive_section(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<RuleAttr>> {
     Ok(rules)
 }
 
-fn parse_optional_value_param(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<(String, String)>> {
-    if meta.input.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let value = meta.value()?;
-    Ok(vec![("value".to_owned(), parse_param_value(value)?)])
-}
-
-fn parse_conditional_pairs(
-    meta: ParseNestedMeta<'_>,
-    rule: &str,
-) -> syn::Result<Vec<(String, String)>> {
+fn parse_conditional_pairs(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<Vec<ParamAttr>> {
     let mut params = Vec::new();
     let mut seen = BTreeSet::new();
 
@@ -807,7 +735,7 @@ fn parse_conditional_pairs(
             return Err(nested.error(format!("duplicate field '{field}' in {rule}")));
         }
 
-        params.push((field, parse_param_value(nested.value()?)?));
+        params.push(ParamAttr::Named(field, parse_param_value(nested.value()?)?));
         Ok(())
     })?;
 
@@ -818,7 +746,7 @@ fn parse_conditional_pairs(
     Ok(params)
 }
 
-fn parse_field_list(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<String> {
+fn parse_field_list(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<Vec<String>> {
     let content;
     parenthesized!(content in meta.input);
 
@@ -836,7 +764,7 @@ fn parse_field_list(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<String
         return Err(meta.error(format!("{rule} requires at least one field")));
     }
 
-    Ok(fields.join(","))
+    Ok(fields)
 }
 
 fn is_option_type(ty: &Type) -> bool {
@@ -860,36 +788,17 @@ fn collection_item_type(ty: &Type) -> Option<&Type> {
                 return None;
             };
 
-            generic_args.args.iter().find_map(|generic_param| match generic_param {
-                GenericArgument::Type(ty) => Some(ty),
-                _ => None,
-            })
+            generic_args
+                .args
+                .iter()
+                .find_map(|generic_param| match generic_param {
+                    GenericArgument::Type(ty) => Some(ty),
+                    _ => None,
+                })
         }),
         Type::Array(TypeArray { elem, .. }) => Some(elem.as_ref()),
         Type::Reference(TypeReference { elem, .. }) => match elem.as_ref() {
             Type::Slice(slice) => Some(slice.elem.as_ref()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn collection_kind(ty: &Type) -> Option<UniqueCollection> {
-    match ty {
-        Type::Path(path) => path.path.segments.last().and_then(|segment| {
-            if segment.ident == "Vec" {
-                return Some(UniqueCollection::Items(quote!(::validator::Kind::Vec)));
-            }
-
-            if segment.ident == "HashMap" || segment.ident == "BTreeMap" {
-                return Some(UniqueCollection::MapValues);
-            }
-
-            None
-        }),
-        Type::Array(_) => Some(UniqueCollection::Items(quote!(::validator::Kind::Array))),
-        Type::Reference(TypeReference { elem, .. }) => match elem.as_ref() {
-            Type::Slice(_) => Some(UniqueCollection::Items(quote!(::validator::Kind::Slice))),
             _ => None,
         },
         _ => None,
@@ -921,124 +830,6 @@ fn map_value_type(ty: &Type) -> Option<&Type> {
     })
 }
 
-const MARKER_RULES: &[&str] = &[
-    "isdefault",
-    "email",
-    "url",
-    "uri",
-    "http_url",
-    "https_url",
-    "ip",
-    "ipv4",
-    "ipv6",
-    "ip_addr",
-    "ip4_addr",
-    "ip6_addr",
-    "cidr",
-    "cidrv4",
-    "cidrv6",
-    "hostname",
-    "hostname_port",
-    "hostname_rfc1123",
-    "fqdn",
-    "port",
-    "uuid",
-    "uuid3",
-    "uuid4",
-    "uuid5",
-    "uuid_rfc4122",
-    "uuid3_rfc4122",
-    "uuid4_rfc4122",
-    "uuid5_rfc4122",
-    "ulid",
-    "tcp4_addr",
-    "tcp6_addr",
-    "tcp_addr",
-    "udp4_addr",
-    "udp6_addr",
-    "udp_addr",
-    "json",
-    "datetime",
-    "e164",
-    "base32",
-    "base64",
-    "base64url",
-    "base64rawurl",
-    "hexadecimal",
-    "url_encoded",
-    "html",
-    "html_encoded",
-    "jwt",
-    "mac",
-    "semver",
-    "origin",
-    "datauri",
-    "latitude",
-    "longitude",
-    "ssn",
-    "md4",
-    "md5",
-    "sha256",
-    "sha384",
-    "sha512",
-    "ripemd128",
-    "ripemd160",
-    "tiger128",
-    "tiger160",
-    "tiger192",
-    "eth_addr",
-    "mongodb",
-    "mongodb_connection_string",
-    "dns_rfc1035_label",
-    "cve",
-    "cron",
-    "ein",
-    "bic_iso_9362_2014",
-    "bic",
-    "isbn",
-    "isbn10",
-    "isbn13",
-    "issn",
-    "credit_card",
-    "luhn_checksum",
-    "ascii",
-    "printascii",
-    "multibyte",
-    "alpha",
-    "alphaspace",
-    "alphaunicode",
-    "alphanum",
-    "alphanumspace",
-    "alphanumunicode",
-    "numeric",
-    "number",
-    "lowercase",
-    "uppercase",
-    "boolean",
-    "unique",
-    "hexcolor",
-    "rgb",
-    "rgba",
-    "hsl",
-    "hsla",
-    "cmyk",
-];
-
-const CHOICE_RULES: &[&str] = &["oneof", "oneofci", "noneof", "noneofci"];
-
-const STRING_PARAM_RULES: &[&str] = &[
-    "contains",
-    "containsany",
-    "containsrune",
-    "excludes",
-    "excludesall",
-    "excludesrune",
-    "startswith",
-    "endswith",
-    "startsnotwith",
-    "endsnotwith",
-];
-
 const FIELD_RULES: &[&str] = &[
     "eq_field",
     "ne_field",
@@ -1069,83 +860,10 @@ const CONDITIONAL_FIELD_LIST_RULES: &[&str] = &[
     "excluded_without_all",
 ];
 
-fn rule(name: impl Into<String>, params: Vec<(String, String)>) -> RuleAttr {
+fn rule(name: impl Into<String>, params: Vec<ParamAttr>) -> RuleAttr {
     RuleAttr::Rule {
         name: name.into(),
         params,
-    }
-}
-
-fn parse_keyed_params(
-    meta: ParseNestedMeta<'_>,
-    allowed: &[&str],
-) -> syn::Result<Vec<(String, String)>> {
-    let mut params = Vec::new();
-
-    meta.parse_nested_meta(|nested| {
-        for name in allowed {
-            if nested.path.is_ident(name) {
-                params.push(((*name).to_owned(), parse_param_value(nested.value()?)?));
-                return Ok(());
-            }
-        }
-
-        Err(nested.error("unsupported validate parameter"))
-    })?;
-
-    Ok(params)
-}
-
-fn parse_choice_values(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<String> {
-    let content;
-    parenthesized!(content in meta.input);
-
-    let mut values = Vec::new();
-    while !content.is_empty() {
-        values.push(parse_choice_value(&content)?);
-
-        if content.peek(Token![,]) {
-            content.parse::<Token![,]>()?;
-        }
-    }
-
-    if values.is_empty() {
-        return Err(meta.error(format!("{rule} requires at least one value")));
-    }
-
-    Ok(values.join(","))
-}
-
-fn parse_choice_value(input: syn::parse::ParseStream<'_>) -> syn::Result<String> {
-    let expr: Expr = input.parse()?;
-
-    match expr {
-        Expr::Lit(ExprLit {
-            lit: Lit::Str(value),
-            ..
-        }) => Ok(value.value()),
-        Expr::Lit(ExprLit {
-            lit: Lit::Int(value),
-            ..
-        }) => Ok(value.base10_digits().to_owned()),
-        Expr::Unary(ExprUnary {
-            op: UnOp::Neg(_),
-            expr,
-            ..
-        }) => match *expr {
-            Expr::Lit(ExprLit {
-                lit: Lit::Int(value),
-                ..
-            }) => Ok(format!("-{}", value.base10_digits())),
-            expr => Err(syn::Error::new_spanned(
-                expr,
-                "choice validate value must be a string or integer literal",
-            )),
-        },
-        expr => Err(syn::Error::new_spanned(
-            expr,
-            "choice validate value must be a string or integer literal",
-        )),
     }
 }
 

@@ -35,7 +35,7 @@ impl I18n {
 
     pub fn use_locale(mut self, locale: Locale) -> Self {
         self.locales
-            .entry(locale.name.clone())
+            .entry(locale.locale.clone())
             .and_modify(|current| current.merge(locale.clone()))
             .or_insert(locale);
         self
@@ -61,15 +61,15 @@ impl I18n {
 
 #[derive(Clone, Default)]
 pub struct Locale {
-    name: String,
+    locale: String,
     rules: BTreeMap<String, Template>,
     fields: BTreeMap<String, String>,
 }
 
 impl Locale {
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(locale: impl Into<String>) -> Self {
         Self {
-            name: name.into(),
+            locale: locale.into(),
             ..Self::default()
         }
     }
@@ -86,8 +86,8 @@ impl Locale {
         Self::from_resource(resource)
     }
 
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn locale(&self) -> &str {
+        &self.locale
     }
 
     pub fn rule(mut self, rule: impl Into<String>, template: impl Into<String>) -> Self {
@@ -121,15 +121,14 @@ impl Locale {
     }
 
     fn from_resource(resource: LocaleResource) -> Result<Self, Error> {
-        let name = resource
+        let locale = resource
             .locale
-            .or(resource.name)
             .ok_or_else(|| invalid_locale("locale name is required"))?;
-        if name.trim().is_empty() {
+        if locale.trim().is_empty() {
             return Err(invalid_locale("locale name is required"));
         }
 
-        let mut locale = Self::new(name);
+        let mut locale = Self::new(locale);
         for (rule, template) in resource.rules.unwrap_or_default() {
             locale = locale.rule(rule, template);
         }
@@ -155,9 +154,9 @@ impl Locale {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct LocaleResource {
     locale: Option<String>,
-    name: Option<String>,
     rules: Option<BTreeMap<String, String>>,
     fields: Option<BTreeMap<String, String>>,
 }
@@ -241,7 +240,15 @@ impl<'a> Context<'a> {
     }
 
     pub fn param(&self, name: &str) -> Option<&str> {
-        self.error.params().get(name)
+        self.error.params().text(name)
+    }
+
+    pub fn param_list(&self, name: &str) -> Option<&[String]> {
+        self.error.params().list(name)
+    }
+
+    pub fn param_pairs(&self, name: &str) -> Option<&[(String, String)]> {
+        self.error.params().pairs(name)
     }
 }
 
@@ -292,7 +299,7 @@ fn render_text(template: &str, context: &Context<'_>) -> String {
         .replace("{kind}", kind_name(context.kind()));
 
     for (name, value) in context.params().iter() {
-        text = text.replace(&format!("{{{name}}}"), value);
+        text = text.replace(&format!("{{{name}}}"), &value.to_string());
     }
 
     text
@@ -345,9 +352,6 @@ fn zh_cn_locale() -> Locale {
         .rule("ip", "{field}必须是有效的IP地址")
         .rule("ipv4", "{field}必须是有效的IPv4地址")
         .rule("ipv6", "{field}必须是有效的IPv6地址")
-        .rule("ip_addr", "{field}必须是有效的IP地址")
-        .rule("ip4_addr", "{field}必须是有效的IPv4地址")
-        .rule("ip6_addr", "{field}必须是有效的IPv6地址")
         .rule("cidr", "{field}必须是有效的CIDR")
         .rule("cidrv4", "{field}必须是有效的IPv4 CIDR")
         .rule("cidrv6", "{field}必须是有效的IPv6 CIDR")
@@ -507,9 +511,6 @@ fn en_locale() -> Locale {
         .rule("ip", "{field} must be a valid IP address")
         .rule("ipv4", "{field} must be a valid IPv4 address")
         .rule("ipv6", "{field} must be a valid IPv6 address")
-        .rule("ip_addr", "{field} must be a valid IP address")
-        .rule("ip4_addr", "{field} must be a valid IPv4 address")
-        .rule("ip6_addr", "{field} must be a valid IPv6 address")
         .rule("cidr", "{field} must be a valid CIDR block")
         .rule("cidrv4", "{field} must be a valid IPv4 CIDR block")
         .rule("cidrv6", "{field} must be a valid IPv6 CIDR block")
@@ -822,57 +823,31 @@ fn en_compare(ctx: &Context<'_>, label: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::{Aliases, Rules};
+    use crate::core::Registry;
 
     use super::*;
 
-    const INTERNAL_ERROR_RULES: &[&str] = &[
-        "type",
-        "eq_field",
-        "ne_field",
-        "gt_field",
-        "gte_field",
-        "lt_field",
-        "lte_field",
-        "fieldcontains",
-        "fieldexcludes",
-        "required_if",
-        "required_unless",
-        "skip_unless",
-        "required_with",
-        "required_with_all",
-        "required_without",
-        "required_without_all",
-        "excluded_if",
-        "excluded_unless",
-        "excluded_with",
-        "excluded_with_all",
-        "excluded_without",
-        "excluded_without_all",
-    ];
-
     #[test]
     fn built_in_locales_cover_default_rules_aliases_and_internal_errors() {
-        let mut rules = Rules::new();
-        crate::rules::load(&mut rules).expect("default rules must load");
-        let mut aliases = Aliases::new();
-        crate::rules::load_aliases(&mut aliases).expect("default aliases must load");
+        let mut registry = Registry::new();
+        crate::rules::load(&mut registry).expect("default rules must load");
+        crate::rules::load_aliases(&mut registry).expect("default aliases must load");
 
-        let names = rules
-            .names()
-            .chain(aliases.names())
-            .chain(INTERNAL_ERROR_RULES.iter().copied())
+        let mut names = registry
+            .rule_names()
+            .chain(registry.alias_names())
+            .map(str::to_owned)
             .collect::<Vec<_>>();
+        names.extend(crate::schema::internal_rule_names().map(str::to_owned));
 
         assert_locale_covers("zh-CN", &zh_cn_locale(), &names);
         assert_locale_covers("en", &en_locale(), &names);
     }
 
-    fn assert_locale_covers(locale_name: &str, locale: &Locale, names: &[&str]) {
+    fn assert_locale_covers(locale_name: &str, locale: &Locale, names: &[String]) {
         let missing = names
             .iter()
-            .copied()
-            .filter(|name| !locale.rules.contains_key(*name))
+            .filter(|name| !locale.rules.contains_key(name.as_str()))
             .collect::<Vec<_>>();
 
         assert!(
