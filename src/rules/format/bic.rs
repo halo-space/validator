@@ -5,10 +5,10 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Bic;
+pub(crate) struct Bic;
 
 #[derive(Debug)]
-pub struct BicIso93622014;
+pub(crate) struct BicIso93622014;
 
 impl Rule for Bic {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

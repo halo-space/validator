@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Uuid;
+pub(crate) struct Uuid;
 
 impl Rule for Uuid {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -13,7 +13,7 @@ impl Rule for Uuid {
 }
 
 #[derive(Debug)]
-pub struct Uuid3;
+pub(crate) struct Uuid3;
 
 impl Rule for Uuid3 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -25,7 +25,7 @@ impl Rule for Uuid3 {
 }
 
 #[derive(Debug)]
-pub struct Uuid4;
+pub(crate) struct Uuid4;
 
 impl Rule for Uuid4 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -37,19 +37,19 @@ impl Rule for Uuid4 {
 }
 
 #[derive(Debug)]
-pub struct Uuid5;
+pub(crate) struct Uuid5;
 
 #[derive(Debug)]
-pub struct UuidRfc4122;
+pub(crate) struct UuidRfc4122;
 
 #[derive(Debug)]
-pub struct Uuid3Rfc4122;
+pub(crate) struct Uuid3Rfc4122;
 
 #[derive(Debug)]
-pub struct Uuid4Rfc4122;
+pub(crate) struct Uuid4Rfc4122;
 
 #[derive(Debug)]
-pub struct Uuid5Rfc4122;
+pub(crate) struct Uuid5Rfc4122;
 
 impl Rule for Uuid5 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

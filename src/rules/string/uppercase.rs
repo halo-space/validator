@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Uppercase;
+pub(crate) struct Uppercase;
 
 impl Rule for Uppercase {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

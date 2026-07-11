@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Min;
+pub(crate) struct Min;
 
 impl Rule for Min {
     fn signature(&self) -> Signature {

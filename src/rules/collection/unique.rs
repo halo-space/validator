@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use crate::{Error, Field, Kind, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Unique;
+pub(crate) struct Unique;
 
 impl Rule for Unique {
     fn signature(&self) -> Signature {

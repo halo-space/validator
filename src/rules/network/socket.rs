@@ -3,22 +3,22 @@ use std::net::SocketAddr;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Tcp4;
+pub(crate) struct Tcp4;
 
 #[derive(Debug)]
-pub struct Tcp6;
+pub(crate) struct Tcp6;
 
 #[derive(Debug)]
-pub struct Tcp;
+pub(crate) struct Tcp;
 
 #[derive(Debug)]
-pub struct Udp4;
+pub(crate) struct Udp4;
 
 #[derive(Debug)]
-pub struct Udp6;
+pub(crate) struct Udp6;
 
 #[derive(Debug)]
-pub struct Udp;
+pub(crate) struct Udp;
 
 macro_rules! socket_rule {
     ($ty:ty, $check:expr) => {

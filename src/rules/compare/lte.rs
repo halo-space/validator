@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Lte;
+pub(crate) struct Lte;
 
 impl Rule for Lte {
     fn signature(&self) -> Signature {

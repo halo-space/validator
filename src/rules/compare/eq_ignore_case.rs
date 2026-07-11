@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct EqIgnoreCase;
+pub(crate) struct EqIgnoreCase;
 
 impl Rule for EqIgnoreCase {
     fn signature(&self) -> Signature {

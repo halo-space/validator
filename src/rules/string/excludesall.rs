@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct ExcludesAll;
+pub(crate) struct ExcludesAll;
 
 impl Rule for ExcludesAll {
     fn signature(&self) -> Signature {

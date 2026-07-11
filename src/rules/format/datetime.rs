@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct DateTime;
+pub(crate) struct DateTime;
 
 impl Rule for DateTime {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

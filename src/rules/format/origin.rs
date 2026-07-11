@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Origin;
+pub(crate) struct Origin;
 
 impl Rule for Origin {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

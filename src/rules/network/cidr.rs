@@ -3,7 +3,7 @@ use std::net::IpAddr;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Cidr;
+pub(crate) struct Cidr;
 
 impl Rule for Cidr {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -15,7 +15,7 @@ impl Rule for Cidr {
 }
 
 #[derive(Debug)]
-pub struct Cidrv4;
+pub(crate) struct Cidrv4;
 
 impl Rule for Cidrv4 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -27,7 +27,7 @@ impl Rule for Cidrv4 {
 }
 
 #[derive(Debug)]
-pub struct Cidrv6;
+pub(crate) struct Cidrv6;
 
 impl Rule for Cidrv6 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

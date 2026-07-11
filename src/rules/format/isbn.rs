@@ -1,16 +1,16 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Isbn;
+pub(crate) struct Isbn;
 
 #[derive(Debug)]
-pub struct Isbn10;
+pub(crate) struct Isbn10;
 
 #[derive(Debug)]
-pub struct Isbn13;
+pub(crate) struct Isbn13;
 
 #[derive(Debug)]
-pub struct Issn;
+pub(crate) struct Issn;
 
 impl Rule for Isbn {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

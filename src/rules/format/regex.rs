@@ -6,7 +6,7 @@ use crate::core::{CAPACITY, Cache};
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Regex {
+pub(crate) struct Regex {
     cache: RwLock<Cache<String, Result<Arc<Pattern>, String>>>,
 }
 

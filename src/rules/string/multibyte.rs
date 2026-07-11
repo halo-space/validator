@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Multibyte;
+pub(crate) struct Multibyte;
 
 impl Rule for Multibyte {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

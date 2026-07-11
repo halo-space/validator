@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct NoneOf;
+pub(crate) struct NoneOf;
 
 impl Rule for NoneOf {
     fn signature(&self) -> Signature {

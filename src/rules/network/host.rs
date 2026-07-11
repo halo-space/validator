@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Hostname;
+pub(crate) struct Hostname;
 
 impl Rule for Hostname {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -13,7 +13,7 @@ impl Rule for Hostname {
 }
 
 #[derive(Debug)]
-pub struct Fqdn;
+pub(crate) struct Fqdn;
 
 impl Rule for Fqdn {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct StartsNotWith;
+pub(crate) struct StartsNotWith;
 
 impl Rule for StartsNotWith {
     fn signature(&self) -> Signature {

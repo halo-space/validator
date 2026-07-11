@@ -2,7 +2,7 @@ use crate::{Field, Rule};
 use url::Url as ParsedUrl;
 
 #[derive(Debug)]
-pub struct Url;
+pub(crate) struct Url;
 
 impl Rule for Url {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

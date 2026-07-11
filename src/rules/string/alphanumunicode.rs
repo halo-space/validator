@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct AlphanumUnicode;
+pub(crate) struct AlphanumUnicode;
 
 impl Rule for AlphanumUnicode {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

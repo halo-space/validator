@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Boolean;
+pub(crate) struct Boolean;
 
 impl Rule for Boolean {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

@@ -1,10 +1,10 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct CreditCard;
+pub(crate) struct CreditCard;
 
 #[derive(Debug)]
-pub struct LuhnChecksum;
+pub(crate) struct LuhnChecksum;
 
 impl Rule for CreditCard {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

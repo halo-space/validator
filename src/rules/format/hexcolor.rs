@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct HexColor;
+pub(crate) struct HexColor;
 
 impl Rule for HexColor {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Length;
+pub(crate) struct Length;
 
 impl Rule for Length {
     fn signature(&self) -> Signature {

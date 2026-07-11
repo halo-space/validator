@@ -1,9 +1,26 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::model::{DiveAttr, ParamAttr, RuleAttr};
-use super::utility::{
-    CONDITIONAL_FIELD_LIST_RULES, CONDITIONAL_PAIR_RULES, canonical, member_name,
-};
+use super::ident::{canonical, member_name};
+use super::model::{ParamAttr, RuleAttr};
+
+const CONDITIONAL_PAIR_RULES: &[&str] = &[
+    "required_if",
+    "required_unless",
+    "skip_unless",
+    "excluded_if",
+    "excluded_unless",
+];
+
+const CONDITIONAL_FIELD_LIST_RULES: &[&str] = &[
+    "required_with",
+    "required_with_all",
+    "required_without",
+    "required_without_all",
+    "excluded_with",
+    "excluded_with_all",
+    "excluded_without",
+    "excluded_without_all",
+];
 
 fn exposes_value_access(rules: &[RuleAttr]) -> bool {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
@@ -139,52 +156,4 @@ fn field_targets<'a>(rule: &str, params: &'a [ParamAttr]) -> Vec<&'a str> {
             .map(|compare| vec![compare])
             .unwrap_or_default(),
     }
-}
-
-pub(super) fn reject_field_rules_inside_dive(rules: &[RuleAttr]) -> syn::Result<()> {
-    for rule in rules {
-        match rule {
-            RuleAttr::Dive(DiveAttr::Values(rules)) => reject_field_rules(rules)?,
-            RuleAttr::Dive(DiveAttr::Map { keys, values }) => {
-                reject_field_rules(keys)?;
-                reject_field_rules(values)?;
-            }
-            RuleAttr::Rule { .. }
-            | RuleAttr::Alias(_)
-            | RuleAttr::FieldRule { .. }
-            | RuleAttr::UniqueFields { .. }
-            | RuleAttr::OmitEmpty
-            | RuleAttr::Nested => {}
-        }
-    }
-
-    Ok(())
-}
-
-fn reject_field_rules(rules: &[RuleAttr]) -> syn::Result<()> {
-    for rule in rules {
-        match rule {
-            RuleAttr::FieldRule { name, .. } => {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    format!("validate rule '{name}' is not supported inside dive"),
-                ));
-            }
-            RuleAttr::UniqueFields { .. } => {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    "parameterized unique is not supported inside dive",
-                ));
-            }
-            RuleAttr::Dive(DiveAttr::Values(rules)) => reject_field_rules(rules)?,
-            RuleAttr::Dive(DiveAttr::Map { keys, values }) => {
-                reject_field_rules(keys)?;
-                reject_field_rules(values)?;
-            }
-            RuleAttr::Rule { .. } | RuleAttr::Alias(_) | RuleAttr::OmitEmpty | RuleAttr::Nested => {
-            }
-        }
-    }
-
-    Ok(())
 }

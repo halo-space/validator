@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct DnsRfc1035Label;
+pub(crate) struct DnsRfc1035Label;
 
 impl Rule for DnsRfc1035Label {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

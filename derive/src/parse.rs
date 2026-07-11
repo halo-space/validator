@@ -5,9 +5,9 @@ use syn::{
     Expr, ExprLit, ExprUnary, Lit, LitStr, Token, UnOp, bracketed, parenthesized,
 };
 
-use super::model::{DiveAttr, ItemPath, ParamAttr, RuleAttr};
 use super::access::parse_field_path;
-use super::utility::canonical;
+use super::ident::canonical;
+use super::model::{DiveAttr, ItemPath, ParamAttr, RuleAttr};
 
 const CONDITIONAL_PAIR_RULES: &[&str] = &[
     "required_if",

@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Semver;
+pub(crate) struct Semver;
 
 impl Rule for Semver {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

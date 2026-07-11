@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct PrintAscii;
+pub(crate) struct PrintAscii;
 
 impl Rule for PrintAscii {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

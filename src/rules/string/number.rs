@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Number;
+pub(crate) struct Number;
 
 impl Rule for Number {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

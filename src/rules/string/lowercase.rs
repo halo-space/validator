@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Lowercase;
+pub(crate) struct Lowercase;
 
 impl Rule for Lowercase {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

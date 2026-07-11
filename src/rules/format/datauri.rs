@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct DataUri;
+pub(crate) struct DataUri;
 
 impl Rule for DataUri {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

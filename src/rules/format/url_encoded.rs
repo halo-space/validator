@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct UrlEncoded;
+pub(crate) struct UrlEncoded;
 
 impl Rule for UrlEncoded {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

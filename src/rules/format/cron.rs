@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Cron;
+pub(crate) struct Cron;
 
 impl Rule for Cron {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

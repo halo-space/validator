@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Mac;
+pub(crate) struct Mac;
 
 impl Rule for Mac {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct StartsWith;
+pub(crate) struct StartsWith;
 
 impl Rule for StartsWith {
     fn signature(&self) -> Signature {

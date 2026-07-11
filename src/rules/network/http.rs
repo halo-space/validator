@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Http;
+pub(crate) struct Http;
 
 impl Rule for Http {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -13,7 +13,7 @@ impl Rule for Http {
 }
 
 #[derive(Debug)]
-pub struct Https;
+pub(crate) struct Https;
 
 impl Rule for Https {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

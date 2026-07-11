@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Range;
+pub(crate) struct Range;
 
 impl Rule for Range {
     fn signature(&self) -> Signature {

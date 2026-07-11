@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Base64RawUrl;
+pub(crate) struct Base64RawUrl;
 
 impl Rule for Base64RawUrl {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

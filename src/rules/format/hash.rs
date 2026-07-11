@@ -1,34 +1,34 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Md4;
+pub(crate) struct Md4;
 
 #[derive(Debug)]
-pub struct Md5;
+pub(crate) struct Md5;
 
 #[derive(Debug)]
-pub struct Sha256;
+pub(crate) struct Sha256;
 
 #[derive(Debug)]
-pub struct Sha384;
+pub(crate) struct Sha384;
 
 #[derive(Debug)]
-pub struct Sha512;
+pub(crate) struct Sha512;
 
 #[derive(Debug)]
-pub struct Ripemd128;
+pub(crate) struct Ripemd128;
 
 #[derive(Debug)]
-pub struct Ripemd160;
+pub(crate) struct Ripemd160;
 
 #[derive(Debug)]
-pub struct Tiger128;
+pub(crate) struct Tiger128;
 
 #[derive(Debug)]
-pub struct Tiger160;
+pub(crate) struct Tiger160;
 
 #[derive(Debug)]
-pub struct Tiger192;
+pub(crate) struct Tiger192;
 
 macro_rules! hash_rule {
     ($ty:ty, $len:expr) => {

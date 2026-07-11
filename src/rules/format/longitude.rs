@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Longitude;
+pub(crate) struct Longitude;
 
 impl Rule for Longitude {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Gt;
+pub(crate) struct Gt;
 
 impl Rule for Gt {
     fn signature(&self) -> Signature {

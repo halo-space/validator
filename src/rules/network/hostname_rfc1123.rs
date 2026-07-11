@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct HostnameRfc1123;
+pub(crate) struct HostnameRfc1123;
 
 impl Rule for HostnameRfc1123 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

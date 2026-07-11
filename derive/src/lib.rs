@@ -1,20 +1,24 @@
 mod access;
+mod crate_path;
 mod generate;
+mod ident;
 mod model;
 mod parse;
 mod types;
-mod utility;
+mod validate;
 
 use proc_macro::TokenStream;
 use quote::quote;
 use std::collections::{BTreeMap, BTreeSet};
 use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
 
-use self::access::{collect_access, reject_field_rules_inside_dive};
+use self::access::collect_access;
+use self::crate_path::validator_crate_path;
 use self::generate::build_checks;
+use self::ident::canonical;
 use self::parse::rules as parse_rules;
 use self::types::field_kind;
-use self::utility::{canonical, validator_crate_path};
+use self::validate::reject_field_rules_inside_dive;
 
 #[proc_macro_derive(Validate, attributes(validate))]
 pub fn derive_validate(input: TokenStream) -> TokenStream {

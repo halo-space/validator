@@ -762,8 +762,9 @@ before root or field input type checks can short-circuit rule execution.
 Schema validation is JSON/YAML-data oriented. It supports `datetime` as a string
 rule, but does not support native `SystemTime` values or `type: time`.
 Numeric rules follow the declared Schema family: `int` is signed, `uint` is
-unsigned, and `float` is floating-point even when the JSON token is written as
-an int value.
+unsigned, and `float` requires a floating-point JSON/YAML value. An integer
+token is rejected for `type: float`, and a floating-point token is rejected for
+`type: int`.
 
 Schema type names and validation rule names belong to different namespaces.
 `type: float` declares the field's data type. The `number` rule is a predicate:
@@ -946,7 +947,7 @@ Ordered comparison and size rules dispatch by field type:
 
 - Strings use character count.
 - Vectors, arrays, slices, and maps use item count.
-- Signed integers, unsigned integers, and floats use their own numeric families.
+- `int`, `uint`, and `float` values use their own numeric families.
 - `std::time::SystemTime` supports no-parameter time comparison against a
   captured `now` and same-kind `*_field` comparison.
 - `Option::None` skips non-`required` rules and fails `required`.
@@ -955,7 +956,7 @@ Equality rules compare string content instead of length. `length` rejects an
 empty configuration and does not allow `exact` together with `min` or `max`;
 `length` and `range` reject reversed bounds during parameter preflight.
 
-Choice rules dispatch by field type for strings, signed integers, and unsigned integers.
+Choice rules dispatch by field type for strings, `int` values, and `uint` values.
 URL and URI rules use structured parsers. `hostname` follows RFC952, while
 `hostname_rfc1123` permits a leading digit and `fqdn` requires a non-numeric TLD.
 `cidr` accepts IPv4 or IPv6 address-prefix notation, while `cidrv4` additionally

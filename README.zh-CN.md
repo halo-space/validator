@@ -608,7 +608,7 @@ fields:
 
 Schema 配置采用严格模式：顶层只允许 `fields`，字段定义只允许 `type`、`rules` 和 `fields`。`type` 只接受 `string`、`boolean`、`int`、`uint`、`float`、`array`、`object`，只有 `object` 和 `array` 可以定义嵌套 `fields`。即使 `fields: {}` 为空，它仍然表示结构声明：省略 `type` 时推断为 `object`，标量类型配置空 `fields` 仍会报错，array 配置空 `fields` 时每个元素仍必须是 object；完全没有 `fields` 的 array 不限制元素必须是 object。未知键或未知类型返回 `Error::InvalidSchema`；不符合 Rule `Signature` 的参数在 Schema 编译时返回 `Error::InvalidRuleExpression`。语义参数也会在缓存 Schema Tree 构建时完成预检，早于根数据或字段数据的类型检查短路。
 
-Schema 面向 JSON/YAML 数据。它支持把 `datetime` 当成字符串规则使用，但不支持原生 `SystemTime` 值，也不支持 `type: time`。数字规则按 Schema 声明族执行：`int` 使用有符号整数，`uint` 使用无符号整数，`float` 使用浮点数，即使 JSON 数字写成整数形式也不会改变。
+Schema 面向 JSON/YAML 数据。它支持把 `datetime` 当成字符串规则使用，但不支持原生 `SystemTime` 值，也不支持 `type: time`。数字规则按 Schema 声明族执行：`int` 使用有符号整数，`uint` 使用无符号整数，`float` 只接受浮点形式。整数值不能通过 `type: float`，浮点值也不能通过 `type: int`。
 
 Schema 类型名与校验规则名属于不同命名空间。`type: float` 声明字段的数据类型；`number` 是校验谓词，不是类型名。`number` 接受原生数值，以及只包含 ASCII 数字的字符串，例如 `"12345"`，但不接受正负号和小数点。`numeric` 同样接受原生数值，它的字符串形式还可以包含前导正负号和小数部分，例如 `"-12.5"`。因此 `number` 可以写在 `rules` 中，但不能写成 Schema `type`。
 

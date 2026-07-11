@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Required;
+pub(crate) struct Required;
 
 impl Rule for Required {
     fn validates_none(&self) -> bool {

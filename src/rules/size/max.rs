@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Max;
+pub(crate) struct Max;
 
 impl Rule for Max {
     fn signature(&self) -> Signature {

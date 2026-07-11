@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct OneOfCi;
+pub(crate) struct OneOfCi;
 
 impl Rule for OneOfCi {
     fn signature(&self) -> Signature {

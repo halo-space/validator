@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Jwt;
+pub(crate) struct Jwt;
 
 impl Rule for Jwt {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

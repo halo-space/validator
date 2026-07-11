@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Port;
+pub(crate) struct Port;
 
 impl Rule for Port {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

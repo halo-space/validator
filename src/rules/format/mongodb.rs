@@ -5,10 +5,10 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Mongodb;
+pub(crate) struct Mongodb;
 
 #[derive(Debug)]
-pub struct MongodbConnectionString;
+pub(crate) struct MongodbConnectionString;
 
 impl Rule for Mongodb {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

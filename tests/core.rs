@@ -1727,7 +1727,7 @@ fields:
 }
 
 #[test]
-fn schema_rejects_compatibility_type_names() {
+fn schema_rejects_unsupported_type_names() {
     for ty in ["bool", "integer", "number", "map"] {
         let error = Schema::from_yaml(format!("fields:\n  value:\n    type: {ty}\n")).unwrap_err();
 

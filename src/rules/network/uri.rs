@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Uri;
+pub(crate) struct Uri;
 
 impl Rule for Uri {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

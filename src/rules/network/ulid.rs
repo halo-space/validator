@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Ulid;
+pub(crate) struct Ulid;
 
 impl Rule for Ulid {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

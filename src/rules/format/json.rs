@@ -3,7 +3,7 @@ use serde_json::Value as JsonValue;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Json;
+pub(crate) struct Json;
 
 impl Rule for Json {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

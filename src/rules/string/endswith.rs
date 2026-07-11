@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct EndsWith;
+pub(crate) struct EndsWith;
 
 impl Rule for EndsWith {
     fn signature(&self) -> Signature {

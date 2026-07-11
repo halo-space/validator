@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Hexadecimal;
+pub(crate) struct Hexadecimal;
 
 impl Rule for Hexadecimal {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

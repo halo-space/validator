@@ -1,7 +1,7 @@
 use crate::{Field, Rule, Signature};
 
 #[derive(Debug)]
-pub struct Eq;
+pub(crate) struct Eq;
 
 impl Rule for Eq {
     fn signature(&self) -> Signature {

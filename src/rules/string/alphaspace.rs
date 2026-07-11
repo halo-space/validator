@@ -1,7 +1,7 @@
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct AlphaSpace;
+pub(crate) struct AlphaSpace;
 
 impl Rule for AlphaSpace {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {

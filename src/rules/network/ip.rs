@@ -3,7 +3,7 @@ use std::net::{IpAddr as StdIpAddr, Ipv4Addr, Ipv6Addr};
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Ip;
+pub(crate) struct Ip;
 
 impl Rule for Ip {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -15,7 +15,7 @@ impl Rule for Ip {
 }
 
 #[derive(Debug)]
-pub struct Ipv4;
+pub(crate) struct Ipv4;
 
 impl Rule for Ipv4 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
@@ -27,7 +27,7 @@ impl Rule for Ipv4 {
 }
 
 #[derive(Debug)]
-pub struct Ipv6;
+pub(crate) struct Ipv6;
 
 impl Rule for Ipv6 {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
