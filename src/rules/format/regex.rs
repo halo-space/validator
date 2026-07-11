@@ -52,7 +52,7 @@ impl Regex {
         if let Some(regex) = self
             .cache
             .read()
-            .expect("regex cache lock must not be poisoned")
+            .unwrap_or_else(|error| error.into_inner())
             .get(pattern)
             .cloned()
         {
@@ -65,7 +65,7 @@ impl Regex {
         let mut cache = self
             .cache
             .write()
-            .expect("regex cache lock must not be poisoned");
+            .unwrap_or_else(|error| error.into_inner());
         if let Some(regex) = cache.get(pattern).cloned() {
             return regex.map_err(|reason| invalid(pattern, reason));
         }

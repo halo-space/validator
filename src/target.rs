@@ -7,9 +7,9 @@ use crate::{Error, FieldError, Kind, Namespace, Params};
 #[derive(Clone)]
 #[doc(hidden)]
 pub struct FieldTarget<'a> {
-    pub type_name: Cow<'a, str>,
-    pub field_name: Cow<'a, str>,
-    pub struct_field_name: Cow<'a, str>,
+    pub(crate) type_name: Cow<'a, str>,
+    pub(crate) field_name: Cow<'a, str>,
+    pub(crate) struct_field_name: Cow<'a, str>,
 }
 
 impl<'a> FieldTarget<'a> {
@@ -39,7 +39,12 @@ impl<'a> FieldTarget<'a> {
         }
     }
 
-    pub fn value() -> Self {
+    #[doc(hidden)]
+    pub fn struct_field_name(&self) -> &str {
+        self.struct_field_name.as_ref()
+    }
+
+    pub(crate) fn value() -> Self {
         Self {
             type_name: Cow::Borrowed(""),
             field_name: Cow::Borrowed("$value"),
@@ -47,7 +52,7 @@ impl<'a> FieldTarget<'a> {
         }
     }
 
-    pub fn schema(field_name: impl Into<String>) -> Self {
+    pub(crate) fn schema(field_name: impl Into<String>) -> Self {
         let field_name = field_name.into();
         Self {
             type_name: Cow::Borrowed(""),
@@ -56,7 +61,7 @@ impl<'a> FieldTarget<'a> {
         }
     }
 
-    pub fn schema_field(parent: &str, field_name: &str) -> Self {
+    pub(crate) fn schema_field(parent: &str, field_name: &str) -> Self {
         Self {
             type_name: Cow::Owned(parent.to_owned()),
             field_name: Cow::Owned(field_name.to_owned()),

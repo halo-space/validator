@@ -1,7 +1,8 @@
 use serde_json::Value as JsonValue;
 
 use crate::core::Context;
-use crate::{Error, FieldError, FieldTarget, Params, Value, field_error};
+use crate::target::FieldTarget;
+use crate::{Error, FieldError, Params, Value, field_error};
 
 use super::compile::Scope;
 use super::path::namespace;

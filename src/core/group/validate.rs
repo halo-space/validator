@@ -1,5 +1,5 @@
-use crate::FieldTarget;
 use crate::core::{Access, Context, Error, Items, Kind, Value};
+use crate::target::FieldTarget;
 
 use super::model::{Check, Group, Scope, Step, TypeValue};
 

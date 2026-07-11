@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::core::{
     Access, Context, Error, Field, FieldError, Items, Namespace, Params, Rule, Value,
 };
-use crate::{FieldTarget, field_error, namespace_for};
+use crate::target::FieldTarget;
+use crate::{field_error, namespace_for};
 
 use super::model::{Check, CheckOutput, Execution, Flow, Group, Scope, Step};
 

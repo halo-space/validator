@@ -266,7 +266,7 @@ pub(super) fn build_checks(
                         if !skip_rest {
                             for (index, item) in (#value).iter().enumerate() {
                                 let item_target = #target.index(index);
-                                if context.includes(item_target.struct_field_name.as_ref()) {
+                                if context.includes(item_target.struct_field_name()) {
                                     let mut skip_rest = false;
                                     #(#execute)*
                                 }
@@ -317,7 +317,7 @@ pub(super) fn build_checks(
                         if !skip_rest {
                             for (key, value) in (#value).iter() {
                                 let entry_target = #target.key(key);
-                                if context.includes(entry_target.struct_field_name.as_ref()) {
+                                if context.includes(entry_target.struct_field_name()) {
                                     {
                                         let mut skip_rest = false;
                                         #(#key_execute)*

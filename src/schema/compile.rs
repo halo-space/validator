@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use serde_json::Value as JsonValue;
 
 use crate::core::{Context, Entry, Expr, Group, Registry, Spec};
-use crate::{Error, FieldError, FieldTarget, Params, Value, field_error};
+use crate::target::FieldTarget;
+use crate::{Error, FieldError, Params, Value, field_error};
 
 use super::path::parse_path;
 use super::validate::{preflight_fields, validate_fields};

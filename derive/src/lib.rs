@@ -116,7 +116,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             &mut access_paths,
         )?;
         let target = quote! {
-            #crate_path::FieldTarget::new(
+            #crate_path::__private::FieldTarget::new(
                 #type_name,
                 #field_name,
                 #field_name,
