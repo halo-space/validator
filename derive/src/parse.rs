@@ -6,7 +6,8 @@ use syn::{
 };
 
 use super::model::{DiveAttr, ItemPath, ParamAttr, RuleAttr};
-use super::{canonical, parse_field_path};
+use super::access::parse_field_path;
+use super::utility::canonical;
 
 const CONDITIONAL_PAIR_RULES: &[&str] = &[
     "required_if",

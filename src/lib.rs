@@ -345,7 +345,7 @@ impl Validator {
     {
         let group = self.compile_spec(spec, false)?;
         group
-            .run_spec(errors, target, value, context, access)
+            .execute_spec(errors, target, value, context, access)
             .map(|flow| flow == Flow::Stop)
     }
 
@@ -382,7 +382,7 @@ impl Validator {
     {
         let group = self.compile_spec(spec, true)?;
         group
-            .run_spec_with_items(errors, target, items, context, access, items)
+            .execute_spec_with_items(errors, target, items, context, access, items)
             .map(|flow| flow == Flow::Stop)
     }
 

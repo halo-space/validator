@@ -19,9 +19,9 @@ pub(super) fn fields(parent: &str, value: &JsonValue) -> Result<BTreeMap<String,
 
 pub(super) fn expressions(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
     match value {
-        JsonValue::Array(rules) => rules
+        JsonValue::Array(expressions) => expressions
             .iter()
-            .map(|rule| rule_item(field, rule))
+            .map(|value| expression_item(field, value))
             .collect::<Result<Vec<_>, _>>()
             .map(|exprs| exprs.into_iter().flatten().collect()),
         JsonValue::String(expr) => parse_expression(expr),
@@ -31,7 +31,7 @@ pub(super) fn expressions(field: &str, value: &JsonValue) -> Result<Vec<Expr>, E
     }
 }
 
-fn rule_item(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
+fn expression_item(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
     match value {
         JsonValue::String(expr) => parse_expression(expr),
         JsonValue::Object(object) => {
@@ -45,7 +45,7 @@ fn rule_item(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
                 .iter()
                 .next()
                 .expect("rule object must contain one entry");
-            Ok(vec![Expr::Single(rule_object(name, params)?)])
+            Ok(vec![Expr::Single(spec(name, params)?)])
         }
         _ => Err(invalid(format!(
             "field '{field}' rule item must be a string or object"
@@ -53,7 +53,7 @@ fn rule_item(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
     }
 }
 
-fn rule_object(name: &str, params: &JsonValue) -> Result<Spec, Error> {
+fn spec(name: &str, params: &JsonValue) -> Result<Spec, Error> {
     if params.is_null() {
         return Ok(Spec::new(name));
     }

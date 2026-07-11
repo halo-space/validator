@@ -56,6 +56,13 @@ Use the Git URL that is reachable from your environment. Pin `rev`, `tag`, or
 
 ## Design Note: Reflection
 
+This project is under active initial development and does not preserve legacy
+APIs or configuration spellings. When a type name, rule name, or API boundary
+is incorrect, the implementation replaces it directly instead of adding
+compatibility aliases, deprecated wrappers, or fallback parsing. A proposed
+compatibility patch is treated as a signal to re-examine the underlying
+architecture first.
+
 Go validators can lean on language-level runtime reflection to inspect struct
 fields, field types, and field values. Rust does not currently provide an
 equivalent built-in reflection model for ordinary structs. Existing ecosystem

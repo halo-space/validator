@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use super::{Access, Context, Items, Kind, Params, Rule, Value};
+use crate::core::{Access, Context, Items, Kind, Params, Rule, Value};
 
-pub(super) struct Exec<'a, 'b, 'c> {
+pub(super) struct Execution<'a, 'b, 'c> {
     pub(super) context: &'a Context<'c>,
     pub(super) display_rule: Option<&'a str>,
     pub(super) scope: Scope<'b>,

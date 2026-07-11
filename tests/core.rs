@@ -2442,9 +2442,32 @@ fields:
 "#,
     )
     .unwrap();
-    Validator::with_schema(floating)
+    let validator = Validator::with_schema(floating);
+    validator.validate_map(&json!({ "ratio": 2.0 })).unwrap();
+
+    let fields = validator
         .validate_map(&json!({ "ratio": 2 }))
+        .unwrap_err()
+        .into_fields()
         .unwrap();
+    assert_eq!(fields[0].rule(), "type");
+    assert_eq!(fields[0].params().text("expected"), Some("float"));
+
+    let signed = Schema::from_yaml(
+        r#"
+fields:
+  count:
+    type: int
+"#,
+    )
+    .unwrap();
+    let fields = Validator::with_schema(signed)
+        .validate_map(&json!({ "count": 2.0 }))
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(fields[0].rule(), "type");
+    assert_eq!(fields[0].params().text("expected"), Some("int"));
 }
 
 #[test]

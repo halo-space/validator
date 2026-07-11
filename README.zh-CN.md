@@ -41,6 +41,8 @@ validator = { git = "ssh://git@github-halo/halo-space/validator.git" }
 
 ## 设计说明：反射
 
+项目目前处于初始开发阶段，不保留旧 API 或旧配置写法。类型名、规则名或 API 边界设计错误时，直接替换实现，不增加兼容 alias、deprecated wrapper 或回退解析。出现需要兼容补丁的提议时，优先重新检查底层架构，而不是把兼容分支叠加到现有设计上。
+
 Go 版 validator 可以直接依赖语言级运行时反射来读取结构体字段、字段类型和值。Rust 当前没有等价的内置结构体反射能力。生态里的反射库通常也要求用户额外 `derive` 一个反射 trait，库才能在运行时读取字段信息。
 
 因此，`validator` 当前把用户 API 收敛在 `#[derive(Validate)]` 上，由 derive 宏生成校验引擎需要的轻量字段元数据和访问代码。这样用户不需要再额外写一个反射 derive，同时规则执行、`Value` 类型分派、错误结果和 i18n 仍然保持在同一套核心模型里。
