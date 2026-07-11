@@ -1,10 +1,11 @@
 use crate::core::FieldErrorParts;
-use crate::{FieldError, Kind, Namespace, Params};
+use crate::{Error, FieldError, Kind, Namespace, Params};
 
 pub struct Valid<'a> {
     type_name: &'a str,
     errors: &'a mut Vec<FieldError>,
-    kind: &'a dyn Fn(&str) -> Kind,
+    kind: &'a dyn Fn(&str) -> Option<Kind>,
+    invalid: Option<Error>,
 }
 
 impl<'a> Valid<'a> {
@@ -12,12 +13,13 @@ impl<'a> Valid<'a> {
     pub fn new(
         type_name: &'a str,
         errors: &'a mut Vec<FieldError>,
-        kind: &'a dyn Fn(&str) -> Kind,
+        kind: &'a dyn Fn(&str) -> Option<Kind>,
     ) -> Self {
         Self {
             type_name,
             errors,
             kind,
+            invalid: None,
         }
     }
 
@@ -26,6 +28,11 @@ impl<'a> Valid<'a> {
             valid: self,
             field: field.into(),
         }
+    }
+
+    #[doc(hidden)]
+    pub fn finish(&mut self) -> Result<(), Error> {
+        self.invalid.take().map_or(Ok(()), Err)
     }
 }
 
@@ -64,8 +71,15 @@ impl ErrorBuilder<'_, '_> {
     }
 
     pub fn push(self) {
+        if self.valid.invalid.is_some() {
+            return;
+        }
+        let Some(kind) = (self.valid.kind)(&self.field) else {
+            self.valid.invalid = Some(Error::UnknownField { field: self.field });
+            return;
+        };
+
         let namespace = format!("{}.{}", self.valid.type_name, self.field);
-        let kind = (self.valid.kind)(&self.field);
         self.valid.errors.push(FieldError::new(FieldErrorParts {
             namespace: Namespace::new(namespace.clone()),
             struct_namespace: Namespace::new(namespace),

@@ -1,10 +1,33 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::Error;
-use crate::core::{Expr, Group, Spec, parse_expression};
+use crate::core::{Expr, Group, RawParams, Spec, parse_expression};
 use crate::schema::{Schema, Tree};
 
-use super::{RwLockExt, SpecKey, Validator};
+use super::Validator;
+
+trait RwLockExt<T> {
+    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T>;
+    fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T>;
+}
+
+impl<T> RwLockExt<T> for RwLock<T> {
+    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T> {
+        self.read().unwrap_or_else(|error| error.into_inner())
+    }
+
+    fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T> {
+        self.write().unwrap_or_else(|error| error.into_inner())
+    }
+}
+
+#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) struct SpecKey {
+    generation: u64,
+    name: String,
+    params: RawParams,
+    items: bool,
+}
 
 impl Validator {
     fn parse(&self, expression: &str) -> Result<Arc<Vec<Expr>>, Error> {

@@ -4,9 +4,10 @@ use crate::core::Context;
 use crate::target::FieldTarget;
 use crate::{Error, FieldError, Params, Value, field_error};
 
+use super::access::Object;
 use super::compile::Scope;
+use super::items::Collection;
 use super::path::namespace;
-use super::value::{JsonItems, SchemaAccess};
 use super::{Fields, TYPE_FAILURE, Type};
 
 pub(super) fn validate_fields<'a>(
@@ -16,7 +17,7 @@ pub(super) fn validate_fields<'a>(
     scope: &'a Scope,
     object: &'a serde_json::Map<String, JsonValue>,
 ) -> Result<(), Error> {
-    let access = SchemaAccess::new(scope, object);
+    let access = Object::new(scope, object);
     for (name, field) in &scope.fields {
         let target = FieldTarget::schema_field(parent, name);
         let value = access
@@ -62,7 +63,7 @@ pub(super) fn validate_fields<'a>(
                     )?;
                 }
                 Fields::Declared(children) => {
-                    let items = JsonItems::new(values, children);
+                    let items = Collection::new(values, children);
                     field.group.execute_with_fields_and_items(
                         errors,
                         target.clone(),
@@ -97,7 +98,7 @@ pub(super) fn preflight_fields(
     scope: &Scope,
 ) -> Result<(), crate::Error> {
     let object = serde_json::Map::new();
-    let access = SchemaAccess::new(scope, &object);
+    let access = Object::new(scope, &object);
 
     for (name, field) in &scope.fields {
         let target = FieldTarget::schema_field(parent, name);

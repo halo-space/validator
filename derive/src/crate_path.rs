@@ -1,7 +1,7 @@
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::quote;
 
-pub(super) fn validator_crate_path() -> syn::Result<proc_macro2::TokenStream> {
+pub(super) fn resolve() -> syn::Result<proc_macro2::TokenStream> {
     match crate_name("validator") {
         Ok(FoundCrate::Itself) => Ok(quote!(::validator)),
         Ok(FoundCrate::Name(name)) => {

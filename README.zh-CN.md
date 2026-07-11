@@ -402,6 +402,8 @@ fn validate_draft(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
 }
 ```
 
+`Valid::field` 接受直接字段或相对嵌套路径。路径根字段必须由当前结构体声明，否则校验返回 `Error::UnknownField`。
+
 ## Alias 规则
 
 Alias 用来给一组规则起名字，适合复用常见校验组合。

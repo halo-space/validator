@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{FieldError, Kind};
 
-use super::locale::Context;
+use super::translator::Context;
 
 pub type RenderFn = Arc<dyn for<'a> Fn(&Context<'a>) -> String + Send + Sync + 'static>;
 

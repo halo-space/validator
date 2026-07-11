@@ -6,9 +6,9 @@ use crate::core::{Context, Entry, Expr, Group, Registry, Spec};
 use crate::target::FieldTarget;
 use crate::{Error, FieldError, Params, Value, field_error};
 
+use super::items::Projected;
 use super::path::parse_path;
 use super::validate::{preflight_fields, validate_fields};
-use super::value::Projected;
 use super::{FieldDef, Fields, TYPE_FAILURE, Type, invalid};
 
 pub(crate) struct Tree {

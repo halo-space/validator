@@ -155,7 +155,7 @@ impl Validator {
         &self,
         type_name: &'a str,
         errors: &'a mut Vec<FieldError>,
-        kind: &'a dyn Fn(&str) -> Kind,
+        kind: &'a dyn Fn(&str) -> Option<Kind>,
     ) -> valid::Valid<'a> {
         valid::Valid::new(type_name, errors, kind)
     }

@@ -1,13 +1,17 @@
+mod catalog;
 mod en;
 mod locale;
 mod template;
+mod translator;
 mod zh_cn;
 
-pub use locale::{Context, I18n, Locale, Message, Translator};
+pub use catalog::Catalog;
+pub use locale::Locale;
 pub use template::{RenderFn, Template};
+pub use translator::{Context, Message, Translator};
 
-pub fn new() -> I18n {
-    I18n::new()
+pub fn new() -> Catalog {
+    Catalog::new()
 }
 
 pub fn zh_cn() -> Translator<'static> {

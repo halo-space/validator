@@ -1,4 +1,6 @@
+mod access;
 mod compile;
+mod items;
 mod parser;
 mod path;
 mod validate;

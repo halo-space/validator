@@ -1,36 +1,13 @@
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock};
 
-use crate::core::{CAPACITY, Cache, Context, Expr, Fields, Group, RawParams, Registry};
+use crate::core::{CAPACITY, Cache, Context, Expr, Fields, Group, Registry};
 use crate::schema::{self, Schema, Tree};
 use crate::target::FieldTarget;
 use crate::traits::{Selective, Validate};
 use crate::{Error, Namespace, Rule, Value};
 
 mod cache;
-mod derive_api;
-
-trait RwLockExt<T> {
-    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T>;
-    fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T>;
-}
-
-impl<T> RwLockExt<T> for RwLock<T> {
-    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T> {
-        self.read().unwrap_or_else(|error| error.into_inner())
-    }
-
-    fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T> {
-        self.write().unwrap_or_else(|error| error.into_inner())
-    }
-}
-
-#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
-struct SpecKey {
-    generation: u64,
-    name: String,
-    params: RawParams,
-    items: bool,
-}
+mod derive;
 
 pub struct Validator {
     registry: Registry,
@@ -38,7 +15,7 @@ pub struct Validator {
     generation: u64,
     expression_cache: RwLock<Cache<String, Arc<Vec<Expr>>>>,
     compiled_cache: RwLock<Cache<(u64, String), Arc<Group>>>,
-    spec_cache: RwLock<Cache<SpecKey, Arc<Group>>>,
+    spec_cache: RwLock<Cache<cache::SpecKey, Arc<Group>>>,
     schema_cache: RwLock<Cache<(schema::SchemaId, u64), Arc<Tree>>>,
 }
 

@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use syn::{Data, DeriveInput, Fields, LitStr, parse_macro_input};
 
 use self::access::collect_access;
-use self::crate_path::validator_crate_path;
+use self::crate_path::resolve;
 use self::generate::build_checks;
 use self::ident::canonical;
 use self::parse::rules as parse_rules;
@@ -31,7 +31,7 @@ pub fn derive_validate(input: TokenStream) -> TokenStream {
 }
 
 fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
-    let crate_path = validator_crate_path()?;
+    let crate_path = resolve()?;
     let DeriveInput {
         attrs,
         data,
@@ -76,15 +76,21 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             let ident = field.ident.as_ref()?;
             let name = canonical(ident);
             let kind = field_kind(&field.ty, quote!(&self.#ident), &crate_path);
-            Some(quote!(#name => #kind,))
+            Some(quote!(#name => Some(#kind),))
         })
         .collect::<Vec<_>>();
     let kind_declaration = (!struct_checks.is_empty()).then(|| {
         quote! {
-            let field_kind = |field: &str| -> #crate_path::Kind { match field {
-                #(#kind_arms)*
-                _ => #crate_path::Kind::Other,
-            }};
+            let field_kind = |field: &str| -> Option<#crate_path::Kind> {
+                let root = field
+                    .split(|character| matches!(character, '.' | '['))
+                    .next()
+                    .unwrap_or(field);
+                match root {
+                    #(#kind_arms)*
+                    _ => None,
+                }
+            };
         }
     });
     let struct_check_calls = struct_checks.iter().map(|check| {
@@ -93,6 +99,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                 let error_start = errors.len();
                 let mut valid = validator.__valid(#type_name, &mut errors, &field_kind);
                 #check(self, &mut valid);
+                valid.finish()?;
                 validator.__retain_selected_struct_errors(
                     &mut errors,
                     error_start,

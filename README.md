@@ -505,6 +505,9 @@ fn validate_draft(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
 }
 ```
 
+`Valid::field` accepts direct or nested relative paths. The root field must be
+declared by the current struct; otherwise validation returns `Error::UnknownField`.
+
 ## Alias Rules
 
 Aliases let you name reusable rule expressions.
