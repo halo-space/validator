@@ -1482,7 +1482,7 @@ fn schema_json_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
 {
   "fields": {
     "age": {
-      "type": "integer",
+      "type": "int",
       "rules": [
         "required",
         { "gte": 0 },
@@ -1728,7 +1728,7 @@ fields:
 
 #[test]
 fn schema_rejects_compatibility_type_names() {
-    for ty in ["bool", "int", "float", "map"] {
+    for ty in ["bool", "integer", "number", "map"] {
         let error = Schema::from_yaml(format!("fields:\n  value:\n    type: {ty}\n")).unwrap_err();
 
         assert!(matches!(
@@ -2432,17 +2432,17 @@ fields:
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 
-    let number = Schema::from_yaml(
+    let floating = Schema::from_yaml(
         r#"
 fields:
   ratio:
-    type: number
+    type: float
     rules:
       - min: 1.5
 "#,
     )
     .unwrap();
-    Validator::with_schema(number)
+    Validator::with_schema(floating)
         .validate_map(&json!({ "ratio": 2 }))
         .unwrap();
 }
@@ -2970,9 +2970,9 @@ fields:
     rules:
       - eq_field: password
   start_at:
-    type: integer
+    type: int
   end_at:
-    type: integer
+    type: int
     rules:
       - gt_field: start_at
 "#,
@@ -3005,9 +3005,9 @@ fn schema_cross_field_rule_passes() -> Result<(), Box<dyn std::error::Error>> {
         r#"
 fields:
   start_at:
-    type: integer
+    type: int
   end_at:
-    type: integer
+    type: int
     rules:
       - gt_field: start_at
 "#,

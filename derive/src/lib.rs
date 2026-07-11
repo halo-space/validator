@@ -1,3 +1,4 @@
+mod model;
 mod parse;
 mod types;
 
@@ -9,6 +10,7 @@ use syn::ext::IdentExt;
 use syn::{Data, DeriveInput, Fields, LitStr, Type, parse_macro_input};
 
 use self::parse::rules as parse_rules;
+use self::model::{DiveAttr, GeneratedChecks, ParamAttr, RuleAttr};
 use self::types::{collection_item, collection_kind, field_kind, is_option, map_key, map_value};
 
 #[proc_macro_derive(Validate, attributes(validate))]
@@ -242,53 +244,6 @@ fn parse_struct_checks(attrs: &[syn::Attribute]) -> syn::Result<Vec<syn::Path>> 
     }
 
     Ok(checks)
-}
-
-#[derive(Clone, Debug)]
-enum RuleAttr {
-    Rule {
-        name: String,
-        params: Vec<ParamAttr>,
-    },
-    Alias(String),
-    FieldRule {
-        name: String,
-        params: Vec<ParamAttr>,
-    },
-    UniqueFields {
-        paths: Vec<ItemPath>,
-    },
-    OmitEmpty,
-    Nested,
-    Dive(DiveAttr),
-}
-
-#[derive(Clone, Debug)]
-struct ItemPath {
-    name: String,
-    segments: Vec<syn::Ident>,
-}
-
-#[derive(Clone, Debug)]
-enum ParamAttr {
-    Positional(String),
-    Named(String, String),
-    List(String, Vec<String>),
-}
-
-#[derive(Clone, Debug)]
-enum DiveAttr {
-    Values(Vec<RuleAttr>),
-    Map {
-        keys: Vec<RuleAttr>,
-        values: Vec<RuleAttr>,
-    },
-}
-
-#[derive(Default)]
-struct GeneratedChecks {
-    preflight: Vec<proc_macro2::TokenStream>,
-    execute: Vec<proc_macro2::TokenStream>,
 }
 
 fn exposes_value_access(rules: &[RuleAttr]) -> bool {

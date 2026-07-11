@@ -740,7 +740,7 @@ choosing one meaning by precedence.
 
 Schema resources are strict. The top level accepts only `fields`, and each
 field definition accepts only `type`, `rules`, and `fields`. The only type names
-are `string`, `boolean`, `integer`, `uint`, `number`, `array`, and `object`.
+are `string`, `boolean`, `int`, `uint`, `float`, `array`, and `object`.
 Nested `fields` are valid only for `object` and `array` types.
 The presence of the key is structural even when it is empty: `fields: {}`
 infers `object` when `type` is omitted, is rejected for scalar types, and makes
@@ -754,9 +754,17 @@ before root or field input type checks can short-circuit rule execution.
 
 Schema validation is JSON/YAML-data oriented. It supports `datetime` as a string
 rule, but does not support native `SystemTime` values or `type: time`.
-Numeric rules follow the declared Schema family: `integer` is signed, `uint` is
-unsigned, and `number` is floating-point even when the JSON token is written as
+Numeric rules follow the declared Schema family: `int` is signed, `uint` is
+unsigned, and `float` is floating-point even when the JSON token is written as
 an integer.
+
+Schema type names and validation rule names belong to different namespaces.
+`type: float` declares the field's data type. The `number` rule is a predicate:
+it accepts native numeric values and strings containing ASCII digits only, such
+as `"12345"`; it rejects signs and decimal points. The `numeric` rule also
+accepts native numeric values, but its string form may contain a leading sign
+and a decimal fraction, such as `"-12.5"`. Therefore `number` is valid under
+`rules`, but is not a valid Schema `type`.
 
 For `type: array`, `fields` describes object elements and supports field
 uniqueness directly:
@@ -908,6 +916,9 @@ Current built-in rules:
   `endsnotwith`, `ascii`, `printascii`, `multibyte`, `alpha`, `alphaspace`,
   `alphaunicode`, `alphanum`, `alphanumspace`, `alphanumunicode`, `numeric`,
   `number`, `lowercase`, `uppercase`, `boolean`
+
+  Here `number` means an ASCII-digit predicate for strings, not a Schema type;
+  `numeric` additionally accepts a sign and decimal fraction.
 - Format: `email`, `regex`, `json`, `datetime`, `e164`, `base32`, `base64`,
   `base64url`, `base64rawurl`, `hexadecimal`, `url_encoded`, `html`,
   `html_encoded`, `jwt`, `mac`, `semver`, `origin`, `datauri`, `latitude`,

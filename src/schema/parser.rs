@@ -17,7 +17,7 @@ pub(super) fn fields(parent: &str, value: &JsonValue) -> Result<BTreeMap<String,
         .collect()
 }
 
-pub(super) fn rules(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
+pub(super) fn expressions(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
     match value {
         JsonValue::Array(rules) => rules
             .iter()

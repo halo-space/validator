@@ -328,7 +328,7 @@ fn semantic_parameter_errors_remain_configuration_errors() {
         r#"
 fields:
   value:
-    type: integer
+    type: int
     rules:
       - min: invalid
 "#,
@@ -397,7 +397,7 @@ fn parameter_preflight_runs_before_every_data_short_circuit() {
         r#"
 fields:
   value:
-    type: integer
+    type: int
     rules:
       - omitempty
       - range:
@@ -418,7 +418,7 @@ fn unique_kind_preflight_runs_in_schema_before_omitempty() {
         r#"
 fields:
   value:
-    type: integer
+    type: int
     rules: omitempty,unique
 "#,
     )

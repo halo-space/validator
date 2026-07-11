@@ -462,7 +462,7 @@ fields:
       score:
         type: uint
   score:
-    type: integer
+    type: int
     rules:
       - eq_field: profile.score
 "#,

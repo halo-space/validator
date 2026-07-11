@@ -1,4 +1,5 @@
 mod parser;
+mod path;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -14,14 +15,17 @@ use crate::{
     Error, FieldError, FieldTarget, FloatKind, IntKind, Kind, Params, UintKind, Value, field_error,
 };
 
-use self::parser::{fields as parse_fields, invalid, reject_unknown_keys, rules as parse_rules};
+use self::parser::{
+    expressions as parse_expressions, fields as parse_fields, invalid, reject_unknown_keys,
+};
+use self::path::{namespace, parse_path, resolve};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-pub(crate) const TYPE_RULE: &str = "type";
+pub(crate) const TYPE_FAILURE: &str = "type";
 
 #[cfg(test)]
 pub(crate) fn internal_rule_names() -> impl Iterator<Item = &'static str> {
-    [TYPE_RULE].into_iter()
+    [TYPE_FAILURE].into_iter()
 }
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -152,7 +156,7 @@ impl FieldDef {
         }
         let exprs = object
             .get("rules")
-            .map(|rules| parse_rules(name, rules))
+            .map(|rules| parse_expressions(name, rules))
             .transpose()?
             .unwrap_or_default();
 
@@ -180,9 +184,9 @@ impl Type {
         match name {
             "string" => Ok(Self::String),
             "boolean" => Ok(Self::Bool),
-            "integer" => Ok(Self::Int),
+            "int" => Ok(Self::Int),
             "uint" => Ok(Self::Uint),
-            "number" => Ok(Self::Float),
+            "float" => Ok(Self::Float),
             "array" => Ok(Self::Array),
             "object" => Ok(Self::Object),
             _ => Err(invalid(format!(
@@ -195,9 +199,9 @@ impl Type {
         match self {
             Self::String => "string",
             Self::Bool => "boolean",
-            Self::Int => "integer",
+            Self::Int => "int",
             Self::Uint => "uint",
-            Self::Float => "number",
+            Self::Float => "float",
             Self::Array => "array",
             Self::Object => "object",
         }
@@ -253,8 +257,8 @@ impl Tree {
             errors.push(field_error(
                 FieldTarget::value(),
                 data.kind(),
-                TYPE_RULE,
-                TYPE_RULE,
+                TYPE_FAILURE,
+                TYPE_FAILURE,
                 params,
             ));
             return Ok(());
@@ -796,8 +800,8 @@ fn validate_fields<'a>(
             errors.push(field_error(
                 target,
                 raw.kind(),
-                TYPE_RULE,
-                TYPE_RULE,
+                TYPE_FAILURE,
+                TYPE_FAILURE,
                 params,
             ));
             continue;
@@ -880,8 +884,8 @@ fn validate_array_fields(
             errors.push(field_error(
                 FieldTarget::schema(format!("{array}[{index}]")),
                 value.kind(),
-                TYPE_RULE,
-                TYPE_RULE,
+                TYPE_FAILURE,
+                TYPE_FAILURE,
                 params,
             ));
             continue;
@@ -891,63 +895,6 @@ fn validate_array_fields(
     }
 
     Ok(())
-}
-
-fn namespace(parent: &str, field: &str) -> String {
-    if parent.is_empty() {
-        field.to_owned()
-    } else {
-        format!("{parent}.{field}")
-    }
-}
-
-fn resolve<'a>(
-    object: &'a serde_json::Map<String, JsonValue>,
-    segments: &[String],
-) -> Option<&'a JsonValue> {
-    let mut value = object.get(segments.first()?)?;
-    for segment in &segments[1..] {
-        value = value.as_object()?.get(segment)?;
-    }
-    Some(value)
-}
-
-fn parse_path(rule: &str, path: &str) -> Result<Vec<String>, Error> {
-    if path.is_empty() {
-        return Err(invalid_path(rule, path));
-    }
-
-    path.split('.')
-        .map(|segment| {
-            if is_identifier(segment) {
-                Ok(segment.to_owned())
-            } else {
-                Err(invalid_path(rule, path))
-            }
-        })
-        .collect()
-}
-
-fn is_identifier(segment: &str) -> bool {
-    if segment.is_empty()
-        || segment.starts_with("r#")
-        || matches!(segment, "_" | "Self" | "crate" | "self" | "super")
-    {
-        return false;
-    }
-
-    let mut chars = segment.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first == '_' || unicode_ident::is_xid_start(first))
-        && chars.all(unicode_ident::is_xid_continue)
-}
-
-fn invalid_path(rule: &str, path: &str) -> Error {
-    invalid(format!(
-        "field rule '{rule}' has invalid field path '{path}'; expected dot-separated Rust field identifiers"
-    ))
 }
 
 #[cfg(test)]

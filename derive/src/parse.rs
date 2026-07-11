@@ -5,7 +5,8 @@ use syn::{
     Expr, ExprLit, ExprUnary, Lit, LitStr, Token, UnOp, bracketed, parenthesized,
 };
 
-use super::{DiveAttr, ItemPath, ParamAttr, RuleAttr, canonical, parse_field_path};
+use super::model::{DiveAttr, ItemPath, ParamAttr, RuleAttr};
+use super::{canonical, parse_field_path};
 
 const CONDITIONAL_PAIR_RULES: &[&str] = &[
     "required_if",
@@ -34,15 +35,15 @@ pub(super) fn rules(attrs: &[syn::Attribute]) -> syn::Result<Vec<RuleAttr>> {
             continue;
         }
 
-        attr.parse_nested_meta(|meta| rule_meta(meta, &mut rules))?;
+        attr.parse_nested_meta(|meta| attribute_meta(meta, &mut rules))?;
     }
 
     Ok(rules)
 }
 
-fn rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Result<()> {
+fn attribute_meta(meta: ParseNestedMeta<'_>, attributes: &mut Vec<RuleAttr>) -> syn::Result<()> {
     if meta.path.is_ident("dive") {
-        rules.push(RuleAttr::Dive(dive_rules(meta)?));
+        attributes.push(RuleAttr::Dive(dive_attributes(meta)?));
         return Ok(());
     }
 
@@ -51,21 +52,21 @@ fn rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Resul
     }
 
     if meta.path.is_ident("required") {
-        rules.push(rule("required", Vec::new()));
+        attributes.push(attribute("required", Vec::new()));
         return Ok(());
     }
     if meta.path.is_ident("omitempty") {
-        rules.push(RuleAttr::OmitEmpty);
+        attributes.push(RuleAttr::OmitEmpty);
         return Ok(());
     }
     if meta.path.is_ident("nested") {
-        rules.push(RuleAttr::Nested);
+        attributes.push(RuleAttr::Nested);
         return Ok(());
     }
     if meta.path.is_ident("alias") {
         let value = meta.value()?;
         let alias: LitStr = value.parse()?;
-        rules.push(RuleAttr::Alias(alias.value()));
+        attributes.push(RuleAttr::Alias(alias.value()));
         return Ok(());
     }
 
@@ -74,7 +75,7 @@ fn rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Resul
     {
         let value = meta.value()?;
         let target: LitStr = value.parse()?;
-        rules.push(RuleAttr::FieldRule {
+        attributes.push(RuleAttr::FieldRule {
             name,
             params: vec![ParamAttr::Named("compare".to_owned(), target.value())],
         });
@@ -83,7 +84,7 @@ fn rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Resul
 
     for name in CONDITIONAL_PAIR_RULES {
         if meta.path.is_ident(*name) {
-            rules.push(RuleAttr::FieldRule {
+            attributes.push(RuleAttr::FieldRule {
                 name: (*name).to_owned(),
                 params: conditional_pairs(meta, name)?,
             });
@@ -93,7 +94,7 @@ fn rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Resul
 
     for name in CONDITIONAL_FIELD_LIST_RULES {
         if meta.path.is_ident(*name) {
-            rules.push(RuleAttr::FieldRule {
+            attributes.push(RuleAttr::FieldRule {
                 name: (*name).to_owned(),
                 params: vec![ParamAttr::List(
                     "fields".to_owned(),
@@ -105,7 +106,7 @@ fn rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Resul
     }
 
     if meta.path.is_ident("unique") && meta.input.peek(Token![=]) {
-        rules.push(RuleAttr::UniqueFields {
+        attributes.push(RuleAttr::UniqueFields {
             paths: unique_paths(meta)?,
         });
         return Ok(());
@@ -118,7 +119,7 @@ fn rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Resul
     let Some(name) = meta.path.get_ident().map(canonical) else {
         return Err(meta.error("validate rule must be a single identifier"));
     };
-    rules.push(rule(name, custom_params(meta)?));
+    attributes.push(attribute(name, custom_params(meta)?));
     Ok(())
 }
 
@@ -201,7 +202,7 @@ fn custom_params(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ParamAttr>> {
     Ok(params)
 }
 
-fn dive_rules(meta: ParseNestedMeta<'_>) -> syn::Result<DiveAttr> {
+fn dive_attributes(meta: ParseNestedMeta<'_>) -> syn::Result<DiveAttr> {
     let mut rules = Vec::new();
     let mut keys = None;
     let mut values = None;
@@ -223,7 +224,7 @@ fn dive_rules(meta: ParseNestedMeta<'_>) -> syn::Result<DiveAttr> {
             return Ok(());
         }
 
-        rule_meta(nested, &mut rules)
+        attribute_meta(nested, &mut rules)
     })?;
 
     match (keys, values) {
@@ -247,7 +248,7 @@ fn dive_rules(meta: ParseNestedMeta<'_>) -> syn::Result<DiveAttr> {
 
 fn dive_section(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<RuleAttr>> {
     let mut rules = Vec::new();
-    meta.parse_nested_meta(|nested| rule_meta(nested, &mut rules))?;
+    meta.parse_nested_meta(|nested| attribute_meta(nested, &mut rules))?;
 
     if rules.is_empty() {
         return Err(meta.error("map dive section requires at least one rule"));
@@ -301,7 +302,7 @@ fn field_list(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<Vec<String>>
     Ok(fields)
 }
 
-fn rule(name: impl Into<String>, params: Vec<ParamAttr>) -> RuleAttr {
+fn attribute(name: impl Into<String>, params: Vec<ParamAttr>) -> RuleAttr {
     RuleAttr::Rule {
         name: name.into(),
         params,
