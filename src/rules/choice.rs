@@ -20,10 +20,7 @@ fn validate(field: &Field<'_>, rule: &str) -> Result<(), crate::Error> {
         Kind::Int(_) => {
             for candidate in candidates {
                 candidate.parse::<i128>().map_err(|_| {
-                    invalid(
-                        rule,
-                        format!("candidate '{candidate}' must be a valid signed integer"),
-                    )
+                    invalid(rule, format!("candidate '{candidate}' must be a valid int"))
                 })?;
             }
         }
@@ -32,7 +29,7 @@ fn validate(field: &Field<'_>, rule: &str) -> Result<(), crate::Error> {
                 candidate.parse::<u128>().map_err(|_| {
                     invalid(
                         rule,
-                        format!("candidate '{candidate}' must be a valid unsigned integer"),
+                        format!("candidate '{candidate}' must be a valid uint"),
                     )
                 })?;
             }

@@ -756,7 +756,7 @@ Schema validation is JSON/YAML-data oriented. It supports `datetime` as a string
 rule, but does not support native `SystemTime` values or `type: time`.
 Numeric rules follow the declared Schema family: `int` is signed, `uint` is
 unsigned, and `float` is floating-point even when the JSON token is written as
-an integer.
+an int value.
 
 Schema type names and validation rule names belong to different namespaces.
 `type: float` declares the field's data type. The `number` rule is a predicate:

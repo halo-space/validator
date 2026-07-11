@@ -98,9 +98,9 @@ pub(super) fn validate_equality(field: &Field<'_>, rule: &str) -> Result<(), Err
         ),
         Kind::Bool => parse_limit("value", value, |value| value.parse::<bool>(), "boolean"),
         Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Int(_) => {
-            parse_limit("value", value, str::parse::<i128>, "signed integer")
+            parse_limit("value", value, str::parse::<i128>, "int")
         }
-        Kind::Uint(_) => parse_limit("value", value, str::parse::<u128>, "unsigned integer"),
+        Kind::Uint(_) => parse_limit("value", value, str::parse::<u128>, "uint"),
         Kind::Float(FloatKind::F32) => parse_limit("value", value, str::parse::<f32>, "f32"),
         Kind::Float(FloatKind::F64) => parse_limit("value", value, str::parse::<f64>, "f64"),
         Kind::Other => Err(invalid_kind("value", field.value().kind())),
@@ -116,9 +116,9 @@ pub(super) fn validate_satisfies(field: &Field<'_>, name: &str) -> Result<(), Er
             None => Err(missing_limit(name)),
         },
         Kind::String | Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Int(_) => {
-            parse_limit(name, value, str::parse::<i128>, "signed integer")
+            parse_limit(name, value, str::parse::<i128>, "int")
         }
-        Kind::Uint(_) => parse_limit(name, value, str::parse::<u128>, "unsigned integer"),
+        Kind::Uint(_) => parse_limit(name, value, str::parse::<u128>, "uint"),
         Kind::Float(FloatKind::F32) => parse_limit(name, value, str::parse::<f32>, "f32"),
         Kind::Float(FloatKind::F64) => parse_limit(name, value, str::parse::<f64>, "f64"),
         Kind::Option => {
@@ -352,15 +352,13 @@ fn ordering_satisfies(ordering: Ordering, relation: Relation) -> bool {
 }
 
 fn signed_limit(name: &str, value: &str) -> Result<i128, Error> {
-    value
-        .parse()
-        .map_err(|_| invalid_limit(name, value, "signed integer"))
+    value.parse().map_err(|_| invalid_limit(name, value, "int"))
 }
 
 fn unsigned_limit(name: &str, value: &str) -> Result<u128, Error> {
     value
         .parse()
-        .map_err(|_| invalid_limit(name, value, "unsigned integer"))
+        .map_err(|_| invalid_limit(name, value, "uint"))
 }
 
 fn f32_limit(name: &str, value: &str) -> Result<f64, Error> {

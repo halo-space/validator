@@ -188,14 +188,8 @@ fn validate_expected(
     let expected_type = match value.kind() {
         Kind::String | Kind::Time | Kind::Option | Kind::Other => return Ok(()),
         Kind::Bool => expected.parse::<bool>().map(|_| ()).map_err(|_| "boolean"),
-        Kind::Int(_) => expected
-            .parse::<i128>()
-            .map(|_| ())
-            .map_err(|_| "signed integer"),
-        Kind::Uint(_) => expected
-            .parse::<u128>()
-            .map(|_| ())
-            .map_err(|_| "unsigned integer"),
+        Kind::Int(_) => expected.parse::<i128>().map(|_| ()).map_err(|_| "int"),
+        Kind::Uint(_) => expected.parse::<u128>().map(|_| ()).map_err(|_| "uint"),
         Kind::Float(_) => expected.parse::<f64>().map(|_| ()).map_err(|_| "float"),
         Kind::Vec | Kind::Array | Kind::Slice | Kind::Map => expected
             .parse::<usize>()

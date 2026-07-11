@@ -328,14 +328,14 @@ fn param_value(input: syn::parse::ParseStream<'_>) -> syn::Result<String> {
             }) => Ok(format!("-{}", value.base10_digits())),
             expr => Err(syn::Error::new_spanned(
                 expr,
-                "negative validate parameter must be an integer or float literal",
+                "negative validate parameter must be an int or float literal",
             )),
         },
         Expr::Path(path) if path.path.is_ident("true") => Ok("true".to_owned()),
         Expr::Path(path) if path.path.is_ident("false") => Ok("false".to_owned()),
         expr => Err(syn::Error::new_spanned(
             expr,
-            "validate parameter must be an integer, float, string, or bool literal",
+            "validate parameter must be an int, float, string, or bool literal",
         )),
     }
 }
@@ -348,7 +348,7 @@ fn literal(lit: Lit) -> syn::Result<String> {
         Lit::Bool(value) => Ok(value.value.to_string()),
         _ => Err(syn::Error::new_spanned(
             lit,
-            "validate parameter must be an integer, float, string, or bool literal",
+            "validate parameter must be an int, float, string, or bool literal",
         )),
     }
 }
