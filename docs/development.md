@@ -13,10 +13,12 @@ cargo bench --bench validation
 cargo package --manifest-path derive/Cargo.toml --allow-dirty
 ```
 
-The benchmark suite measures derive success and failure, selective validation,
-warm and cold direct expressions, warm and cold Schema execution,
-`validate_serde`, collection dive, and compound unique projection. Use
-`cargo bench --bench validation -- --quick` for a short local verification run.
+The benchmark suite uses equivalent derive and Schema models. It measures
+successful and failed derive, direct value, Schema map, and `validate_serde`
+execution; selective validation; warm and cold compilation paths; and
+collection dive and compound unique projection at 10, 100, and 1,000 elements.
+Use `cargo bench --bench validation -- --quick` for a short local verification
+run.
 
 The current distribution path is Git dependency usage. Registry publishing is
 out of scope for now. The root `validator` crate is intentionally not packaged

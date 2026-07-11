@@ -13,8 +13,9 @@ cargo bench --bench validation
 cargo package --manifest-path derive/Cargo.toml --allow-dirty
 ```
 
-benchmark 覆盖 derive 成功/失败、选择性校验、direct expression 冷/热路径、
-Schema 冷/热路径、`validate_serde`、集合 dive 和 compound unique 投影。
+benchmark 使用等价的 derive 和 Schema 模型，覆盖 derive、direct value、
+Schema map 和 `validate_serde` 的成功/失败路径、选择性校验、冷/热编译路径，
+以及 10、100、1,000 个元素下的集合 dive 和 compound unique 投影。
 本地快速检查可以运行 `cargo bench --bench validation -- --quick`。
 
 当前分发路径是 Git 依赖使用，暂不处理 registry 发布。根 `validator` crate 这一阶段不按 crates.io package 方式收口；这里只对技术包 `validator-derive` 做 `cargo package` 检查。

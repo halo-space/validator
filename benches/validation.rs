@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use serde::Serialize;
 use validator::prelude::*;
 
@@ -44,9 +44,6 @@ struct User {
 
     #[validate(nested)]
     profile: Profile,
-
-    #[validate(dive(required, email))]
-    contacts: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -91,11 +88,6 @@ fn valid_user() -> User {
         profile: Profile {
             website: "https://example.com/profile".to_owned(),
         },
-        contacts: vec![
-            "first@example.com".to_owned(),
-            "second@example.com".to_owned(),
-            "third@example.com".to_owned(),
-        ],
     }
 }
 
@@ -107,7 +99,6 @@ fn invalid_user() -> User {
         profile: Profile {
             website: "not-a-url".to_owned(),
         },
-        contacts: vec!["invalid".to_owned(), String::new()],
     }
 }
 
@@ -122,8 +113,23 @@ fn schema_user() -> SchemaUser {
     }
 }
 
+fn invalid_schema_user() -> SchemaUser {
+    SchemaUser {
+        name: "x".to_owned(),
+        email: "invalid".to_owned(),
+        age: 10,
+        profile: SchemaProfile {
+            website: "not-a-url".to_owned(),
+        },
+    }
+}
+
 fn schema_data() -> serde_json::Value {
     serde_json::to_value(schema_user()).expect("benchmark data must serialize")
+}
+
+fn invalid_schema_data() -> serde_json::Value {
+    serde_json::to_value(invalid_schema_user()).expect("benchmark data must serialize")
 }
 
 fn schema_validator() -> Validator {
@@ -155,6 +161,12 @@ fn derive_validation(criterion: &mut Criterion) {
     let validator = Validator::new();
     let valid = valid_user();
     let invalid = invalid_user();
+    validator
+        .validate(&valid)
+        .expect("warm-up derive data must pass");
+    validator
+        .validate(&invalid)
+        .expect_err("warm-up derive data must fail");
     let mut group = criterion.benchmark_group("derive");
 
     group.bench_function("valid", |bench| {
@@ -178,6 +190,7 @@ fn derive_validation(criterion: &mut Criterion) {
 
 fn direct_value_validation(criterion: &mut Criterion) {
     let email = "xiaohan@example.com".to_owned();
+    let invalid_email = "invalid".to_owned();
     let validator = Validator::new();
     validator
         .value(&email, DIRECT_EXPRESSION)
@@ -189,6 +202,15 @@ fn direct_value_validation(criterion: &mut Criterion) {
             validator
                 .value(black_box(&email), black_box(DIRECT_EXPRESSION))
                 .expect("benchmark value must pass");
+        });
+    });
+    group.bench_function("invalid_warm", |bench| {
+        bench.iter(|| {
+            black_box(
+                validator
+                    .value(black_box(&invalid_email), black_box(DIRECT_EXPRESSION))
+                    .expect_err("benchmark value must fail"),
+            );
         });
     });
     group.bench_function("cold_compile", |bench| {
@@ -213,10 +235,7 @@ fn selective_validation(criterion: &mut Criterion) {
     group.bench_function("partial", |bench| {
         bench.iter(|| {
             validator
-                .partial(
-                    black_box(&user),
-                    black_box(["profile.website", "contacts[0]"]),
-                )
+                .partial(black_box(&user), black_box(["profile.website", "email"]))
                 .expect("selected benchmark fields must pass");
         });
     });
@@ -241,7 +260,9 @@ fn selective_validation(criterion: &mut Criterion) {
 
 fn schema_validation(criterion: &mut Criterion) {
     let data = schema_data();
+    let invalid_data = invalid_schema_data();
     let serializable = schema_user();
+    let invalid_serializable = invalid_schema_user();
     let validator = schema_validator();
     validator
         .validate_map(&data)
@@ -255,11 +276,29 @@ fn schema_validation(criterion: &mut Criterion) {
                 .expect("benchmark schema data must pass");
         });
     });
+    group.bench_function("map_invalid_warm", |bench| {
+        bench.iter(|| {
+            black_box(
+                validator
+                    .validate_map(black_box(&invalid_data))
+                    .expect_err("benchmark schema data must fail"),
+            );
+        });
+    });
     group.bench_function("serde_warm", |bench| {
         bench.iter(|| {
             validator
                 .validate_serde(black_box(&serializable))
                 .expect("benchmark serializable data must pass");
+        });
+    });
+    group.bench_function("serde_invalid_warm", |bench| {
+        bench.iter(|| {
+            black_box(
+                validator
+                    .validate_serde(black_box(&invalid_serializable))
+                    .expect_err("benchmark serializable data must fail"),
+            );
         });
     });
     group.bench_function("map_cold_compile", |bench| {
@@ -277,29 +316,40 @@ fn schema_validation(criterion: &mut Criterion) {
 }
 
 fn collection_validation(criterion: &mut Criterion) {
-    const COUNT: usize = 100;
+    const COUNTS: [usize; 3] = [10, 100, 1_000];
 
     let validator = Validator::new();
-    let contacts = contact_list(COUNT);
-    let team = team(COUNT);
-    let mut group = criterion.benchmark_group("collections");
-    group.throughput(Throughput::Elements(COUNT as u64));
+    let mut dive = criterion.benchmark_group("collections/dive_email");
+    for count in COUNTS {
+        let contacts = contact_list(count);
+        dive.throughput(Throughput::Elements(count as u64));
+        dive.bench_with_input(
+            BenchmarkId::from_parameter(count),
+            &contacts,
+            |bench, contacts| {
+                bench.iter(|| {
+                    validator
+                        .validate(black_box(contacts))
+                        .expect("benchmark contacts must pass");
+                });
+            },
+        );
+    }
+    dive.finish();
 
-    group.bench_function("dive_email", |bench| {
-        bench.iter(|| {
-            validator
-                .validate(black_box(&contacts))
-                .expect("benchmark contacts must pass");
+    let mut unique = criterion.benchmark_group("collections/compound_unique");
+    for count in COUNTS {
+        let team = team(count);
+        unique.throughput(Throughput::Elements(count as u64));
+        unique.bench_with_input(BenchmarkId::from_parameter(count), &team, |bench, team| {
+            bench.iter(|| {
+                validator
+                    .validate(black_box(team))
+                    .expect("benchmark team must pass");
+            });
         });
-    });
-    group.bench_function("compound_unique", |bench| {
-        bench.iter(|| {
-            validator
-                .validate(black_box(&team))
-                .expect("benchmark team must pass");
-        });
-    });
-    group.finish();
+    }
+    unique.finish();
 }
 
 criterion_group!(
