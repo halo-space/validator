@@ -8,6 +8,7 @@ mod namespace;
 mod params;
 mod raw_params;
 mod registry;
+mod selection;
 mod signature;
 mod spec;
 mod value;
@@ -31,6 +32,7 @@ pub(crate) use raw_params::RawParam;
 #[doc(hidden)]
 pub use raw_params::RawParams;
 pub(crate) use registry::{Entry, Registry};
+pub(crate) use selection::{Fields, Selection};
 #[doc(hidden)]
 pub use spec::Spec;
 pub(crate) use spec::{Expr, parse_expression};

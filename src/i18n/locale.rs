@@ -70,8 +70,8 @@ impl Locale {
     }
 
     pub fn from_yaml(yaml: impl AsRef<str>) -> Result<Self, Error> {
-        let resource =
-            serde_yaml::from_str::<LocaleResource>(yaml.as_ref()).map_err(invalid_locale_error)?;
+        let resource = serde_yaml_ng::from_str::<LocaleResource>(yaml.as_ref())
+            .map_err(invalid_locale_error)?;
         Self::from_resource(resource)
     }
 

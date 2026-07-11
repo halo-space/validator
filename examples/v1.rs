@@ -183,6 +183,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     validator.validate(&user)?;
+    validator.partial(&user, ["name", "profile.display_name"])?;
+    validator.except(&user, ["email"])?;
+    validator.filter(&user, |namespace| {
+        matches!(namespace.as_str(), "profile" | "profile.display_name")
+    })?;
     validator.value(&"hello-rust", "required,slug")?;
 
     let showcase = RuleShowcase {

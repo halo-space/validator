@@ -8,6 +8,7 @@
 
 - 使用 `#[derive(Validate)]` 为结构体生成校验逻辑。
 - 默认入口是 `Validator::new().validate(&value)?`。
+- 支持通过 `partial(...)`、`except(...)` 和正向 `filter(...)` 选择 derive 字段。
 - 单值校验入口是 `Validator::new().value(&value, "rules")?`。
 - 支持 `Validator::new().alias(...)? .rule(...)?` 这种链式运行时配置。
 - 内置必填、长度/范围、比较、字符串、格式、网络标识、枚举选择、颜色等常用规则。
@@ -77,6 +78,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+## 选择性校验
+
+derive 模型可以只校验部分字段，不需要复制一套结构体或规则：
+
+```rust
+let validator = Validator::new();
+
+validator.partial(&user, ["name", "profile.email"])?;
+validator.except(&user, ["password_hash"])?;
+validator.filter(&user, |namespace| {
+    matches!(namespace.as_str(), "profile" | "profile.email")
+})?;
+```
+
+selector 使用相对的 Rust struct namespace，不包含根类型名。嵌套字段使用点分路径，
+集合元素使用 `items[0].email` 这样的具体 namespace，Map entry 使用错误结果中相同的
+带引号 key 形式。选中父字段表示校验完整子树；排除父字段表示跳过完整子树，排除单个
+子字段不会影响它的兄弟字段。
+
+`filter` 使用正向语义：返回 `true` 表示校验这个字段或 entry，返回 `false` 表示跳过
+它和它的子节点。需要保留嵌套字段时，回调也必须对它的祖先返回 `true`。同一个
+namespace 可能被回调多次，业务逻辑不能依赖调用次数。struct-level error 使用同一套
+选择范围过滤。空 `partial` 表示不校验任何字段，空 `except` 等价于完整校验；不支持
+通配符路径。每个非空选择路径都必须匹配已声明字段或集合 entry，否则返回
+`Error::UnknownField`。选择性校验由 `#[derive(Validate)]` 生成；手写 `Validate` 实现只
+支持完整校验。
 
 ## 单值校验
 
@@ -771,8 +799,13 @@ for field in error.fields().unwrap_or_default() {
 cargo fmt --check
 cargo test
 cargo clippy --all-targets --all-features -- -D warnings
+cargo bench --bench validation
 cargo package --manifest-path derive/Cargo.toml --allow-dirty
 ```
+
+benchmark 覆盖 derive 成功/失败、选择性校验、direct expression 冷/热路径、
+Schema 冷/热路径、`validate_serde`、集合 dive 和 compound unique 投影。
+本地快速检查可以运行 `cargo bench --bench validation -- --quick`。
 
 当前分发路径是 Git 依赖使用，暂不处理 registry 发布。根 `validator` crate 这一阶段不按 crates.io package 方式收口；这里只对技术包 `validator-derive` 做 `cargo package` 检查。
 

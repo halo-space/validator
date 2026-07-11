@@ -489,7 +489,43 @@ fn struct_level_check_reports_compare_param() {
     assert_eq!(fields[0].field(), "end_at");
     assert_eq!(fields[0].rule(), "gt_field");
     assert_eq!(fields[0].reason(), "gt_field");
+    assert_eq!(fields[0].kind(), Kind::Int(IntKind::I64));
     assert_eq!(fields[0].params().text("compare"), Some("start_at"));
+}
+
+#[derive(Debug, Validate)]
+#[validate(check = "validate_typed_fields")]
+struct TypedFields {
+    name: String,
+    score: i32,
+    created_at: SystemTime,
+    nickname: Option<String>,
+}
+
+fn validate_typed_fields(value: &TypedFields, valid: &mut validator::valid::Valid<'_>) {
+    let _ = (&value.name, value.score, value.created_at);
+    for field in ["name", "score", "created_at", "nickname"] {
+        valid.field(field).rule("typed").push();
+    }
+}
+
+#[test]
+fn struct_level_errors_keep_derived_field_kinds() {
+    let fields = Validator::new()
+        .validate(&TypedFields {
+            name: String::new(),
+            score: 0,
+            created_at: SystemTime::UNIX_EPOCH,
+            nickname: None,
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields[0].kind(), Kind::String);
+    assert_eq!(fields[1].kind(), Kind::Int(IntKind::I32));
+    assert_eq!(fields[2].kind(), Kind::Time);
+    assert_eq!(fields[3].kind(), Kind::Option);
 }
 
 #[derive(Debug, Validate)]
@@ -1109,9 +1145,11 @@ fn struct_level_check_pushes_multiple_param_errors() {
     assert_eq!(fields.len(), 2);
     assert_eq!(fields[0].namespace().as_str(), "Draft.name");
     assert_eq!(fields[0].rule(), "required_without");
+    assert_eq!(fields[0].kind(), Kind::String);
     assert_eq!(fields[0].params().text("field"), Some("title"));
     assert_eq!(fields[1].namespace().as_str(), "Draft.title");
     assert_eq!(fields[1].rule(), "required_without");
+    assert_eq!(fields[1].kind(), Kind::String);
     assert_eq!(fields[1].params().text("field"), Some("name"));
 }
 

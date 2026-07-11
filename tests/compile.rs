@@ -8,6 +8,7 @@ fn public_collection_contracts_compile() {
     tests.compile_fail("tests/ui/field_path_private.rs");
     tests.compile_fail("tests/ui/field_path_unknown_first.rs");
     tests.compile_fail("tests/ui/field_path_unknown_nested.rs");
+    tests.compile_fail("tests/ui/manual_selective.rs");
     tests.compile_fail("tests/ui/unique_field_invalid_container.rs");
     tests.compile_fail("tests/ui/unique_field_missing.rs");
     tests.pass("tests/ui/unique_field_path.rs");

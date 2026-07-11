@@ -109,7 +109,7 @@ pub(crate) fn parse_expression(expr: &str) -> Result<Vec<Expr>, Error> {
 }
 
 fn parse_rule(item: &str) -> Result<Spec, Error> {
-    if let Some((name, rest)) = item.split_once('(') {
+    if let Some((name, rest)) = split_top_level_once(item, '(') {
         let name = name.trim();
         if name.is_empty() {
             return Err(invalid_rule_expression(item, "rule name cannot be empty"));
@@ -285,12 +285,12 @@ fn split_top_level_once(input: &str, separator: char) -> Option<(&str, &str)> {
 
         match ch {
             '"' | '\'' => quote = Some(ch),
-            '(' => depth += 1,
-            ')' if depth > 0 => depth -= 1,
             ch if ch == separator && depth == 0 => {
                 let value = index + ch.len_utf8();
                 return Some((&input[..index], &input[value..]));
             }
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
             _ => {}
         }
     }
@@ -460,5 +460,19 @@ mod tests {
         let values = exprs[0].single().unwrap().params().positional_values();
 
         assert_eq!(values, ["a\"b", "c\\d"]);
+    }
+
+    #[test]
+    fn quoted_delimiters_remain_parameter_values() {
+        for (expression, expected) in [
+            (r#"eq="(""#, "("),
+            (r#"eq=")""#, ")"),
+            (r#"eq=",""#, ","),
+            (r#"eq="|""#, "|"),
+        ] {
+            let exprs = parse_expression(expression).unwrap();
+            let values = exprs[0].single().unwrap().params().positional_values();
+            assert_eq!(values, [expected], "{expression}");
+        }
     }
 }

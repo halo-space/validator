@@ -6,8 +6,8 @@ use super::{
 };
 use crate::{FieldTarget, field_error, namespace_for};
 
-struct Exec<'a, 'b> {
-    context: &'a Context,
+struct Exec<'a, 'b, 'c> {
+    context: &'a Context<'c>,
     display_rule: Option<&'a str>,
     scope: Scope<'b>,
 }
@@ -142,7 +142,7 @@ impl Group {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
     ) -> Result<(), Error> {
         let scope = Scope::default();
         self.validate_declared_params::<V>(target.clone(), Some(value), context, scope)?;
@@ -154,7 +154,7 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<(), Error>
     where
@@ -175,7 +175,7 @@ impl Group {
     pub(crate) fn validate_type_spec<V, A>(
         &self,
         target: FieldTarget<'_>,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<(), Error>
     where
@@ -198,7 +198,7 @@ impl Group {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<Flow, Error>
     where
@@ -222,7 +222,7 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
         items: &I,
     ) -> Result<(), Error>
@@ -247,7 +247,7 @@ impl Group {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
         items: &I,
     ) -> Result<Flow, Error>
@@ -273,7 +273,7 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<(), Error>
     where
@@ -296,7 +296,7 @@ impl Group {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<(), Error>
     where
@@ -322,7 +322,7 @@ impl Group {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
         items: &I,
     ) -> Result<(), Error>
@@ -445,7 +445,7 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         scope: Scope<'_>,
     ) -> Result<(), Error> {
         for step in &self.steps {
@@ -468,7 +468,7 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: Option<&V>,
-        context: &Context,
+        context: &Context<'_>,
         scope: Scope<'_>,
     ) -> Result<(), Error> {
         if let Some(kind) = V::declared_kind() {
@@ -485,7 +485,7 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         check: &Check,
         scope: Scope<'_>,
     ) -> Result<(), Error> {
@@ -505,7 +505,7 @@ impl Group {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         display_rule: Option<&str>,
         scope: Scope<'_>,
     ) -> Result<Flow, Error> {
@@ -560,7 +560,7 @@ impl Group {
         target: FieldTarget<'_>,
         value: &V,
         check: &Check,
-        exec: &Exec<'_, '_>,
+        exec: &Exec<'_, '_, '_>,
     ) -> Result<Flow, Error> {
         match check {
             Check::OmitEmpty => {
@@ -610,7 +610,7 @@ impl Group {
         target: FieldTarget<'_>,
         value: &V,
         check: &Check,
-        exec: &Exec<'_, '_>,
+        exec: &Exec<'_, '_, '_>,
     ) -> Result<CheckResult, Error> {
         match check {
             Check::OmitEmpty => Ok(if value.required() {
@@ -656,7 +656,7 @@ impl Group {
         &self,
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         params: &Params,
         handler: Arc<dyn Rule>,
         scope: Scope<'_>,
@@ -673,7 +673,7 @@ impl Group {
     fn with_field<V, T>(
         target: FieldTarget<'_>,
         value: &V,
-        context: &Context,
+        context: &Context<'_>,
         params: &Params,
         scope: Scope<'_>,
         call: impl FnOnce(&Field<'_>) -> Result<T, Error>,

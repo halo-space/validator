@@ -96,6 +96,8 @@ pub enum Error {
     InvalidRuleExpression { expression: String, reason: String },
     #[error("unknown rule '{name}'")]
     UnknownRule { name: String },
+    #[error("unknown field '{field}'")]
+    UnknownField { field: String },
     #[error("rule '{name}' requires field context")]
     MissingFieldContext { name: String },
     #[error("recursive alias '{name}'")]

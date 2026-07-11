@@ -16,11 +16,16 @@ http = "1"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
+serde_yaml_ng = "0.10"
 thiserror = "2"
 unicode-ident = "1"
 url = "2"
 validator-derive = { version = "0.1.0", path = "derive" }
 
 [dev-dependencies]
+criterion = { version = "0.8.2", default-features = false, features = ["cargo_bench_support"] }
 trybuild = "1"
+
+[[bench]]
+name = "validation"
+harness = false

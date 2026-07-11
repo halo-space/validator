@@ -1,14 +1,15 @@
+mod parse;
+mod types;
+
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet};
 use syn::ext::IdentExt;
-use syn::meta::ParseNestedMeta;
-use syn::{
-    Data, DeriveInput, Expr, ExprLit, ExprUnary, Fields, GenericArgument, Lit, LitStr,
-    PathArguments, Token, Type, TypeArray, TypeReference, UnOp, bracketed, parenthesized,
-    parse_macro_input,
-};
+use syn::{Data, DeriveInput, Fields, LitStr, Type, parse_macro_input};
+
+use self::parse::rules as parse_rules;
+use self::types::{collection_item, collection_kind, field_kind, is_option, map_key, map_value};
 
 #[proc_macro_derive(Validate, attributes(validate))]
 pub fn derive_validate(input: TokenStream) -> TokenStream {
@@ -60,11 +61,34 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
 
     let mut checks = Vec::new();
     let mut access_arms = Vec::new();
+    let kind_arms = fields
+        .iter()
+        .filter_map(|field| {
+            let ident = field.ident.as_ref()?;
+            let name = canonical(ident);
+            let kind = field_kind(&field.ty, quote!(&self.#ident), &crate_path);
+            Some(quote!(#name => #kind,))
+        })
+        .collect::<Vec<_>>();
+    let kind_declaration = (!struct_checks.is_empty()).then(|| {
+        quote! {
+            let field_kind = |field: &str| -> #crate_path::Kind { match field {
+                #(#kind_arms)*
+                _ => #crate_path::Kind::Other,
+            }};
+        }
+    });
     let struct_check_calls = struct_checks.iter().map(|check| {
         quote! {
-            {
-                let mut valid = validator.__valid(#type_name, &mut errors);
+            if context.active() {
+                let error_start = errors.len();
+                let mut valid = validator.__valid(#type_name, &mut errors, &field_kind);
                 #check(self, &mut valid);
+                validator.__retain_selected_struct_errors(
+                    &mut errors,
+                    error_start,
+                    context,
+                );
             }
         }
     });
@@ -102,17 +126,15 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             &crate_path,
         )?;
 
-        if !field_checks.preflight.is_empty() || !field_checks.execute.is_empty() {
-            let preflight = field_checks.preflight;
-            let execute = field_checks.execute;
-            checks.push(quote! {
-                {
-                    #(#preflight)*
-                    let mut skip_rest = false;
-                    #(#execute)*
-                }
-            });
-        }
+        let preflight = field_checks.preflight;
+        let execute = field_checks.execute;
+        checks.push(quote! {
+            if context.includes(#field_name) {
+                #(#preflight)*
+                let mut skip_rest = false;
+                #(#execute)*
+            }
+        });
     }
 
     for field in &fields {
@@ -157,17 +179,24 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                 validator: &#crate_path::Validator,
             ) -> std::result::Result<(), #crate_path::Error> {
                 let context = #crate_path::__private::Context::new();
-                self.__validate_with_context(validator, &context)
+                <Self as #crate_path::__private::Selective>::__validate_with_context(
+                    self,
+                    validator,
+                    &context,
+                )
             }
+        }
 
+        impl #impl_generics #crate_path::__private::Selective for #name #ty_generics #where_clause {
             fn __validate_with_context(
                 &self,
                 validator: &#crate_path::Validator,
-                context: &#crate_path::__private::Context,
+                context: &#crate_path::__private::Context<'_>,
             ) -> std::result::Result<(), #crate_path::Error> {
                 let mut errors = Vec::new();
 
                 #(#checks)*
+                #kind_declaration
                 #(#struct_check_calls)*
 
                 if errors.is_empty() {
@@ -457,7 +486,7 @@ fn build_checks(
     crate_path: &proc_macro2::TokenStream,
 ) -> syn::Result<GeneratedChecks> {
     let has_nested = rules.iter().any(|rule| matches!(rule, RuleAttr::Nested));
-    let is_option = is_option_type(value_type);
+    let is_option = is_option(value_type);
     let is_nested_option = has_nested && is_option;
     let mut checks = GeneratedChecks::default();
 
@@ -685,7 +714,7 @@ fn build_checks(
             }
             RuleAttr::Dive(dive) => match dive {
                 DiveAttr::Values(rules) => {
-                    let item_type = collection_item_type(value_type).ok_or_else(|| {
+                    let item_type = collection_item(value_type).ok_or_else(|| {
                         syn::Error::new_spanned(
                             value_type,
                             "dive requires a Vec, array, or slice field",
@@ -708,20 +737,22 @@ fn build_checks(
                         if !skip_rest {
                             for (index, item) in (#value).iter().enumerate() {
                                 let item_target = #target.index(index);
-                                let mut skip_rest = false;
-                                #(#execute)*
+                                if context.includes(item_target.struct_field_name.as_ref()) {
+                                    let mut skip_rest = false;
+                                    #(#execute)*
+                                }
                             }
                         }
                     });
                 }
                 DiveAttr::Map { keys, values } => {
-                    let key_type = map_key_type(value_type).ok_or_else(|| {
+                    let key_type = map_key(value_type).ok_or_else(|| {
                         syn::Error::new_spanned(
                             value_type,
                             "map dive requires a HashMap or BTreeMap",
                         )
                     })?;
-                    let value_type = map_value_type(value_type).expect("map key and value coexist");
+                    let value_type = map_value(value_type).expect("map key and value coexist");
                     let key_checks = build_checks(
                         keys,
                         quote!(key),
@@ -757,13 +788,15 @@ fn build_checks(
                         if !skip_rest {
                             for (key, value) in (#value).iter() {
                                 let entry_target = #target.key(key);
-                                {
-                                    let mut skip_rest = false;
-                                    #(#key_execute)*
-                                }
-                                {
-                                    let mut skip_rest = false;
-                                    #(#value_execute)*
+                                if context.includes(entry_target.struct_field_name.as_ref()) {
+                                    {
+                                        let mut skip_rest = false;
+                                        #(#key_execute)*
+                                    }
+                                    {
+                                        let mut skip_rest = false;
+                                        #(#value_execute)*
+                                    }
                                 }
                             }
                         }
@@ -828,379 +861,6 @@ fn build_params(params: &[ParamAttr]) -> Vec<proc_macro2::TokenStream> {
         .collect()
 }
 
-fn parse_rules(attrs: &[syn::Attribute]) -> syn::Result<Vec<RuleAttr>> {
-    let mut rules = Vec::new();
-
-    for attr in attrs {
-        if !attr.path().is_ident("validate") {
-            continue;
-        }
-
-        attr.parse_nested_meta(|meta| parse_rule_meta(meta, &mut rules))?;
-    }
-
-    Ok(rules)
-}
-
-fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn::Result<()> {
-    if meta.path.is_ident("dive") {
-        rules.push(RuleAttr::Dive(parse_dive_rules(meta)?));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("keys") || meta.path.is_ident("values") {
-        return Err(meta.error("keys(...) and values(...) are only supported by map dive"));
-    }
-
-    if meta.path.is_ident("required") {
-        rules.push(rule("required", Vec::new()));
-        return Ok(());
-    }
-
-    if meta.path.is_ident("omitempty") {
-        rules.push(RuleAttr::OmitEmpty);
-        return Ok(());
-    }
-
-    if meta.path.is_ident("nested") {
-        rules.push(RuleAttr::Nested);
-        return Ok(());
-    }
-
-    if meta.path.is_ident("alias") {
-        let value = meta.value()?;
-        let alias: LitStr = value.parse()?;
-        rules.push(RuleAttr::Alias(alias.value()));
-        return Ok(());
-    }
-
-    if let Some(name) = meta.path.get_ident().map(canonical)
-        && (name.ends_with("_field") || matches!(name.as_str(), "fieldcontains" | "fieldexcludes"))
-    {
-        let value = meta.value()?;
-        let target: LitStr = value.parse()?;
-        rules.push(RuleAttr::FieldRule {
-            name,
-            params: vec![ParamAttr::Named("compare".to_owned(), target.value())],
-        });
-        return Ok(());
-    }
-
-    for name in CONDITIONAL_PAIR_RULES {
-        if meta.path.is_ident(*name) {
-            rules.push(RuleAttr::FieldRule {
-                name: (*name).to_owned(),
-                params: parse_conditional_pairs(meta, name)?,
-            });
-            return Ok(());
-        }
-    }
-
-    for name in CONDITIONAL_FIELD_LIST_RULES {
-        if meta.path.is_ident(*name) {
-            rules.push(RuleAttr::FieldRule {
-                name: (*name).to_owned(),
-                params: vec![ParamAttr::List(
-                    "fields".to_owned(),
-                    parse_field_list(meta, name)?,
-                )],
-            });
-            return Ok(());
-        }
-    }
-
-    if meta.path.is_ident("unique") && meta.input.peek(Token![=]) {
-        rules.push(RuleAttr::UniqueFields {
-            paths: parse_unique_paths(meta)?,
-        });
-        return Ok(());
-    }
-    if meta.path.is_ident("unique") && meta.input.peek(syn::token::Paren) {
-        return Err(meta
-            .error("unique field syntax is `unique = \"field\"` or `unique = [\"field\", ...]`"));
-    }
-
-    let Some(name) = meta.path.get_ident().map(canonical) else {
-        return Err(meta.error("validate rule must be a single identifier"));
-    };
-    rules.push(rule(name, parse_custom_params(meta)?));
-    Ok(())
-}
-
-fn parse_unique_paths(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ItemPath>> {
-    let input = meta.value()?;
-    let paths = if input.peek(LitStr) {
-        vec![parse_unique_path(input.parse()?)?]
-    } else if input.peek(syn::token::Bracket) {
-        let content;
-        bracketed!(content in input);
-        let mut paths = Vec::new();
-        while !content.is_empty() {
-            paths.push(parse_unique_path(content.parse()?)?);
-            if content.peek(Token![,]) {
-                content.parse::<Token![,]>()?;
-            } else if !content.is_empty() {
-                return Err(content.error("expected ',' between unique field paths"));
-            }
-        }
-        paths
-    } else {
-        return Err(input.error("unique expects a field string or an array of field strings"));
-    };
-
-    if paths.is_empty() {
-        return Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "unique field list cannot be empty",
-        ));
-    }
-
-    let mut seen = BTreeSet::new();
-    if let Some(duplicate) = paths.iter().find(|path| !seen.insert(path.name.as_str())) {
-        return Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            format!("unique field path '{}' is repeated", duplicate.name),
-        ));
-    }
-
-    Ok(paths)
-}
-
-fn parse_unique_path(field: LitStr) -> syn::Result<ItemPath> {
-    let name = field.value();
-    let segments = parse_field_path("unique", &name)?;
-    Ok(ItemPath { name, segments })
-}
-
-fn parse_custom_params(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ParamAttr>> {
-    if meta.input.peek(Token![=]) {
-        return Ok(vec![ParamAttr::Positional(parse_param_value(
-            meta.value()?,
-        )?)]);
-    }
-    if !meta.input.peek(syn::token::Paren) {
-        return Ok(Vec::new());
-    }
-
-    let content;
-    parenthesized!(content in meta.input);
-    let mut params = Vec::new();
-
-    while !content.is_empty() {
-        if content.peek(syn::Ident) && content.peek2(Token![=]) {
-            let name: syn::Ident = content.parse()?;
-            content.parse::<Token![=]>()?;
-            params.push(ParamAttr::Named(
-                canonical(&name),
-                parse_param_value(&content)?,
-            ));
-        } else {
-            params.push(ParamAttr::Positional(parse_param_value(&content)?));
-        }
-
-        if content.peek(Token![,]) {
-            content.parse::<Token![,]>()?;
-        } else if !content.is_empty() {
-            return Err(content.error("expected ',' between validate parameters"));
-        }
-    }
-
-    Ok(params)
-}
-
-fn parse_dive_rules(meta: ParseNestedMeta<'_>) -> syn::Result<DiveAttr> {
-    let mut rules = Vec::new();
-    let mut keys = None;
-    let mut values = None;
-
-    meta.parse_nested_meta(|nested| {
-        if nested.path.is_ident("keys") {
-            if keys.is_some() {
-                return Err(nested.error("duplicate keys(...) in dive"));
-            }
-            keys = Some(parse_dive_section(nested)?);
-            return Ok(());
-        }
-
-        if nested.path.is_ident("values") {
-            if values.is_some() {
-                return Err(nested.error("duplicate values(...) in dive"));
-            }
-            values = Some(parse_dive_section(nested)?);
-            return Ok(());
-        }
-
-        parse_rule_meta(nested, &mut rules)
-    })?;
-
-    match (keys, values) {
-        (Some(keys), Some(values)) => {
-            if !rules.is_empty() {
-                return Err(meta.error("map dive cannot mix keys/values with bare element rules"));
-            }
-            Ok(DiveAttr::Map { keys, values })
-        }
-        (Some(_), None) | (None, Some(_)) => {
-            Err(meta.error("map dive requires both keys(...) and values(...)"))
-        }
-        (None, None) => {
-            if rules.is_empty() {
-                return Err(meta.error("dive requires at least one rule"));
-            }
-            Ok(DiveAttr::Values(rules))
-        }
-    }
-}
-
-fn parse_dive_section(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<RuleAttr>> {
-    let mut rules = Vec::new();
-    meta.parse_nested_meta(|nested| parse_rule_meta(nested, &mut rules))?;
-
-    if rules.is_empty() {
-        return Err(meta.error("map dive section requires at least one rule"));
-    }
-
-    Ok(rules)
-}
-
-fn parse_conditional_pairs(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<Vec<ParamAttr>> {
-    let mut params = Vec::new();
-    let mut seen = BTreeSet::new();
-
-    meta.parse_nested_meta(|nested| {
-        let Some(field) = nested.path.get_ident().map(canonical) else {
-            return Err(nested.error("conditional rule field must be a field identifier"));
-        };
-
-        if !seen.insert(field.clone()) {
-            return Err(nested.error(format!("duplicate field '{field}' in {rule}")));
-        }
-
-        params.push(ParamAttr::Named(field, parse_param_value(nested.value()?)?));
-        Ok(())
-    })?;
-
-    if params.is_empty() {
-        return Err(meta.error(format!("{rule} requires at least one field condition")));
-    }
-
-    Ok(params)
-}
-
-fn parse_field_list(meta: ParseNestedMeta<'_>, rule: &str) -> syn::Result<Vec<String>> {
-    let content;
-    parenthesized!(content in meta.input);
-
-    let mut fields = Vec::new();
-    while !content.is_empty() {
-        let field: LitStr = content.parse()?;
-        fields.push(field.value());
-
-        if content.peek(Token![,]) {
-            content.parse::<Token![,]>()?;
-        }
-    }
-
-    if fields.is_empty() {
-        return Err(meta.error(format!("{rule} requires at least one field")));
-    }
-
-    Ok(fields)
-}
-
-fn is_option_type(ty: &Type) -> bool {
-    let Type::Path(path) = ty else {
-        return false;
-    };
-
-    path.path.segments.last().is_some_and(|segment| {
-        segment.ident == "Option" && matches!(segment.arguments, PathArguments::AngleBracketed(_))
-    })
-}
-
-fn collection_item_type(ty: &Type) -> Option<&Type> {
-    match ty {
-        Type::Path(path) => path.path.segments.last().and_then(|segment| {
-            if segment.ident != "Vec" {
-                return None;
-            }
-
-            let PathArguments::AngleBracketed(generic_args) = &segment.arguments else {
-                return None;
-            };
-
-            generic_args
-                .args
-                .iter()
-                .find_map(|generic_param| match generic_param {
-                    GenericArgument::Type(ty) => Some(ty),
-                    _ => None,
-                })
-        }),
-        Type::Array(TypeArray { elem, .. }) => Some(elem.as_ref()),
-        Type::Reference(TypeReference { elem, .. }) => match elem.as_ref() {
-            Type::Slice(slice) => Some(slice.elem.as_ref()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-fn map_key_type(ty: &Type) -> Option<&Type> {
-    map_type(ty, 0)
-}
-
-fn map_value_type(ty: &Type) -> Option<&Type> {
-    map_type(ty, 1)
-}
-
-fn map_type(ty: &Type, index: usize) -> Option<&Type> {
-    let Type::Path(path) = ty else {
-        return None;
-    };
-
-    path.path.segments.last().and_then(|segment| {
-        if segment.ident != "HashMap" && segment.ident != "BTreeMap" {
-            return None;
-        }
-
-        let PathArguments::AngleBracketed(generic_args) = &segment.arguments else {
-            return None;
-        };
-
-        generic_args
-            .args
-            .iter()
-            .filter_map(|generic_param| match generic_param {
-                GenericArgument::Type(ty) => Some(ty),
-                _ => None,
-            })
-            .nth(index)
-    })
-}
-
-fn collection_kind(
-    ty: &Type,
-    crate_path: &proc_macro2::TokenStream,
-) -> Option<proc_macro2::TokenStream> {
-    match ty {
-        Type::Path(path)
-            if path
-                .path
-                .segments
-                .last()
-                .is_some_and(|segment| segment.ident == "Vec") =>
-        {
-            Some(quote!(#crate_path::Kind::Vec))
-        }
-        Type::Array(_) => Some(quote!(#crate_path::Kind::Array)),
-        Type::Reference(TypeReference { elem, .. }) if matches!(elem.as_ref(), Type::Slice(_)) => {
-            Some(quote!(#crate_path::Kind::Slice))
-        }
-        _ => None,
-    }
-}
-
 fn validator_crate_path() -> syn::Result<proc_macro2::TokenStream> {
     match crate_name("validator") {
         Ok(FoundCrate::Itself) => Ok(quote!(::validator)),
@@ -1243,54 +903,3 @@ const CONDITIONAL_FIELD_LIST_RULES: &[&str] = &[
     "excluded_without",
     "excluded_without_all",
 ];
-
-fn rule(name: impl Into<String>, params: Vec<ParamAttr>) -> RuleAttr {
-    RuleAttr::Rule {
-        name: name.into(),
-        params,
-    }
-}
-
-fn parse_param_value(input: syn::parse::ParseStream<'_>) -> syn::Result<String> {
-    let expr: Expr = input.parse()?;
-    match expr {
-        Expr::Lit(ExprLit { lit, .. }) => parse_lit(lit),
-        Expr::Unary(ExprUnary {
-            op: UnOp::Neg(_),
-            expr,
-            ..
-        }) => match *expr {
-            Expr::Lit(ExprLit {
-                lit: Lit::Int(value),
-                ..
-            }) => Ok(format!("-{}", value.base10_digits())),
-            Expr::Lit(ExprLit {
-                lit: Lit::Float(value),
-                ..
-            }) => Ok(format!("-{}", value.base10_digits())),
-            expr => Err(syn::Error::new_spanned(
-                expr,
-                "negative validate parameter must be an integer or float literal",
-            )),
-        },
-        Expr::Path(path) if path.path.is_ident("true") => Ok("true".to_owned()),
-        Expr::Path(path) if path.path.is_ident("false") => Ok("false".to_owned()),
-        expr => Err(syn::Error::new_spanned(
-            expr,
-            "validate parameter must be an integer, float, string, or bool literal",
-        )),
-    }
-}
-
-fn parse_lit(lit: Lit) -> syn::Result<String> {
-    match lit {
-        Lit::Int(value) => Ok(value.base10_digits().to_owned()),
-        Lit::Float(value) => Ok(value.base10_digits().to_owned()),
-        Lit::Str(value) => Ok(value.value()),
-        Lit::Bool(value) => Ok(value.value.to_string()),
-        _ => Err(syn::Error::new_spanned(
-            lit,
-            "validate parameter must be an integer, float, string, or bool literal",
-        )),
-    }
-}

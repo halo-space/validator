@@ -38,7 +38,7 @@ impl<'a> Field<'a> {
 
     pub(crate) fn with_context(
         mut self,
-        context: &Context,
+        context: &Context<'_>,
         access: Option<&'a dyn Access>,
         items: Option<&'a dyn Items>,
     ) -> Self {

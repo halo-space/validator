@@ -4,15 +4,14 @@ mod core;
 pub mod i18n;
 mod rules;
 mod schema;
+mod target;
 pub mod valid;
 
-use std::borrow::Cow;
-use std::fmt;
 use std::sync::{Arc, RwLock};
 
 use self::core::{
-    Access, CAPACITY, Cache, Context, Expr, FieldErrorParts, Flow, Group, Items, RawParams,
-    Registry, Spec, parse_expression,
+    Access, CAPACITY, Cache, Context, Expr, Fields, Flow, Group, Items, RawParams, Registry, Spec,
+    parse_expression,
 };
 pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
@@ -20,10 +19,14 @@ pub use self::core::{
 };
 pub use self::schema::Schema;
 use self::schema::Tree;
+pub use self::target::FieldTarget;
+use self::target::push_nested_errors;
+pub(crate) use self::target::{field_error, namespace_for};
 pub use validator_derive::Validate;
 
 #[doc(hidden)]
 pub mod __private {
+    pub use crate::Selective;
     pub use crate::core::{
         Access, Context, FieldRef, Projection, RawParams, Resolve, Segment, Spec,
     };
@@ -78,7 +81,44 @@ impl Validator {
     }
 
     pub fn validate<T: Validate>(&self, value: &T) -> Result<(), Error> {
-        let context = Context::new();
+        value.validate(self)
+    }
+
+    /// Validates only the selected relative Rust field paths.
+    pub fn partial<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
+    where
+        T: Validate + Selective,
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let fields = Fields::new(fields);
+        let context = Context::partial(&fields);
+        let result = value.__validate_with_context(self, &context);
+        fields.verify()?;
+        result
+    }
+
+    /// Validates every field except the selected relative Rust field paths.
+    pub fn except<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
+    where
+        T: Validate + Selective,
+        I: IntoIterator<Item = S>,
+        S: AsRef<str>,
+    {
+        let fields = Fields::new(fields);
+        let context = Context::except(&fields);
+        let result = value.__validate_with_context(self, &context);
+        fields.verify()?;
+        result
+    }
+
+    /// Validates fields for which the relative Namespace predicate returns true.
+    pub fn filter<T, F>(&self, value: &T, filter: F) -> Result<(), Error>
+    where
+        T: Validate + Selective,
+        F: Fn(&Namespace) -> bool,
+    {
+        let context = Context::filter(&filter);
         value.__validate_with_context(self, &context)
     }
 
@@ -262,7 +302,7 @@ impl Validator {
         target: FieldTarget<'_>,
         value: &V,
         spec: Spec,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<(), Error>
     where
@@ -278,7 +318,7 @@ impl Validator {
         &self,
         target: FieldTarget<'_>,
         spec: Spec,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<(), Error>
     where
@@ -296,7 +336,7 @@ impl Validator {
         target: FieldTarget<'_>,
         value: &V,
         spec: Spec,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
     ) -> Result<bool, Error>
     where
@@ -314,7 +354,7 @@ impl Validator {
         &self,
         target: FieldTarget<'_>,
         spec: Spec,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
         items: &I,
     ) -> Result<(), Error>
@@ -332,7 +372,7 @@ impl Validator {
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         spec: Spec,
-        context: &Context,
+        context: &Context<'_>,
         access: &A,
         items: &I,
     ) -> Result<bool, Error>
@@ -370,14 +410,15 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_nested<T: Validate>(
+    pub fn __validate_nested<T: Validate + Selective>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &T,
-        context: &Context,
+        context: &Context<'_>,
     ) -> Result<(), Error> {
-        match value.__validate_with_context(self, context) {
+        let child = context.child(target.struct_field_name.as_ref());
+        match value.__validate_with_context(self, &child) {
             Ok(()) => {}
             Err(nested) if nested.is_failed() => push_nested_errors(errors, target, nested),
             Err(error) => return Err(error),
@@ -386,12 +427,12 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_nested_option<T: Validate>(
+    pub fn __validate_nested_option<T: Validate + Selective>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
         value: &Option<T>,
-        context: &Context,
+        context: &Context<'_>,
     ) -> Result<(), Error> {
         if let Some(value) = value {
             self.__validate_nested(errors, target, value, context)?;
@@ -404,8 +445,28 @@ impl Validator {
         &self,
         type_name: &'a str,
         errors: &'a mut Vec<FieldError>,
+        kind: &'a dyn Fn(&str) -> Kind,
     ) -> valid::Valid<'a> {
-        valid::Valid::new(type_name, errors)
+        valid::Valid::new(type_name, errors, kind)
+    }
+
+    #[doc(hidden)]
+    pub fn __retain_selected_struct_errors(
+        &self,
+        errors: &mut Vec<FieldError>,
+        start: usize,
+        context: &Context<'_>,
+    ) {
+        if context.is_all() || start == errors.len() {
+            return;
+        }
+
+        let mut index = 0;
+        errors.retain(|error| {
+            let selected = index < start || context.includes(error.struct_field());
+            index += 1;
+            selected
+        });
     }
 }
 
@@ -417,144 +478,14 @@ impl Default for Validator {
 
 pub trait Validate {
     fn validate(&self, validator: &Validator) -> Result<(), Error>;
+}
 
+#[doc(hidden)]
+pub trait Selective {
     #[doc(hidden)]
     fn __validate_with_context(
         &self,
         validator: &Validator,
-        _context: &__private::Context,
-    ) -> Result<(), Error> {
-        self.validate(validator)
-    }
-}
-
-#[derive(Clone)]
-#[doc(hidden)]
-pub struct FieldTarget<'a> {
-    pub type_name: Cow<'a, str>,
-    pub field_name: Cow<'a, str>,
-    pub struct_field_name: Cow<'a, str>,
-}
-
-impl<'a> FieldTarget<'a> {
-    pub fn new(type_name: &'a str, field_name: &'a str, struct_field_name: &'a str) -> Self {
-        Self {
-            type_name: Cow::Borrowed(type_name),
-            field_name: Cow::Borrowed(field_name),
-            struct_field_name: Cow::Borrowed(struct_field_name),
-        }
-    }
-
-    pub fn index(&self, index: usize) -> Self {
-        Self {
-            type_name: self.type_name.clone(),
-            field_name: Cow::Owned(format!("{}[{index}]", self.field_name)),
-            struct_field_name: Cow::Owned(format!("{}[{index}]", self.struct_field_name)),
-        }
-    }
-
-    pub fn key<K: fmt::Display>(&self, key: K) -> Self {
-        let key = serde_json::to_string(&key.to_string())
-            .expect("serializing a map key string must not fail");
-        Self {
-            type_name: self.type_name.clone(),
-            field_name: Cow::Owned(format!("{}[{key}]", self.field_name)),
-            struct_field_name: Cow::Owned(format!("{}[{key}]", self.struct_field_name)),
-        }
-    }
-
-    pub fn value() -> Self {
-        Self {
-            type_name: Cow::Borrowed(""),
-            field_name: Cow::Borrowed("$value"),
-            struct_field_name: Cow::Borrowed("$value"),
-        }
-    }
-
-    pub fn schema(field_name: impl Into<String>) -> Self {
-        let field_name = field_name.into();
-        Self {
-            type_name: Cow::Borrowed(""),
-            struct_field_name: Cow::Owned(field_name.clone()),
-            field_name: Cow::Owned(field_name),
-        }
-    }
-
-    pub fn schema_field(parent: &str, field_name: &str) -> Self {
-        Self {
-            type_name: Cow::Owned(parent.to_owned()),
-            field_name: Cow::Owned(field_name.to_owned()),
-            struct_field_name: Cow::Owned(field_name.to_owned()),
-        }
-    }
-}
-
-pub(crate) fn field_error(
-    target: FieldTarget<'_>,
-    kind: Kind,
-    rule: &str,
-    reason: &str,
-    params: Params,
-) -> FieldError {
-    let namespace = namespace_for(&target.type_name, &target.field_name);
-    let struct_namespace = namespace_for(&target.type_name, &target.struct_field_name);
-
-    FieldError::new(FieldErrorParts {
-        namespace: Namespace::new(namespace),
-        struct_namespace: Namespace::new(struct_namespace),
-        field: target.field_name.into_owned(),
-        struct_field: target.struct_field_name.into_owned(),
-        kind,
-        rule: rule.to_owned(),
-        reason: reason.to_owned(),
-        params,
-    })
-}
-
-fn push_nested_errors(errors: &mut Vec<FieldError>, target: FieldTarget<'_>, nested: Error) {
-    if let Some(fields) = nested.into_fields() {
-        for error in fields {
-            errors.push(nested_field_error(target.clone(), error));
-        }
-    }
-}
-
-fn nested_field_error(target: FieldTarget<'_>, error: FieldError) -> FieldError {
-    let parent_namespace = namespace_for(&target.type_name, &target.field_name);
-    let parent_struct_namespace = namespace_for(&target.type_name, &target.struct_field_name);
-    let namespace = nested_namespace(&parent_namespace, error.namespace().as_str());
-    let struct_namespace =
-        nested_namespace(&parent_struct_namespace, error.struct_namespace().as_str());
-
-    FieldError::new(FieldErrorParts {
-        namespace: Namespace::new(namespace),
-        struct_namespace: Namespace::new(struct_namespace),
-        field: error.field().to_owned(),
-        struct_field: error.struct_field().to_owned(),
-        kind: error.kind(),
-        rule: error.rule().to_owned(),
-        reason: error.reason().to_owned(),
-        params: error.params().clone(),
-    })
-}
-
-fn nested_namespace(parent: &str, child: &str) -> String {
-    let relative = child
-        .split_once('.')
-        .map(|(_, relative)| relative)
-        .unwrap_or(child);
-
-    if relative.is_empty() {
-        parent.to_owned()
-    } else {
-        format!("{parent}.{relative}")
-    }
-}
-
-fn namespace_for(type_name: &str, field_name: &str) -> String {
-    if type_name.is_empty() {
-        field_name.to_owned()
-    } else {
-        format!("{type_name}.{field_name}")
-    }
+        context: &__private::Context<'_>,
+    ) -> Result<(), Error>;
 }

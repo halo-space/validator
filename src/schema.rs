@@ -1,3 +1,5 @@
+mod parser;
+
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -7,11 +9,12 @@ use serde_json::Value as JsonValue;
 
 use crate::core::{
     Access, Context, Entry, Expr, FieldRef, Group, ItemVisitor, Items, Registry, Spec,
-    parse_expression,
 };
 use crate::{
     Error, FieldError, FieldTarget, FloatKind, IntKind, Kind, Params, UintKind, Value, field_error,
 };
+
+use self::parser::{fields as parse_fields, invalid, reject_unknown_keys, rules as parse_rules};
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 pub(crate) const TYPE_RULE: &str = "type";
@@ -43,7 +46,7 @@ struct Inner {
 
 impl Schema {
     pub fn from_yaml(yaml: impl AsRef<str>) -> Result<Self, Error> {
-        let value = serde_yaml::from_str::<JsonValue>(yaml.as_ref()).map_err(|error| {
+        let value = serde_yaml_ng::from_str::<JsonValue>(yaml.as_ref()).map_err(|error| {
             Error::InvalidSchema {
                 reason: error.to_string(),
             }
@@ -240,7 +243,7 @@ impl Tree {
 
     pub(crate) fn validate(
         &self,
-        context: &Context,
+        context: &Context<'_>,
         errors: &mut Vec<FieldError>,
         data: &JsonValue,
     ) -> Result<(), Error> {
@@ -763,7 +766,7 @@ impl Items for JsonItems<'_> {
 }
 
 fn validate_fields<'a>(
-    context: &Context,
+    context: &Context<'_>,
     errors: &mut Vec<FieldError>,
     parent: &str,
     scope: &'a Scope,
@@ -840,7 +843,7 @@ fn validate_fields<'a>(
     Ok(())
 }
 
-fn preflight_fields(context: &Context, parent: &str, scope: &Scope) -> Result<(), Error> {
+fn preflight_fields(context: &Context<'_>, parent: &str, scope: &Scope) -> Result<(), Error> {
     let object = serde_json::Map::new();
     let access = SchemaAccess::new(scope, &object);
 
@@ -862,7 +865,7 @@ fn preflight_fields(context: &Context, parent: &str, scope: &Scope) -> Result<()
 }
 
 fn validate_array_fields(
-    context: &Context,
+    context: &Context<'_>,
     errors: &mut Vec<FieldError>,
     parent: &str,
     name: &str,
@@ -885,111 +888,6 @@ fn validate_array_fields(
         };
 
         validate_fields(context, errors, &format!("{array}[{index}]"), scope, object)?;
-    }
-
-    Ok(())
-}
-
-fn parse_fields(parent: &str, value: &JsonValue) -> Result<BTreeMap<String, FieldDef>, Error> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| invalid(format!("field '{parent}' nested fields must be an object")))?;
-
-    object
-        .iter()
-        .map(|(name, field)| Ok((name.clone(), FieldDef::from_value(name, field)?)))
-        .collect()
-}
-
-fn parse_rules(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
-    match value {
-        JsonValue::Array(rules) => rules
-            .iter()
-            .map(|rule| parse_rule_item(field, rule))
-            .collect::<Result<Vec<_>, _>>()
-            .map(|exprs| exprs.into_iter().flatten().collect()),
-        JsonValue::String(expr) => parse_expression(expr),
-        _ => Err(invalid(format!(
-            "field '{field}' rules must be a string or array"
-        ))),
-    }
-}
-
-fn parse_rule_item(field: &str, value: &JsonValue) -> Result<Vec<Expr>, Error> {
-    match value {
-        JsonValue::String(expr) => parse_expression(expr),
-        JsonValue::Object(object) => {
-            if object.len() != 1 {
-                return Err(invalid(format!(
-                    "field '{field}' rule object must contain exactly one rule"
-                )));
-            }
-
-            let (name, params) = object
-                .iter()
-                .next()
-                .expect("rule object must contain one entry");
-            Ok(vec![Expr::Single(parse_rule_object(name, params)?)])
-        }
-        _ => Err(invalid(format!(
-            "field '{field}' rule item must be a string or object"
-        ))),
-    }
-}
-
-fn parse_rule_object(name: &str, params: &JsonValue) -> Result<Spec, Error> {
-    if params.is_null() {
-        return Ok(Spec::new(name));
-    }
-
-    if let Some(object) = params.as_object() {
-        let mut spec = Spec::new(name);
-        for (key, value) in object {
-            spec = match value {
-                JsonValue::Array(values) => spec.named_list(key, param_list(values)?),
-                _ => spec.named(key, param_value(value)?),
-            };
-        }
-        return Ok(spec);
-    }
-
-    match params {
-        JsonValue::Array(values) if values.is_empty() => Err(invalid(format!(
-            "rule '{name}' parameter list cannot be empty"
-        ))),
-        JsonValue::Array(values) => {
-            let mut spec = Spec::new(name);
-            for value in param_list(values)? {
-                spec = spec.positional(value);
-            }
-            Ok(spec)
-        }
-        _ => Ok(Spec::new(name).positional(param_value(params)?)),
-    }
-}
-
-fn param_value(value: &JsonValue) -> Result<String, Error> {
-    match value {
-        JsonValue::String(value) => Ok(value.clone()),
-        JsonValue::Number(value) => Ok(value.to_string()),
-        JsonValue::Bool(value) => Ok(value.to_string()),
-        JsonValue::Null | JsonValue::Array(_) | JsonValue::Object(_) => Err(invalid(
-            "rule parameter must be a string, number, or boolean",
-        )),
-    }
-}
-
-fn param_list(values: &[JsonValue]) -> Result<Vec<String>, Error> {
-    values.iter().map(param_value).collect()
-}
-
-fn reject_unknown_keys(
-    object: &serde_json::Map<String, JsonValue>,
-    allowed: &[&str],
-    context: &str,
-) -> Result<(), Error> {
-    if let Some(key) = object.keys().find(|key| !allowed.contains(&key.as_str())) {
-        return Err(invalid(format!("{context} uses unknown key '{key}'")));
     }
 
     Ok(())
@@ -1050,12 +948,6 @@ fn invalid_path(rule: &str, path: &str) -> Error {
     invalid(format!(
         "field rule '{rule}' has invalid field path '{path}'; expected dot-separated Rust field identifiers"
     ))
-}
-
-fn invalid(reason: impl Into<String>) -> Error {
-    Error::InvalidSchema {
-        reason: reason.into(),
-    }
 }
 
 #[cfg(test)]
