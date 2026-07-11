@@ -41,6 +41,7 @@ impl SchemaId {
 }
 
 #[derive(Clone, Debug)]
+/// A strict dynamic validation schema parsed from YAML or JSON.
 pub struct Schema {
     inner: Arc<Inner>,
 }
@@ -52,6 +53,7 @@ struct Inner {
 }
 
 impl Schema {
+    /// Parses a schema from YAML text.
     pub fn from_yaml(yaml: impl AsRef<str>) -> Result<Self, Error> {
         let value = serde_yaml_ng::from_str::<JsonValue>(yaml.as_ref()).map_err(|error| {
             Error::InvalidSchema {
@@ -62,6 +64,7 @@ impl Schema {
         Self::from_value(value)
     }
 
+    /// Parses a schema from JSON text.
     pub fn from_json(json: impl AsRef<str>) -> Result<Self, Error> {
         let value = serde_json::from_str::<JsonValue>(json.as_ref()).map_err(|error| {
             Error::InvalidSchema {

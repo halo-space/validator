@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use super::{Error, Kind, Value};
 
 pub struct FieldRef<'a> {

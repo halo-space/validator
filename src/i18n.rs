@@ -10,14 +10,17 @@ pub use locale::Locale;
 pub use template::{RenderFn, Template};
 pub use translator::{Context, Message, Translator};
 
+/// Creates an empty locale catalog.
 pub fn new() -> Catalog {
     Catalog::new()
 }
 
+/// Creates a translator with the built-in Simplified Chinese locale.
 pub fn zh_cn() -> Translator<'static> {
     Translator::owned(zh_cn::locale())
 }
 
+/// Creates a translator with the built-in English locale.
 pub fn en() -> Translator<'static> {
     Translator::owned(en::locale())
 }

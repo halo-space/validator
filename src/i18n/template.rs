@@ -5,11 +5,15 @@ use crate::{FieldError, Kind};
 
 use super::translator::Context;
 
+/// Shared dynamic locale rendering function.
 pub type RenderFn = Arc<dyn for<'a> Fn(&Context<'a>) -> String + Send + Sync + 'static>;
 
 #[derive(Clone)]
+/// A text or function-backed locale template.
 pub enum Template {
+    /// A text template with `{name}` placeholders.
     Text(String),
+    /// A function that renders from structured context.
     Fn(RenderFn),
 }
 

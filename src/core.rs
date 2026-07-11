@@ -37,7 +37,9 @@ pub(crate) use selection::{Fields, Selection};
 pub use spec::Spec;
 pub(crate) use spec::{Expr, parse_expression};
 
+/// A validation rule that can inspect one [`Field`] and its bound parameters.
 pub trait Rule: Send + Sync {
+    /// Declares the parameters and field context accepted by this rule.
     fn signature(&self) -> Signature {
         Signature::none()
     }
@@ -47,9 +49,11 @@ pub trait Rule: Send + Sync {
         Ok(())
     }
 
+    /// Returns whether this rule must run when the field value is absent.
     fn validates_none(&self) -> bool {
         false
     }
 
+    /// Returns whether the field satisfies this rule.
     fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
 }

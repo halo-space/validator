@@ -31,6 +31,7 @@ enum Fields {
 }
 
 #[derive(Clone, Copy, Debug)]
+/// Declares the parameter shape and field context required by a rule.
 pub struct Signature {
     shape: Shape,
     fields: Fields,
@@ -38,6 +39,7 @@ pub struct Signature {
 }
 
 impl Signature {
+    /// Declares a rule with no parameters.
     pub const fn none() -> Self {
         Self {
             shape: Shape::None,
@@ -46,6 +48,7 @@ impl Signature {
         }
     }
 
+    /// Declares one required text parameter.
     pub const fn text(name: &'static str) -> Self {
         Self {
             shape: Shape::Text {
@@ -57,6 +60,7 @@ impl Signature {
         }
     }
 
+    /// Declares one optional text parameter.
     pub const fn optional_text(name: &'static str) -> Self {
         Self {
             shape: Shape::Text {
@@ -68,6 +72,7 @@ impl Signature {
         }
     }
 
+    /// Declares one or more positional values or one named list.
     pub const fn list(name: &'static str) -> Self {
         Self {
             shape: Shape::List {
@@ -79,6 +84,7 @@ impl Signature {
         }
     }
 
+    /// Declares a fixed set of named text parameters.
     pub const fn named(names: &'static [&'static str], required: &'static [&'static str]) -> Self {
         Self {
             shape: Shape::Named { names, required },
@@ -87,6 +93,7 @@ impl Signature {
         }
     }
 
+    /// Declares one or more name/value pairs.
     pub const fn pairs(name: &'static str) -> Self {
         Self {
             shape: Shape::Pairs { name },
@@ -95,6 +102,7 @@ impl Signature {
         }
     }
 
+    /// Declares one required target field parameter.
     pub const fn field(name: &'static str) -> Self {
         Self {
             shape: Shape::Text {
@@ -106,6 +114,7 @@ impl Signature {
         }
     }
 
+    /// Declares one or more target field names.
     pub const fn field_list(name: &'static str) -> Self {
         Self {
             shape: Shape::List {
@@ -128,6 +137,7 @@ impl Signature {
         }
     }
 
+    /// Declares target-field/value condition pairs.
     pub const fn field_pairs(name: &'static str) -> Self {
         Self {
             shape: Shape::Pairs { name },

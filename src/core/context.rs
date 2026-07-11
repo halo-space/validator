@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::time::SystemTime;
 
 use super::{Fields, Namespace, Selection};

@@ -5,11 +5,13 @@ use crate::{FieldError, Kind, Namespace, Params};
 use super::locale::Locale;
 use super::template;
 
+/// Renders field errors with one selected locale.
 pub struct Translator<'a> {
     locale: Option<Cow<'a, Locale>>,
 }
 
 impl<'a> Translator<'a> {
+    /// Renders all field errors into localized messages.
     pub fn render(&self, fields: &[FieldError]) -> Vec<Message> {
         fields.iter().map(|field| self.render_one(field)).collect()
     }
@@ -59,66 +61,88 @@ impl Translator<'static> {
     }
 }
 
+/// Structured data available to dynamic locale templates.
 pub struct Context<'a> {
     error: &'a FieldError,
     field: &'a str,
 }
 
 impl Context<'_> {
+    /// Returns the runtime namespace.
     pub fn namespace(&self) -> &Namespace {
         self.error.namespace()
     }
 
+    /// Returns the Rust struct namespace.
     pub fn struct_namespace(&self) -> &Namespace {
         self.error.struct_namespace()
     }
 
+    /// Returns the display field label selected by the locale.
     pub fn field(&self) -> &str {
         self.field
     }
 
+    /// Returns the Rust struct field name.
     pub fn struct_field(&self) -> &str {
         self.error.struct_field()
     }
 
+    /// Returns the displayed rule or alias name.
     pub fn rule(&self) -> &str {
         self.error.rule()
     }
 
+    /// Returns the underlying failed rule name.
     pub fn reason(&self) -> &str {
         self.error.reason()
     }
 
+    /// Returns the failed value kind.
     pub fn kind(&self) -> Kind {
         self.error.kind()
     }
 
+    /// Returns all bound rule parameters.
     pub fn params(&self) -> &Params {
         self.error.params()
     }
 
+    /// Returns one text parameter.
     pub fn param(&self, name: &str) -> Option<&str> {
         self.error.params().text(name)
     }
 
+    /// Returns one list parameter.
     pub fn param_list(&self, name: &str) -> Option<&[String]> {
         self.error.params().list(name)
     }
 
+    /// Returns one name/value-pairs parameter.
     pub fn param_pairs(&self, name: &str) -> Option<&[(String, String)]> {
         self.error.params().pairs(name)
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// One localized validation message with its structured error context.
 pub struct Message {
+    /// Runtime namespace.
     pub namespace: Namespace,
+    /// Rust struct namespace.
     pub struct_namespace: Namespace,
+    /// Display field label.
     pub field: String,
+    /// Rust struct field name.
     pub struct_field: String,
+    /// Displayed rule or alias name.
     pub rule: String,
+    /// Underlying failed rule name.
     pub reason: String,
+    /// Failed value kind.
     pub kind: Kind,
+    /// Bound rule parameters.
     pub params: Params,
+    /// Rendered localized text.
     pub text: String,
 }

@@ -9,6 +9,7 @@ use super::template::Template;
 use super::translator::Context;
 
 #[derive(Clone, Default)]
+/// Translation templates and field labels for one locale identifier.
 pub struct Locale {
     locale: String,
     rules: BTreeMap<String, Template>,
@@ -16,6 +17,7 @@ pub struct Locale {
 }
 
 impl Locale {
+    /// Creates an empty locale resource.
     pub fn new(locale: impl Into<String>) -> Self {
         Self {
             locale: locale.into(),
@@ -23,26 +25,31 @@ impl Locale {
         }
     }
 
+    /// Parses a locale resource from YAML text.
     pub fn from_yaml(yaml: impl AsRef<str>) -> Result<Self, Error> {
         let resource = serde_yaml_ng::from_str::<Resource>(yaml.as_ref()).map_err(invalid_error)?;
         Self::from_resource(resource)
     }
 
+    /// Parses a locale resource from JSON text.
     pub fn from_json(json: impl AsRef<str>) -> Result<Self, Error> {
         let resource = serde_json::from_str::<Resource>(json.as_ref()).map_err(invalid_error)?;
         Self::from_resource(resource)
     }
 
+    /// Returns this locale's identifier, such as `en` or `zh-CN`.
     pub fn locale(&self) -> &str {
         &self.locale
     }
 
+    /// Adds a text template for one rule.
     pub fn rule(mut self, rule: impl Into<String>, template: impl Into<String>) -> Self {
         self.rules
             .insert(rule.into(), Template::Text(template.into()));
         self
     }
 
+    /// Adds a dynamic template function for one rule.
     pub fn rule_fn<F>(mut self, rule: impl Into<String>, render: F) -> Self
     where
         F: for<'a> Fn(&Context<'a>) -> String + Send + Sync + 'static,
@@ -52,11 +59,13 @@ impl Locale {
         self
     }
 
+    /// Adds an already constructed template for one rule.
     pub fn template(mut self, rule: impl Into<String>, template: Template) -> Self {
         self.rules.insert(rule.into(), template);
         self
     }
 
+    /// Adds a display label for one field name.
     pub fn field(mut self, field: impl Into<String>, label: impl Into<String>) -> Self {
         self.fields.insert(field.into(), label.into());
         self

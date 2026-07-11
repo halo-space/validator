@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(crate) enum RawParam {
     Text(String),

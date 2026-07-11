@@ -9,6 +9,7 @@ use crate::{Error, Namespace, Rule, Value};
 mod cache;
 mod derive;
 
+/// Configures rules, aliases, schemas, and validation execution.
 pub struct Validator {
     registry: Registry,
     schema: Option<Schema>,
@@ -20,6 +21,7 @@ pub struct Validator {
 }
 
 impl Validator {
+    /// Creates a validator with all built-in rules and aliases.
     pub fn new() -> Self {
         let mut registry = Registry::new();
         crate::rules::load(&mut registry).expect("default validator rules must be valid");
@@ -36,12 +38,14 @@ impl Validator {
         }
     }
 
+    /// Creates a validator configured to execute the supplied dynamic schema.
     pub fn with_schema(schema: Schema) -> Self {
         let mut validator = Self::new();
         validator.schema = Some(schema);
         validator
     }
 
+    /// Validates a value through its [`Validate`] implementation.
     pub fn validate<T: Validate>(&self, value: &T) -> Result<(), Error> {
         value.validate(self)
     }
@@ -84,6 +88,7 @@ impl Validator {
         value.__validate_with_context(self, &context)
     }
 
+    /// Registers a custom rule under the supplied name.
     pub fn rule<R>(mut self, name: impl Into<String>, rule: R) -> Result<Self, Error>
     where
         R: Rule + Send + Sync + 'static,
@@ -93,12 +98,14 @@ impl Validator {
         Ok(self)
     }
 
+    /// Registers an alias for a reusable rule expression.
     pub fn alias(mut self, name: impl Into<String>, expr: impl AsRef<str>) -> Result<Self, Error> {
         self.registry.alias(name, expr)?;
         self.bump_generation();
         Ok(self)
     }
 
+    /// Validates one value against a runtime rule expression.
     pub fn value<V: Value>(&self, value: &V, rules: impl AsRef<str>) -> Result<(), Error> {
         let group = self.compile(rules.as_ref())?;
         let mut errors = Vec::new();
@@ -113,6 +120,7 @@ impl Validator {
         }
     }
 
+    /// Validates a JSON object against the configured schema.
     pub fn validate_map(&self, value: &serde_json::Value) -> Result<(), Error> {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
         let tree = self.schema_tree(schema)?;
@@ -120,6 +128,7 @@ impl Validator {
         self.validate_data(&tree, value)
     }
 
+    /// Serializes a value to JSON and validates it against the configured schema.
     pub fn validate_serde<T>(&self, value: &T) -> Result<(), Error>
     where
         T: serde::Serialize + ?Sized,
