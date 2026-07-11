@@ -197,28 +197,36 @@ not duplicates, while `0.0` and `-0.0` are duplicates. A known scalar Kind is
 rejected during parameter preflight, so `omitempty` cannot hide invalid use of
 `unique`.
 
-Struct collections can be unique by a direct element field:
+Struct collections can be unique by one or more element-relative fields:
 
 ```rust
 use validator::prelude::*;
 
 #[derive(Debug)]
-struct Member {
+struct Profile {
     email: String,
+}
+
+#[derive(Debug)]
+struct Member {
+    tenant_id: u64,
+    profile: Profile,
 }
 
 #[derive(Debug, Validate)]
 struct Team {
-    #[validate(unique = "email")]
+    #[validate(unique = ["tenant_id", "profile.email"])]
     members: Vec<Member>,
 }
 ```
 
-`unique = "email"` supports Vec, arrays, and slice references. `Member` itself
-does not need to implement `Value`, but the projected `email` field does.
-Duplicate errors stay on `Team.members` and retain `field = "email"`. Maps,
-nested paths, and native `Validator::value(&members, "unique=email")` do not
-provide this projection; the direct entry returns `MissingFieldContext`.
+`unique = "email"` remains the one-field shorthand for
+`unique = ["email"]`. The bound error parameter is always
+`fields = ["email"]` or the declared compound list. Paths are relative to each
+element, and only terminal fields need to implement `Value`. Duplicate errors
+stay on `Team.members`. Map projection, projection inside `dive(...)`, and
+native `Validator::value(&members, "unique=email")` do not provide element
+field context; the direct entry returns `MissingFieldContext`.
 
 Native collections participate in rules outside `dive(...)` through `Value`.
 Built-in scalar elements such as strings and numbers already implement it. A
@@ -724,18 +732,24 @@ fields:
   users:
     type: array
     rules:
-      - unique: email
+      - unique: [tenant_id, profile.email]
     fields:
-      email:
-        type: string
-        rules: email
+      tenant_id:
+        type: uint
+      profile:
+        type: object
+        fields:
+          email:
+            type: string
+            rules: email
 ```
 
 Element field errors use namespaces such as `users[0].email`. Non-object items
 including `null` produce a `type` error at a namespace such as `users[0]`.
-If a value projected by `unique: email` violates the child field type, unique
-skips that projection and the child reports its indexed `type` error; malformed
-input is not reclassified as invalid rule configuration.
+`unique: email` is the scalar shorthand for a one-item fields list. If a value
+projected by a single or compound unique rule violates a child field type,
+unique skips that complete item key and the child reports its indexed `type`
+error; malformed input is not reclassified as invalid rule configuration.
 
 If the data already implements `serde::Serialize`, use `validate_serde(...)`.
 Schema field names follow the serialized data shape, including
@@ -869,12 +883,11 @@ Current built-in rules:
   `ein`, `bic_iso_9362_2014`, `bic`, `isbn`, `isbn10`, `isbn13`, `issn`,
   `credit_card`, `luhn_checksum`, `hexcolor`, `rgb`, `rgba`, `hsl`, `hsla`,
   `cmyk`
-- Network: `url`, `uri`, `http_url`, `https_url`, `ip`, `ipv4`, `ipv6`,
+- Network: `url`, `uri`, `http`, `https`, `ip`, `ipv4`, `ipv6`,
   `cidr`, `cidrv4`, `cidrv6`, `hostname`,
   `hostname_port`, `hostname_rfc1123`, `fqdn`, `port`, `uuid`, `uuid3`,
   `uuid4`, `uuid5`, `uuid_rfc4122`, `uuid3_rfc4122`, `uuid4_rfc4122`,
-  `uuid5_rfc4122`, `ulid`, `tcp4_addr`, `tcp6_addr`, `tcp_addr`,
-  `udp4_addr`, `udp6_addr`, `udp_addr`
+  `uuid5_rfc4122`, `ulid`, `tcp4`, `tcp6`, `tcp`, `udp4`, `udp6`, `udp`
 - Alias: `iscolor`
 
 Ordered comparison and size rules dispatch by field type:
@@ -901,14 +914,14 @@ addresses, and lowercase `uuid4` / `uuid5` check both version and RFC variant.
 
 These are intentional limits in the current API surface:
 
-- `unique=field` supports only direct element fields in Vec, arrays, slice
-  references, and Schema object arrays; it does not support maps, nested paths,
-  native direct values, or use inside `dive(...)`.
+- Parameterized `unique` supports single, compound, and nested element paths in
+  Vec, arrays, slice references, and Schema object arrays; it does not support
+  maps, native direct values, or use inside `dive(...)`.
 - Nested field targets are relative and downward-only. Parent/root paths,
   collection indices, map keys, and conditional-rule paths are not supported.
-- Derive code must spell `#[validate(unique = "field")]` explicitly because a
-  runtime alias cannot generate Rust field access. Schema aliases can contain
-  `unique=field` because Schema fields are available at runtime.
+- Derive code must spell element paths explicitly because a runtime alias cannot
+  generate Rust field access. Schema aliases can contain parameterized unique
+  expressions because Schema fields are available at runtime.
 - Native collections using generic rules outside `dive(...)` require their
   element or map value type to implement `Value`; pure `dive(nested)` only
   requires `Validate`.

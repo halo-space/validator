@@ -11,7 +11,7 @@ use crate::{Error, Kind, Value};
 pub(super) use unique::Unique;
 
 #[derive(Eq, Hash, PartialEq)]
-enum UniqueKey<'a> {
+enum Part<'a> {
     None,
     String(Cow<'a, str>),
     Bool(bool),
@@ -27,9 +27,13 @@ pub(crate) fn values_are_unique<'a>(
     let mut seen = HashSet::new();
 
     for item in items {
-        match insert(&mut seen, item) {
-            Ok(true) => {}
-            Ok(false) => return Ok(false),
+        match part(Some(item)) {
+            Ok(Some(part)) => {
+                if !seen.insert(part) {
+                    return Ok(false);
+                }
+            }
+            Ok(None) => {}
             Err(kind) => {
                 return Err(Error::InvalidRuleExpression {
                     expression: "unique".to_owned(),
@@ -44,33 +48,98 @@ pub(crate) fn values_are_unique<'a>(
     Ok(true)
 }
 
-pub(crate) fn fields_are_unique(items: &dyn Items, field: &str) -> Result<bool, Error> {
+pub(crate) fn fields_are_unique(items: &dyn Items, fields: &[String]) -> Result<bool, Error> {
+    if fields.is_empty() {
+        return Err(Error::InvalidRuleExpression {
+            expression: "unique".to_owned(),
+            reason: "parameter 'fields' cannot be empty".to_owned(),
+        });
+    }
+    if fields.len() == 1 {
+        return field_is_unique(items, fields);
+    }
+
+    let mut seen = HashSet::new();
+    let mut unique = true;
+    let mut invalid: Option<(String, Kind)> = None;
+
+    items.visit(fields, &mut |values| {
+        let mut parts = Vec::with_capacity(fields.len());
+        let mut distinct = false;
+
+        for field in fields {
+            let Some(value) = values.next() else {
+                invalid = Some((field.clone(), Kind::Other));
+                return false;
+            };
+
+            match part(value) {
+                Ok(Some(part)) => parts.push(part),
+                Ok(None) => distinct = true,
+                Err(kind) => {
+                    invalid = Some((field.clone(), kind));
+                    return false;
+                }
+            }
+        }
+
+        if values.next().is_some() {
+            invalid = Some(("<row>".to_owned(), Kind::Other));
+            return false;
+        }
+
+        if distinct {
+            return true;
+        }
+
+        let key = parts.into_boxed_slice();
+        if !seen.insert(key) {
+            unique = false;
+            return false;
+        }
+        true
+    })?;
+
+    if let Some((field, kind)) = invalid {
+        return Err(Error::InvalidRuleExpression {
+            expression: "unique".to_owned(),
+            reason: format!("field '{field}' with kind {kind:?} cannot be used as a unique key"),
+        });
+    }
+
+    Ok(unique)
+}
+
+fn field_is_unique(items: &dyn Items, fields: &[String]) -> Result<bool, Error> {
+    let field = fields
+        .first()
+        .expect("single-field unique requires one field");
     let mut seen = HashSet::new();
     let mut unique = true;
     let mut invalid = None;
 
-    items.visit(field, &mut |value| {
-        let key = match value {
-            None => Some(UniqueKey::None),
-            Some(value) => match insert(&mut seen, value) {
-                Ok(true) => return true,
-                Ok(false) => {
+    items.visit(fields, &mut |values| {
+        let Some(value) = values.next() else {
+            invalid = Some(Kind::Other);
+            return false;
+        };
+        if values.next().is_some() {
+            invalid = Some(Kind::Other);
+            return false;
+        }
+
+        match part(value) {
+            Ok(Some(part)) => {
+                if !seen.insert(part) {
                     unique = false;
                     return false;
                 }
-                Err(kind) => {
-                    invalid = Some(kind);
-                    return false;
-                }
-            },
-        };
-        let Some(key) = key else {
-            invalid = value.map(Value::kind);
-            return false;
-        };
-        if !seen.insert(key) {
-            unique = false;
-            return false;
+            }
+            Ok(None) => {}
+            Err(kind) => {
+                invalid = Some(kind);
+                return false;
+            }
         }
         true
     })?;
@@ -85,30 +154,30 @@ pub(crate) fn fields_are_unique(items: &dyn Items, field: &str) -> Result<bool, 
     Ok(unique)
 }
 
-fn unique_key(value: &dyn Value) -> Option<UniqueKey<'_>> {
+fn part<'a>(value: Option<&'a dyn Value>) -> Result<Option<Part<'a>>, Kind> {
+    let Some(value) = value else {
+        return Ok(Some(Part::None));
+    };
+
     if value.is_none() {
-        return Some(UniqueKey::None);
+        return Ok(Some(Part::None));
     }
 
-    match value.kind() {
-        Kind::String => value.string().map(UniqueKey::String),
-        Kind::Bool => value.boolean().map(UniqueKey::Bool),
-        Kind::Int(_) => value.int().map(UniqueKey::Int),
-        Kind::Uint(_) => value.uint().map(UniqueKey::Uint),
-        Kind::Float(_) => value.float().map(float_key).map(UniqueKey::Float),
-        Kind::Time => value.time().map(UniqueKey::Time),
-        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Option | Kind::Other => None,
-    }
-}
-
-fn insert<'a>(seen: &mut HashSet<UniqueKey<'a>>, value: &'a dyn Value) -> Result<bool, Kind> {
     if matches!(value.kind(), Kind::Float(_)) && value.float().is_some_and(f64::is_nan) {
-        return Ok(true);
+        return Ok(None);
     }
 
-    unique_key(value)
-        .map(|key| seen.insert(key))
-        .ok_or_else(|| value.kind())
+    let part = match value.kind() {
+        Kind::String => value.string().map(Part::String),
+        Kind::Bool => value.boolean().map(Part::Bool),
+        Kind::Int(_) => value.int().map(Part::Int),
+        Kind::Uint(_) => value.uint().map(Part::Uint),
+        Kind::Float(_) => value.float().map(float_key).map(Part::Float),
+        Kind::Time => value.time().map(Part::Time),
+        Kind::Vec | Kind::Array | Kind::Slice | Kind::Map | Kind::Option | Kind::Other => None,
+    };
+
+    part.ok_or_else(|| value.kind()).map(Some)
 }
 
 fn float_key(value: f64) -> u64 {

@@ -23,10 +23,9 @@ use format::{
     UrlEncoded,
 };
 use network::{
-    Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnamePort, HostnameRfc1123, HttpUrl, HttpsUrl, Ip,
-    Ipv4, Ipv6, Port, Tcp4Address, Tcp6Address, TcpAddress, Udp4Address, Udp6Address, UdpAddress,
-    Ulid, Uri, Url, Uuid, Uuid3, Uuid3Rfc4122, Uuid4, Uuid4Rfc4122, Uuid5, Uuid5Rfc4122,
-    UuidRfc4122,
+    Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnamePort, HostnameRfc1123, Http, Https, Ip, Ipv4,
+    Ipv6, Port, Tcp, Tcp4, Tcp6, Udp, Udp4, Udp6, Ulid, Uri, Url, Uuid, Uuid3, Uuid3Rfc4122, Uuid4,
+    Uuid4Rfc4122, Uuid5, Uuid5Rfc4122, UuidRfc4122,
 };
 use required::{IsDefault, Required};
 use size::{Length, Max, Min, Range};
@@ -55,8 +54,8 @@ pub(crate) fn load(rules: &mut Registry) -> Result<(), Error> {
     rules.rule("email", Email)?;
     rules.rule("url", Url)?;
     rules.rule("uri", Uri)?;
-    rules.rule("http_url", HttpUrl)?;
-    rules.rule("https_url", HttpsUrl)?;
+    rules.rule("http", Http)?;
+    rules.rule("https", Https)?;
     rules.rule("ip", Ip)?;
     rules.rule("ipv4", Ipv4)?;
     rules.rule("ipv6", Ipv6)?;
@@ -77,12 +76,12 @@ pub(crate) fn load(rules: &mut Registry) -> Result<(), Error> {
     rules.rule("uuid4_rfc4122", Uuid4Rfc4122)?;
     rules.rule("uuid5_rfc4122", Uuid5Rfc4122)?;
     rules.rule("ulid", Ulid)?;
-    rules.rule("tcp4_addr", Tcp4Address)?;
-    rules.rule("tcp6_addr", Tcp6Address)?;
-    rules.rule("tcp_addr", TcpAddress)?;
-    rules.rule("udp4_addr", Udp4Address)?;
-    rules.rule("udp6_addr", Udp6Address)?;
-    rules.rule("udp_addr", UdpAddress)?;
+    rules.rule("tcp4", Tcp4)?;
+    rules.rule("tcp6", Tcp6)?;
+    rules.rule("tcp", Tcp)?;
+    rules.rule("udp4", Udp4)?;
+    rules.rule("udp6", Udp6)?;
+    rules.rule("udp", Udp)?;
     rules.rule("json", Json)?;
     rules.rule("datetime", DateTime)?;
     rules.rule("regex", Regex::default())?;

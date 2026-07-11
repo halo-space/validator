@@ -1,4 +1,4 @@
-error: unique field syntax is `unique = "field"`
+error: unique field syntax is `unique = "field"` or `unique = ["field", ...]`
   --> tests/ui/unique_field_syntax.rs:10:16
    |
 10 |     #[validate(unique(field = "email"))]

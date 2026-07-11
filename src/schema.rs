@@ -6,7 +6,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value as JsonValue;
 
 use crate::core::{
-    Access, Context, Entry, Expr, FieldRef, Group, Items, Registry, Spec, parse_expression,
+    Access, Context, Entry, Expr, FieldRef, Group, ItemVisitor, Items, Registry, Spec,
+    parse_expression,
 };
 use crate::{
     Error, FieldError, FieldTarget, FloatKind, IntKind, Kind, Params, UintKind, Value, field_error,
@@ -267,7 +268,14 @@ struct Scope {
 
 impl Scope {
     fn compile(fields: &BTreeMap<String, FieldDef>, registry: &Registry) -> Result<Self, Error> {
-        let mut paths = BTreeMap::new();
+        Self::compile_with_paths(fields, registry, BTreeMap::new())
+    }
+
+    fn compile_with_paths(
+        fields: &BTreeMap<String, FieldDef>,
+        registry: &Registry,
+        mut paths: BTreeMap<String, Path>,
+    ) -> Result<Self, Error> {
         let fields = fields
             .iter()
             .map(|(name, field)| {
@@ -279,6 +287,50 @@ impl Scope {
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
 
         Ok(Self { fields, paths })
+    }
+
+    fn projected(
+        &self,
+        object: &serde_json::Map<String, JsonValue>,
+        name: &str,
+    ) -> Result<Projected, Error> {
+        let path = self
+            .paths
+            .get(name)
+            .ok_or_else(|| invalid(format!("undeclared array item field path '{name}'")))?;
+        let mut scope = self;
+        let mut object = object;
+
+        for (index, segment) in path.segments.iter().enumerate() {
+            let node = scope
+                .fields
+                .get(segment)
+                .ok_or_else(|| invalid(format!("undeclared array item field path '{name}'")))?;
+            let Some(value) = object.get(segment) else {
+                return Ok(Projected::Missing);
+            };
+            if value.is_null() {
+                return Ok(Projected::Missing);
+            }
+            if index + 1 == path.segments.len() {
+                return Ok(if node.ty.is_none_or(|ty| ty.matches(value)) {
+                    Projected::Value
+                } else {
+                    Projected::Invalid
+                });
+            }
+
+            let Some(next) = value.as_object() else {
+                return Ok(Projected::Invalid);
+            };
+            let Fields::Declared(children) = &node.children else {
+                return Ok(Projected::Invalid);
+            };
+            scope = children;
+            object = next;
+        }
+
+        Ok(Projected::Missing)
     }
 }
 
@@ -300,6 +352,7 @@ impl Node {
         } else {
             None
         };
+        let mut item_paths = BTreeMap::new();
         ensure_field_targets(
             &field.exprs,
             siblings,
@@ -307,6 +360,7 @@ impl Node {
             registry,
             &mut Vec::new(),
             paths,
+            &mut item_paths,
         )?;
         let group = if item_fields.is_some() {
             Group::compile_with_fields_and_items(&field.exprs, registry)?
@@ -315,7 +369,9 @@ impl Node {
         };
         let children = match &field.fields {
             Fields::Absent => Fields::Absent,
-            Fields::Declared(fields) => Fields::Declared(Scope::compile(fields, registry)?),
+            Fields::Declared(fields) => {
+                Fields::Declared(Scope::compile_with_paths(fields, registry, item_paths)?)
+            }
         };
 
         Ok(Self {
@@ -333,16 +389,33 @@ fn ensure_field_targets(
     registry: &Registry,
     aliases: &mut Vec<String>,
     paths: &mut BTreeMap<String, Path>,
+    item_paths: &mut BTreeMap<String, Path>,
 ) -> Result<(), Error> {
     for expr in exprs {
         if let Some(spec) = expr.single() {
-            ensure_field_target(spec, fields, item_fields, registry, aliases, paths)?;
+            ensure_field_target(
+                spec,
+                fields,
+                item_fields,
+                registry,
+                aliases,
+                paths,
+                item_paths,
+            )?;
             continue;
         }
 
         if let Some(alternatives) = expr.alternatives() {
             for spec in alternatives {
-                ensure_field_target(spec, fields, item_fields, registry, aliases, paths)?;
+                ensure_field_target(
+                    spec,
+                    fields,
+                    item_fields,
+                    registry,
+                    aliases,
+                    paths,
+                    item_paths,
+                )?;
             }
         }
     }
@@ -357,6 +430,7 @@ fn ensure_field_target(
     registry: &Registry,
     aliases: &mut Vec<String>,
     paths: &mut BTreeMap<String, Path>,
+    item_paths: &mut BTreeMap<String, Path>,
 ) -> Result<(), Error> {
     let (signature, params) = match registry.get(spec.name()) {
         Some(Entry::Rule(rule)) => {
@@ -372,7 +446,15 @@ fn ensure_field_target(
                 });
             }
             aliases.push(spec.name().to_owned());
-            ensure_field_targets(exprs, fields, item_fields, registry, aliases, paths)?;
+            ensure_field_targets(
+                exprs,
+                fields,
+                item_fields,
+                registry,
+                aliases,
+                paths,
+                item_paths,
+            )?;
             aliases.pop();
             return Ok(());
         }
@@ -408,29 +490,30 @@ fn ensure_field_target(
         }
     }
 
-    if let Some(target) = signature.item_field(&params) {
+    if let Some(targets) = signature.item_fields(&params) {
         let item_fields = item_fields.ok_or_else(|| {
             invalid(format!(
                 "rule '{}' requires an array with object fields",
                 spec.name()
             ))
         })?;
-        if !item_fields.contains_key(target) {
-            return Err(invalid(format!(
-                "rule '{}' references undeclared item field '{}'",
-                spec.name(),
-                target
-            )));
-        }
-        if matches!(
-            item_fields.get(target).and_then(|field| field.ty),
-            Some(Type::Array | Type::Object)
-        ) {
-            return Err(invalid(format!(
-                "rule '{}' item field '{}' cannot be used as a unique key",
-                spec.name(),
-                target
-            )));
+        for target in targets {
+            let path = Path::compile(spec.name(), target, item_fields)?;
+            if path.segments.len() > 1 && item_fields.contains_key(target) {
+                return Err(invalid(format!(
+                    "rule '{}' path '{}' conflicts with a literal item field of the same name",
+                    spec.name(),
+                    target
+                )));
+            }
+            if matches!(path.ty, Some(Type::Array | Type::Object)) {
+                return Err(invalid(format!(
+                    "rule '{}' item field '{}' cannot be used as a unique key",
+                    spec.name(),
+                    target
+                )));
+            }
+            item_paths.entry(target.to_owned()).or_insert(path);
         }
     }
 
@@ -587,7 +670,7 @@ impl<'a> SchemaAccess<'a> {
     }
 
     fn get(&self, name: &str) -> Option<&SchemaValue<'a>> {
-        self.fields.get(name)
+        self.paths.get(name).or_else(|| self.fields.get(name))
     }
 }
 
@@ -600,9 +683,17 @@ impl Access for SchemaAccess<'_> {
     }
 }
 
+enum Projected {
+    Missing,
+    Value,
+    Invalid,
+}
+
 enum JsonItem<'a> {
-    Null,
-    Object(SchemaAccess<'a>),
+    Object {
+        raw: &'a serde_json::Map<String, JsonValue>,
+        access: SchemaAccess<'a>,
+    },
     Invalid,
 }
 
@@ -616,10 +707,11 @@ impl<'a> JsonItems<'a> {
         let values = values
             .iter()
             .map(|value| {
-                if value.is_null() {
-                    JsonItem::Null
-                } else if let Some(object) = value.as_object() {
-                    JsonItem::Object(SchemaAccess::new(scope, object))
+                if let Some(object) = value.as_object() {
+                    JsonItem::Object {
+                        raw: object,
+                        access: SchemaAccess::new(scope, object),
+                    }
                 } else {
                     JsonItem::Invalid
                 }
@@ -630,36 +722,39 @@ impl<'a> JsonItems<'a> {
 }
 
 impl Items for JsonItems<'_> {
-    fn visit<'a>(
-        &'a self,
-        field: &str,
-        visitor: &mut dyn FnMut(Option<&'a dyn Value>) -> bool,
-    ) -> Result<(), Error> {
-        if !self.scope.fields.contains_key(field) {
-            return Err(invalid(format!("undeclared array item field '{field}'")));
+    fn visit<'a>(&'a self, fields: &[String], visitor: &mut ItemVisitor<'a>) -> Result<(), Error> {
+        if let Some(field) = fields
+            .iter()
+            .find(|field| !self.scope.paths.contains_key(field.as_str()))
+        {
+            return Err(invalid(format!(
+                "undeclared array item field path '{field}'"
+            )));
         }
 
-        let definition = self
-            .scope
-            .fields
-            .get(field)
-            .expect("projected field is checked above");
-        for value in &self.values {
-            let projected = match value {
-                JsonItem::Null => None,
+        for item in &self.values {
+            let (raw, access) = match item {
                 JsonItem::Invalid => continue,
-                JsonItem::Object(access) => {
-                    let value = access.get(field).expect("projected field is checked above");
-                    if let Some(raw) = value.raw()
-                        && !raw.is_null()
-                        && definition.ty.is_some_and(|ty| !ty.matches(raw))
-                    {
-                        continue;
-                    }
-                    (!value.is_none()).then_some(value as &dyn Value)
-                }
+                JsonItem::Object { raw, access } => (raw, access),
             };
-            if !visitor(projected) {
+            let mut malformed = false;
+            for field in fields {
+                if matches!(self.scope.projected(raw, field)?, Projected::Invalid) {
+                    malformed = true;
+                    break;
+                }
+            }
+            if malformed {
+                continue;
+            }
+
+            let mut values = fields.iter().map(|field| {
+                let value = access
+                    .get(field)
+                    .expect("projected item path is compiled before validation");
+                (!value.is_none()).then_some(value as &dyn Value)
+            });
+            if !visitor(&mut values) {
                 break;
             }
         }
@@ -859,6 +954,9 @@ fn parse_rule_object(name: &str, params: &JsonValue) -> Result<Spec, Error> {
     }
 
     match params {
+        JsonValue::Array(values) if values.is_empty() => Err(invalid(format!(
+            "rule '{name}' parameter list cannot be empty"
+        ))),
         JsonValue::Array(values) => {
             let mut spec = Spec::new(name);
             for value in param_list(values)? {

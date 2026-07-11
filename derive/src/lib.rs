@@ -6,7 +6,8 @@ use syn::ext::IdentExt;
 use syn::meta::ParseNestedMeta;
 use syn::{
     Data, DeriveInput, Expr, ExprLit, ExprUnary, Fields, GenericArgument, Lit, LitStr,
-    PathArguments, Token, Type, TypeArray, TypeReference, UnOp, parenthesized, parse_macro_input,
+    PathArguments, Token, Type, TypeArray, TypeReference, UnOp, bracketed, parenthesized,
+    parse_macro_input,
 };
 
 #[proc_macro_derive(Validate, attributes(validate))]
@@ -225,13 +226,18 @@ enum RuleAttr {
         name: String,
         params: Vec<ParamAttr>,
     },
-    UniqueField {
-        field: String,
-        member: syn::Ident,
+    UniqueFields {
+        paths: Vec<ItemPath>,
     },
     OmitEmpty,
     Nested,
     Dive(DiveAttr),
+}
+
+#[derive(Clone, Debug)]
+struct ItemPath {
+    name: String,
+    segments: Vec<syn::Ident>,
 }
 
 #[derive(Clone, Debug)]
@@ -263,7 +269,7 @@ fn exposes_value_access(rules: &[RuleAttr]) -> bool {
         RuleAttr::Rule { name, .. } => !(has_nested && name == "required"),
         RuleAttr::Alias(_) => true,
         RuleAttr::FieldRule { .. } => true,
-        RuleAttr::UniqueField { .. } => false,
+        RuleAttr::UniqueFields { .. } => false,
         RuleAttr::OmitEmpty => !has_nested,
         RuleAttr::Nested | RuleAttr::Dive(_) => false,
     })
@@ -403,7 +409,7 @@ fn reject_field_rules_inside_dive(rules: &[RuleAttr]) -> syn::Result<()> {
             RuleAttr::Rule { .. }
             | RuleAttr::Alias(_)
             | RuleAttr::FieldRule { .. }
-            | RuleAttr::UniqueField { .. }
+            | RuleAttr::UniqueFields { .. }
             | RuleAttr::OmitEmpty
             | RuleAttr::Nested => {}
         }
@@ -421,10 +427,10 @@ fn reject_field_rules(rules: &[RuleAttr]) -> syn::Result<()> {
                     format!("validate rule '{name}' is not supported inside dive"),
                 ));
             }
-            RuleAttr::UniqueField { .. } => {
+            RuleAttr::UniqueFields { .. } => {
                 return Err(syn::Error::new(
                     proc_macro2::Span::call_site(),
-                    "unique=field is not supported inside dive",
+                    "parameterized unique is not supported inside dive",
                 ));
             }
             RuleAttr::Dive(DiveAttr::Values(rules)) => reject_field_rules(rules)?,
@@ -554,25 +560,64 @@ fn build_checks(
                     }
                 }});
             }
-            RuleAttr::UniqueField { field, member } => {
+            RuleAttr::UniqueFields { paths } => {
                 let Some(kind) = collection_kind(value_type, crate_path) else {
                     return Err(syn::Error::new(
-                        member.span(),
-                        "unique=field requires a Vec, array, or slice field",
+                        proc_macro2::Span::call_site(),
+                        "parameterized unique requires a Vec, array, or slice field",
                     ));
                 };
                 let spec = next_ident("spec", spec_index);
                 let projection = next_ident("projection", spec_index);
+                let names = paths
+                    .iter()
+                    .map(|path| path.name.as_str())
+                    .collect::<Vec<_>>();
+                let arms = paths.iter().map(|path| {
+                    let name = &path.name;
+                    let segments = &path.segments;
+                    if segments.len() == 1 {
+                        let member = &segments[0];
+                        return quote! {
+                            #name => Some(&item.#member as &dyn #crate_path::Value),
+                        };
+                    }
+
+                    let first = &segments[0];
+                    let terminal = segments
+                        .last()
+                        .expect("item path must contain a terminal segment");
+                    let mut resolve = quote! {
+                        #crate_path::__private::Segment::new(&item.#first).resolve()
+                    };
+                    for segment in &segments[1..segments.len() - 1] {
+                        resolve = quote! {
+                            #resolve.and_then(|value| {
+                                #crate_path::__private::Segment::new(&value.#segment).resolve()
+                            })
+                        };
+                    }
+
+                    quote! {
+                        #name => {
+                            use #crate_path::__private::Resolve as _;
+                            #resolve.map(|value| &value.#terminal as &dyn #crate_path::Value)
+                        },
+                    }
+                });
                 checks.preflight.push(quote! {
                     let #projection = #crate_path::__private::Projection::new(
                         &(#value)[..],
-                        #field,
+                        &[#(#names),*],
                         #kind,
-                        |item| &item.#member,
+                        |item, field| match field {
+                            #(#arms)*
+                            _ => None,
+                        },
                     );
                     let #spec = {
                         let mut params = #crate_path::__private::RawParams::new();
-                        params.positional(#field);
+                        #(params.positional(#names);)*
                         #crate_path::__private::Spec::with_params("unique", params)
                     };
                     validator.__validate_item_params(
@@ -865,23 +910,14 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
     }
 
     if meta.path.is_ident("unique") && meta.input.peek(Token![=]) {
-        let value = meta.value()?;
-        let field: LitStr = value.parse()?;
-        if field.value().contains('.') {
-            return Err(syn::Error::new_spanned(
-                field,
-                "unique=field only supports a direct element field",
-            ));
-        }
-        let member = member(&field)?;
-        rules.push(RuleAttr::UniqueField {
-            field: canonical(&member),
-            member,
+        rules.push(RuleAttr::UniqueFields {
+            paths: parse_unique_paths(meta)?,
         });
         return Ok(());
     }
     if meta.path.is_ident("unique") && meta.input.peek(syn::token::Paren) {
-        return Err(meta.error("unique field syntax is `unique = \"field\"`"));
+        return Err(meta
+            .error("unique field syntax is `unique = \"field\"` or `unique = [\"field\", ...]`"));
     }
 
     let Some(name) = meta.path.get_ident().map(canonical) else {
@@ -889,6 +925,51 @@ fn parse_rule_meta(meta: ParseNestedMeta<'_>, rules: &mut Vec<RuleAttr>) -> syn:
     };
     rules.push(rule(name, parse_custom_params(meta)?));
     Ok(())
+}
+
+fn parse_unique_paths(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ItemPath>> {
+    let input = meta.value()?;
+    let paths = if input.peek(LitStr) {
+        vec![parse_unique_path(input.parse()?)?]
+    } else if input.peek(syn::token::Bracket) {
+        let content;
+        bracketed!(content in input);
+        let mut paths = Vec::new();
+        while !content.is_empty() {
+            paths.push(parse_unique_path(content.parse()?)?);
+            if content.peek(Token![,]) {
+                content.parse::<Token![,]>()?;
+            } else if !content.is_empty() {
+                return Err(content.error("expected ',' between unique field paths"));
+            }
+        }
+        paths
+    } else {
+        return Err(input.error("unique expects a field string or an array of field strings"));
+    };
+
+    if paths.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "unique field list cannot be empty",
+        ));
+    }
+
+    let mut seen = BTreeSet::new();
+    if let Some(duplicate) = paths.iter().find(|path| !seen.insert(path.name.as_str())) {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            format!("unique field path '{}' is repeated", duplicate.name),
+        ));
+    }
+
+    Ok(paths)
+}
+
+fn parse_unique_path(field: LitStr) -> syn::Result<ItemPath> {
+    let name = field.value();
+    let segments = parse_field_path("unique", &name)?;
+    Ok(ItemPath { name, segments })
 }
 
 fn parse_custom_params(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ParamAttr>> {
@@ -1136,13 +1217,6 @@ fn validator_crate_path() -> syn::Result<proc_macro2::TokenStream> {
 
 fn canonical(ident: &syn::Ident) -> String {
     ident.unraw().to_string()
-}
-
-fn member(field: &LitStr) -> syn::Result<syn::Ident> {
-    let name = field.value();
-    member_name(&name).ok_or_else(|| {
-        syn::Error::new_spanned(field, "unique field must be a Rust field identifier")
-    })
 }
 
 fn member_name(name: &str) -> Option<syn::Ident> {

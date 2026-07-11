@@ -558,19 +558,19 @@ fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
     validator.value(&"127.0.0.1", "ipv4").unwrap();
     validator.value(&"::1", "ipv6").unwrap();
     validator.value(&"::1", "ip").unwrap();
-    validator.value(&"127.0.0.1:80", "tcp4_addr").unwrap();
-    validator.value(&"[::1]:80", "tcp6_addr").unwrap();
-    validator.value(&"127.0.0.1:80", "tcp_addr").unwrap();
-    validator.value(&"[::1]:80", "udp_addr").unwrap();
-    validator.value(&"127.0.0.1:80", "udp4_addr").unwrap();
-    validator.value(&"[::1]:80", "udp6_addr").unwrap();
+    validator.value(&"127.0.0.1:80", "tcp4").unwrap();
+    validator.value(&"[::1]:80", "tcp6").unwrap();
+    validator.value(&"127.0.0.1:80", "tcp").unwrap();
+    validator.value(&"[::1]:80", "udp").unwrap();
+    validator.value(&"127.0.0.1:80", "udp4").unwrap();
+    validator.value(&"[::1]:80", "udp6").unwrap();
 
     for (value, rule) in [
         ("127.0.0.1:80", "ipv4"),
-        ("[::1]:80", "tcp4_addr"),
-        ("127.0.0.1:80", "tcp6_addr"),
-        (":80", "udp_addr"),
-        ("localhost:80", "tcp_addr"),
+        ("[::1]:80", "tcp4"),
+        ("127.0.0.1:80", "tcp6"),
+        (":80", "udp"),
+        ("localhost:80", "tcp"),
     ] {
         let fields = validator
             .value(&value, rule)
@@ -581,7 +581,19 @@ fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
         assert_eq!(fields[0].rule(), rule);
     }
 
-    for rule in ["ip_addr", "ip4_addr", "ip6_addr"] {
+    for rule in [
+        "ip_addr",
+        "ip4_addr",
+        "ip6_addr",
+        "http_url",
+        "https_url",
+        "tcp_addr",
+        "tcp4_addr",
+        "tcp6_addr",
+        "udp_addr",
+        "udp4_addr",
+        "udp6_addr",
+    ] {
         let error = validator.value(&"127.0.0.1", rule).unwrap_err();
         assert!(matches!(error, Error::UnknownRule { name } if name == rule));
     }
@@ -863,11 +875,58 @@ struct RawUniqueItems {
     items: Vec<RawUniqueItem>,
 }
 
+#[derive(Debug)]
+struct UniqueProfile {
+    email: String,
+    score: f64,
+}
+
+#[derive(Debug)]
+struct UniqueCompoundItem {
+    tenant_id: u64,
+    profile: Option<UniqueProfile>,
+    created_at: std::time::SystemTime,
+}
+
+#[derive(Debug, Validate)]
+struct UniqueCompoundFields {
+    #[validate(unique = ["tenant_id", "profile.email"])]
+    users: Vec<UniqueCompoundItem>,
+}
+
+#[derive(Debug, Validate)]
+struct UniqueCompoundTime {
+    #[validate(unique = ["tenant_id", "created_at"])]
+    users: Vec<UniqueCompoundItem>,
+}
+
+#[derive(Debug, Validate)]
+struct UniqueCompoundFloat {
+    #[validate(unique = ["tenant_id", "profile.score"])]
+    users: Vec<UniqueCompoundItem>,
+}
+
 fn unique_account(email: &str, age: u32, nickname: Option<&str>, second: u64) -> UniqueAccount {
     UniqueAccount {
         email: email.to_owned(),
         age,
         nickname: nickname.map(str::to_owned),
+        created_at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(second),
+    }
+}
+
+fn compound_item(
+    tenant_id: u64,
+    email: Option<&str>,
+    score: f64,
+    second: u64,
+) -> UniqueCompoundItem {
+    UniqueCompoundItem {
+        tenant_id,
+        profile: email.map(|email| UniqueProfile {
+            email: email.to_owned(),
+            score,
+        }),
         created_at: std::time::UNIX_EPOCH + std::time::Duration::from_secs(second),
     }
 }
@@ -919,7 +978,98 @@ fn unique_field_supports_raw_identifier_members() {
         .unwrap();
 
     assert_eq!(fields.len(), 1);
-    assert_eq!(fields[0].params().text("field"), Some("type"));
+    assert_eq!(param_list(&fields[0], "fields"), vec!["type"]);
+}
+
+#[test]
+fn unique_compound_fields_compare_complete_nested_keys() {
+    Validator::new()
+        .validate(&UniqueCompoundFields {
+            users: vec![
+                compound_item(1, Some("same@example.com"), 1.0, 1),
+                compound_item(2, Some("same@example.com"), 1.0, 2),
+            ],
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&UniqueCompoundFields {
+            users: vec![
+                compound_item(1, Some("same@example.com"), 1.0, 1),
+                compound_item(1, Some("same@example.com"), 2.0, 2),
+            ],
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "UniqueCompoundFields.users");
+    assert_eq!(fields[0].rule(), "unique");
+    assert_eq!(
+        param_list(&fields[0], "fields"),
+        vec!["tenant_id", "profile.email"]
+    );
+    assert_eq!(fields[0].params().text("field"), None);
+}
+
+#[test]
+fn unique_compound_fields_preserve_none_time_and_nan_semantics() {
+    Validator::new()
+        .validate(&UniqueCompoundFields {
+            users: vec![
+                compound_item(1, None, 0.0, 1),
+                compound_item(2, None, 0.0, 2),
+            ],
+        })
+        .unwrap();
+
+    let none = Validator::new()
+        .validate(&UniqueCompoundFields {
+            users: vec![
+                compound_item(1, None, 0.0, 1),
+                compound_item(1, None, 0.0, 2),
+            ],
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(
+        param_list(&none[0], "fields"),
+        vec!["tenant_id", "profile.email"]
+    );
+
+    Validator::new()
+        .validate(&UniqueCompoundTime {
+            users: vec![
+                compound_item(1, Some("first@example.com"), 1.0, 1),
+                compound_item(1, Some("second@example.com"), 2.0, 2),
+            ],
+        })
+        .unwrap();
+    let time = Validator::new()
+        .validate(&UniqueCompoundTime {
+            users: vec![
+                compound_item(1, Some("first@example.com"), 1.0, 1),
+                compound_item(1, Some("second@example.com"), 2.0, 1),
+            ],
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+    assert_eq!(
+        param_list(&time[0], "fields"),
+        vec!["tenant_id", "created_at"]
+    );
+
+    Validator::new()
+        .validate(&UniqueCompoundFloat {
+            users: vec![
+                compound_item(1, Some("first@example.com"), f64::NAN, 1),
+                compound_item(1, Some("second@example.com"), f64::NAN, 2),
+            ],
+        })
+        .unwrap();
 }
 
 #[test]
@@ -939,7 +1089,7 @@ fn unique_field_reports_collection_error_and_params() {
     assert_eq!(fields[0].namespace().as_str(), "UniqueAccountVec.users");
     assert_eq!(fields[0].rule(), "unique");
     assert_eq!(fields[0].reason(), "unique");
-    assert_eq!(fields[0].params().text("field"), Some("email"));
+    assert_eq!(param_list(&fields[0], "fields"), vec!["email"]);
 }
 
 #[test]
@@ -964,7 +1114,7 @@ fn unique_field_treats_none_as_one_key() {
         .into_fields()
         .unwrap();
     assert_eq!(fields.len(), 1);
-    assert_eq!(fields[0].params().text("field"), Some("nickname"));
+    assert_eq!(param_list(&fields[0], "fields"), vec!["nickname"]);
 }
 
 #[test]
@@ -979,7 +1129,7 @@ fn unique_field_rejects_duplicate_numeric_and_time_keys() {
         .unwrap_err()
         .into_fields()
         .unwrap();
-    assert_eq!(numeric[0].params().text("field"), Some("age"));
+    assert_eq!(param_list(&numeric[0], "fields"), vec!["age"]);
 
     let users = [
         unique_account("first@example.com", 1, Some("first"), 1),
@@ -990,7 +1140,7 @@ fn unique_field_rejects_duplicate_numeric_and_time_keys() {
         .unwrap_err()
         .into_fields()
         .unwrap();
-    assert_eq!(time[0].params().text("field"), Some("created_at"));
+    assert_eq!(param_list(&time[0], "fields"), vec!["created_at"]);
 }
 
 #[test]
@@ -1038,24 +1188,26 @@ fn unique_field_supports_bool_signed_integer_and_float_keys() {
     let fields = error.into_fields().unwrap();
 
     assert_eq!(fields.len(), 3);
-    assert_eq!(fields[0].params().text("field"), Some("enabled"));
-    assert_eq!(fields[1].params().text("field"), Some("balance"));
-    assert_eq!(fields[2].params().text("field"), Some("ratio"));
+    assert_eq!(param_list(&fields[0], "fields"), vec!["enabled"]);
+    assert_eq!(param_list(&fields[1], "fields"), vec!["balance"]);
+    assert_eq!(param_list(&fields[2], "fields"), vec!["ratio"]);
 }
 
 #[test]
 fn direct_unique_field_requires_field_context() {
-    let error = Validator::new()
-        .value(
-            &vec![serde_json::json!({ "email": "team@example.com" })],
-            "unique=email",
-        )
-        .unwrap_err();
+    for expression in ["unique=email", "unique=tenant_id profile.email"] {
+        let error = Validator::new()
+            .value(
+                &vec![serde_json::json!({ "email": "team@example.com" })],
+                expression,
+            )
+            .unwrap_err();
 
-    assert!(matches!(
-        error,
-        Error::MissingFieldContext { name } if name == "unique"
-    ));
+        assert!(matches!(
+            error,
+            Error::MissingFieldContext { name } if name == "unique"
+        ));
+    }
 }
 
 #[test]
@@ -1959,10 +2111,10 @@ fn equality_rules_fail() {
 
 #[derive(Debug, Validate)]
 struct NetworkRules {
-    #[validate(http_url)]
+    #[validate(http)]
     http_url: String,
 
-    #[validate(https_url)]
+    #[validate(https)]
     https_url: String,
 
     #[validate(ip)]
@@ -2010,8 +2162,5 @@ fn network_rules_fail() {
         .unwrap();
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
 
-    assert_eq!(
-        rules,
-        vec!["http_url", "https_url", "ip", "ipv4", "ipv6", "uuid"]
-    );
+    assert_eq!(rules, vec!["http", "https", "ip", "ipv4", "ipv6", "uuid"]);
 }

@@ -152,7 +152,18 @@ fn parse_rule(item: &str) -> Result<Spec, Error> {
         if name.is_empty() {
             return Err(invalid_rule_expression(item, "rule name cannot be empty"));
         }
-        return Ok(Spec::new(name).positional(decode_param(value, item)?));
+        let values = split_params(value).map_err(|reason| invalid_rule_expression(item, reason))?;
+        if values.is_empty() {
+            return Err(invalid_rule_expression(
+                item,
+                "parameter value cannot be empty",
+            ));
+        }
+        let mut spec = Spec::new(name);
+        for value in values {
+            spec = spec.positional(decode_param(value, item)?);
+        }
+        return Ok(spec);
     }
 
     let name = item.trim();
@@ -160,6 +171,53 @@ fn parse_rule(item: &str) -> Result<Spec, Error> {
         return Err(invalid_rule_expression(item, "rule name cannot be empty"));
     }
     Ok(Spec::new(name))
+}
+
+fn split_params(input: &str) -> Result<Vec<&str>, &'static str> {
+    let mut parts = Vec::new();
+    let mut start = None;
+    let mut quote = None;
+    let mut escaped = false;
+
+    for (index, ch) in input.char_indices() {
+        if let Some(current_quote) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == current_quote {
+                quote = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => {
+                quote = Some(ch);
+                start.get_or_insert(index);
+            }
+            ch if ch.is_whitespace() => {
+                if let Some(start) = start.take() {
+                    parts.push(&input[start..index]);
+                }
+            }
+            _ => {
+                start.get_or_insert(index);
+            }
+        }
+    }
+
+    if escaped {
+        return Err("quoted value has a dangling escape");
+    }
+    if quote.is_some() {
+        return Err("quoted value is not closed");
+    }
+    if let Some(start) = start {
+        parts.push(&input[start..]);
+    }
+
+    Ok(parts)
 }
 
 fn split_top_level(input: &str, separator: char) -> Result<Vec<&str>, &'static str> {
@@ -325,6 +383,21 @@ mod tests {
         assert_eq!(exprs.len(), 1);
         assert_eq!(spec.name(), "oneof");
         assert_eq!(spec.params().positional_values(), ["draft", "published"]);
+    }
+
+    #[test]
+    fn parses_space_separated_equal_params() {
+        let exprs = parse_expression("unique=tenant_id profile.email").unwrap();
+        let spec = exprs[0].single().unwrap();
+
+        assert_eq!(
+            spec.params().positional_values(),
+            ["tenant_id", "profile.email"]
+        );
+
+        let exprs = parse_expression(r#"eq="hello world""#).unwrap();
+        let spec = exprs[0].single().unwrap();
+        assert_eq!(spec.params().positional_values(), ["hello world"]);
     }
 
     #[test]

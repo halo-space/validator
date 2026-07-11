@@ -3,22 +3,22 @@ use std::net::SocketAddr;
 use crate::{Field, Rule};
 
 #[derive(Debug)]
-pub struct Tcp4Address;
+pub struct Tcp4;
 
 #[derive(Debug)]
-pub struct Tcp6Address;
+pub struct Tcp6;
 
 #[derive(Debug)]
-pub struct TcpAddress;
+pub struct Tcp;
 
 #[derive(Debug)]
-pub struct Udp4Address;
+pub struct Udp4;
 
 #[derive(Debug)]
-pub struct Udp6Address;
+pub struct Udp6;
 
 #[derive(Debug)]
-pub struct UdpAddress;
+pub struct Udp;
 
 macro_rules! socket_rule {
     ($ty:ty, $check:expr) => {
@@ -33,12 +33,12 @@ macro_rules! socket_rule {
     };
 }
 
-socket_rule!(Tcp4Address, SocketAddr::is_ipv4);
-socket_rule!(Tcp6Address, SocketAddr::is_ipv6);
-socket_rule!(TcpAddress, |_| true);
-socket_rule!(Udp4Address, SocketAddr::is_ipv4);
-socket_rule!(Udp6Address, SocketAddr::is_ipv6);
-socket_rule!(UdpAddress, |_| true);
+socket_rule!(Tcp4, SocketAddr::is_ipv4);
+socket_rule!(Tcp6, SocketAddr::is_ipv6);
+socket_rule!(Tcp, |_| true);
+socket_rule!(Udp4, SocketAddr::is_ipv4);
+socket_rule!(Udp6, SocketAddr::is_ipv6);
+socket_rule!(Udp, |_| true);
 
 fn valid(value: &str, check: impl Fn(&SocketAddr) -> bool) -> bool {
     value

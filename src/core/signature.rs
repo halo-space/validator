@@ -11,6 +11,7 @@ enum Shape {
     },
     List {
         name: &'static str,
+        optional: bool,
     },
     Named {
         names: &'static [&'static str],
@@ -69,7 +70,10 @@ impl Signature {
 
     pub const fn list(name: &'static str) -> Self {
         Self {
-            shape: Shape::List { name },
+            shape: Shape::List {
+                name,
+                optional: false,
+            },
             fields: Fields::None,
             items: false,
         }
@@ -104,9 +108,23 @@ impl Signature {
 
     pub const fn field_list(name: &'static str) -> Self {
         Self {
-            shape: Shape::List { name },
+            shape: Shape::List {
+                name,
+                optional: false,
+            },
             fields: Fields::List(name),
             items: false,
+        }
+    }
+
+    pub(crate) const fn optional_field_list(name: &'static str) -> Self {
+        Self {
+            shape: Shape::List {
+                name,
+                optional: true,
+            },
+            fields: Fields::None,
+            items: true,
         }
     }
 
@@ -116,11 +134,6 @@ impl Signature {
             fields: Fields::Pairs(name),
             items: false,
         }
-    }
-
-    pub(crate) const fn with_items(mut self) -> Self {
-        self.items = true;
-        self
     }
 
     pub(crate) fn requires_fields(self) -> bool {
@@ -157,14 +170,14 @@ impl Signature {
         self.items && !params.is_empty()
     }
 
-    pub(crate) fn item_field(self, params: &Params) -> Option<&str> {
+    pub(crate) fn item_fields(self, params: &Params) -> Option<&[String]> {
         if !self.items {
             return None;
         }
 
         match self.shape {
-            Shape::Text { name, .. } => params.text(name),
-            Shape::None | Shape::List { .. } | Shape::Named { .. } | Shape::Pairs { .. } => None,
+            Shape::List { name, .. } => params.list(name),
+            Shape::None | Shape::Text { .. } | Shape::Named { .. } | Shape::Pairs { .. } => None,
         }
     }
 
@@ -176,7 +189,7 @@ impl Signature {
         match self.shape {
             Shape::None => bind_none(rule, params),
             Shape::Text { name, optional } => bind_text(rule, params, name, optional),
-            Shape::List { name } => bind_list(rule, params, name),
+            Shape::List { name, optional } => bind_list(rule, params, name, optional),
             Shape::Named { names, required } => bind_named(rule, params, names, required),
             Shape::Pairs { name } => bind_pairs(rule, params, name),
         }
@@ -221,8 +234,14 @@ fn bind_text(
     Ok(params)
 }
 
-fn bind_list(rule: &str, params: &RawParams, name: &'static str) -> Result<Params, Error> {
+fn bind_list(
+    rule: &str,
+    params: &RawParams,
+    name: &'static str,
+    optional: bool,
+) -> Result<Params, Error> {
     let values = match (params.positional_values(), params.named_values()) {
+        ([], []) if optional => return Ok(Params::new()),
         ([], []) => return Err(invalid(rule, format!("rule requires '{name}' values"))),
         (values, []) => values.to_vec(),
         ([], [(actual, RawParam::List(values))]) if actual == name => values.clone(),

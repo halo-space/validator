@@ -14,7 +14,7 @@ mod value;
 
 pub use access::{Access, FieldRef};
 #[doc(hidden)]
-pub use access::{Items, Projection, Resolve, Segment};
+pub use access::{ItemVisitor, Items, Projection, Resolve, Segment};
 #[doc(hidden)]
 pub use context::Context;
 pub use error::{Error, FieldError};

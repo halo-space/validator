@@ -1,4 +1,4 @@
-error: unique=field requires a Vec, array, or slice field
+error: parameterized unique requires a Vec, array, or slice field
   --> tests/ui/unique_field_invalid_container.rs:10:17
    |
 10 | #[derive(Debug, Validate)]

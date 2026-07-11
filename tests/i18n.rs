@@ -367,6 +367,55 @@ fn function_template_can_read_param_and_kind() {
     assert_eq!(messages[0].text, "name needs 3 chars");
 }
 
+#[derive(Debug)]
+struct LocalizedMember {
+    tenant_id: u64,
+    email: String,
+}
+
+#[derive(Debug, Validate)]
+struct LocalizedTeam {
+    #[validate(unique = ["tenant_id", "email"])]
+    members: Vec<LocalizedMember>,
+}
+
+#[test]
+fn function_template_can_read_compound_unique_fields() {
+    let fields = fields(
+        Validator::new()
+            .validate(&LocalizedTeam {
+                members: vec![
+                    LocalizedMember {
+                        tenant_id: 1,
+                        email: "same@example.com".to_owned(),
+                    },
+                    LocalizedMember {
+                        tenant_id: 1,
+                        email: "same@example.com".to_owned(),
+                    },
+                ],
+            })
+            .unwrap_err(),
+    );
+    let en = validator::i18n::Locale::new("en").rule_fn("unique", |ctx| {
+        format!(
+            "{} must be unique by {}",
+            ctx.field(),
+            ctx.param_list("fields").unwrap().join(" + ")
+        )
+    });
+
+    let messages = validator::i18n::new()
+        .use_locale(en)
+        .locale("en")
+        .render(&fields);
+
+    assert_eq!(
+        messages[0].text,
+        "members must be unique by tenant_id + email"
+    );
+}
+
 #[test]
 fn template_substitutions_are_not_rendered_twice() {
     let fields = fields(
@@ -391,7 +440,7 @@ struct NewRuleMessages {
     #[validate(eq = "published")]
     state: String,
 
-    #[validate(https_url)]
+    #[validate(https)]
     source_url: String,
 
     #[validate(cidr)]

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use crate::{Error, Field, Kind, Rule, Signature};
 
 #[derive(Debug)]
@@ -5,12 +7,23 @@ pub struct Unique;
 
 impl Rule for Unique {
     fn signature(&self) -> Signature {
-        Signature::optional_text("field").with_items()
+        Signature::optional_field_list("fields")
     }
 
     fn validate_params(&self, field: &Field<'_>) -> Result<(), Error> {
         let kind = field.value().kind();
-        let supported = if field.params().text("field").is_some() {
+        let fields = field.params().list("fields");
+        if let Some(fields) = fields {
+            let mut seen = BTreeSet::new();
+            if let Some(duplicate) = fields.iter().find(|name| !seen.insert(name.as_str())) {
+                return Err(Error::InvalidRuleExpression {
+                    expression: "unique".to_owned(),
+                    reason: format!("duplicate field path '{duplicate}'"),
+                });
+            }
+        }
+
+        let supported = if fields.is_some() {
             matches!(kind, Kind::Vec | Kind::Array | Kind::Slice | Kind::Option)
         } else {
             matches!(
@@ -22,19 +35,19 @@ impl Rule for Unique {
         if supported {
             Ok(())
         } else {
-            Err(invalid_kind(kind, field.params().text("field").is_some()))
+            Err(invalid_kind(kind, fields.is_some()))
         }
     }
 
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
-        if let Some(name) = field.params().text("field") {
+        if let Some(fields) = field.params().list("fields") {
             if !matches!(field.value().kind(), Kind::Vec | Kind::Array | Kind::Slice) {
                 return Err(invalid_kind(field.value().kind(), true));
             }
             let items = field.items().ok_or_else(|| Error::MissingFieldContext {
                 name: "unique".to_owned(),
             })?;
-            return super::fields_are_unique(items, name);
+            return super::fields_are_unique(items, fields);
         }
 
         let items = field

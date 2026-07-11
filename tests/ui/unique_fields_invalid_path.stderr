@@ -1,0 +1,7 @@
+error: validate rule 'unique' has invalid field path 'profile..email'; expected dot-separated Rust field identifiers
+ --> tests/ui/unique_fields_invalid_path.rs:8:17
+  |
+8 | #[derive(Debug, Validate)]
+  |                 ^^^^^^^^
+  |
+  = note: this error originates in the derive macro `Validate` (in Nightly builds, run with -Z macro-backtrace for more info)

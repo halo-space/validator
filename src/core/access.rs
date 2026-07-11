@@ -57,38 +57,37 @@ impl<'a, T: ?Sized> Resolve<'a> for &Segment<'a, T> {
 
 #[doc(hidden)]
 pub trait Items {
-    fn visit<'a>(
-        &'a self,
-        field: &str,
-        visitor: &mut dyn FnMut(Option<&'a dyn Value>) -> bool,
-    ) -> Result<(), Error>;
+    fn visit<'a>(&'a self, fields: &[String], visitor: &mut ItemVisitor<'a>) -> Result<(), Error>;
 }
+
+pub type ItemVisitor<'a> =
+    dyn for<'b> FnMut(&'b mut (dyn Iterator<Item = Option<&'a dyn Value>> + 'b)) -> bool + 'a;
 
 #[doc(hidden)]
-pub struct Projection<'a, T, V> {
+pub struct Projection<'a, T> {
     items: &'a [T],
-    field: &'a str,
+    fields: &'static [&'static str],
     kind: Kind,
-    project: for<'b> fn(&'b T) -> &'b V,
+    project: for<'b> fn(&'b T, &str) -> Option<&'b dyn Value>,
 }
 
-impl<'a, T, V> Projection<'a, T, V> {
+impl<'a, T> Projection<'a, T> {
     pub fn new(
         items: &'a [T],
-        field: &'a str,
+        fields: &'static [&'static str],
         kind: Kind,
-        project: for<'b> fn(&'b T) -> &'b V,
+        project: for<'b> fn(&'b T, &str) -> Option<&'b dyn Value>,
     ) -> Self {
         Self {
             items,
-            field,
+            fields,
             kind,
             project,
         }
     }
 }
 
-impl<T, V> Value for Projection<'_, T, V> {
+impl<T> Value for Projection<'_, T> {
     fn kind(&self) -> Kind {
         self.kind
     }
@@ -102,21 +101,23 @@ impl<T, V> Value for Projection<'_, T, V> {
     }
 }
 
-impl<T, V: Value> Items for Projection<'_, T, V> {
-    fn visit<'a>(
-        &'a self,
-        field: &str,
-        visitor: &mut dyn FnMut(Option<&'a dyn Value>) -> bool,
-    ) -> Result<(), Error> {
-        if field != self.field {
+impl<T> Items for Projection<'_, T> {
+    fn visit<'a>(&'a self, fields: &[String], visitor: &mut ItemVisitor<'a>) -> Result<(), Error> {
+        if fields.len() != self.fields.len()
+            || fields
+                .iter()
+                .zip(self.fields)
+                .any(|(actual, expected)| actual != expected)
+        {
             return Err(Error::InvalidRuleExpression {
                 expression: "unique".to_owned(),
-                reason: format!("projected field '{}' does not match '{field}'", self.field),
+                reason: "projected fields do not match the compiled item access".to_owned(),
             });
         }
 
         for item in self.items {
-            if !visitor(Some((self.project)(item))) {
+            let mut values = fields.iter().map(|field| (self.project)(item, field));
+            if !visitor(&mut values) {
                 break;
             }
         }

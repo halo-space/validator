@@ -1894,7 +1894,119 @@ fields:
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].namespace().as_str(), "users");
     assert_eq!(fields[0].rule(), "unique");
-    assert_eq!(fields[0].params().text("field"), Some("email"));
+    assert_eq!(param_list(&fields[0], "fields"), vec!["email"]);
+}
+
+#[test]
+fn schema_compound_unique_fields_compare_complete_nested_keys() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: [tenant_id, profile.email]
+    fields:
+      tenant_id:
+        type: uint
+      profile:
+        type: object
+        fields:
+          email:
+            type: string
+"#,
+    )
+    .unwrap();
+    let validator = Validator::with_schema(schema);
+
+    validator
+        .validate_map(&json!({
+            "users": [
+                { "tenant_id": 1, "profile": { "email": "same@example.com" } },
+                { "tenant_id": 2, "profile": { "email": "same@example.com" } }
+            ]
+        }))
+        .unwrap();
+
+    let fields = fields(
+        validator
+            .validate_map(&json!({
+                "users": [
+                    { "tenant_id": 1, "profile": { "email": "same@example.com" } },
+                    { "tenant_id": 1, "profile": { "email": "same@example.com" } }
+                ]
+            }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].namespace().as_str(), "users");
+    assert_eq!(fields[0].rule(), "unique");
+    assert_eq!(
+        param_list(&fields[0], "fields"),
+        vec!["tenant_id", "profile.email"]
+    );
+    assert_eq!(fields[0].params().text("field"), None);
+}
+
+#[test]
+fn schema_compound_unique_fields_preserve_none_and_malformed_data() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: [tenant_id, profile.email]
+    fields:
+      tenant_id:
+        type: uint
+      profile:
+        type: object
+        fields:
+          email:
+            type: string
+"#,
+    )
+    .unwrap();
+    let validator = Validator::with_schema(schema);
+
+    validator
+        .validate_map(&json!({
+            "users": [
+                { "tenant_id": 1 },
+                { "tenant_id": 2, "profile": null }
+            ]
+        }))
+        .unwrap();
+
+    let none = fields(
+        validator
+            .validate_map(&json!({
+                "users": [
+                    { "tenant_id": 1 },
+                    { "tenant_id": 1, "profile": null }
+                ]
+            }))
+            .unwrap_err(),
+    );
+    assert_eq!(none.len(), 1);
+    assert_eq!(none[0].rule(), "unique");
+
+    let malformed = fields(
+        validator
+            .validate_map(&json!({
+                "users": [
+                    { "tenant_id": 1, "profile": "invalid" },
+                    { "tenant_id": 1, "profile": "invalid" }
+                ]
+            }))
+            .unwrap_err(),
+    );
+    assert_eq!(malformed.len(), 2);
+    assert!(malformed.iter().all(|field| field.rule() == "type"));
+    assert_eq!(malformed[0].namespace().as_str(), "users[0].profile");
+    assert_eq!(malformed[1].namespace().as_str(), "users[1].profile");
 }
 
 #[test]
@@ -1930,7 +2042,50 @@ fields:
     assert_eq!(fields[0].namespace().as_str(), "users");
     assert_eq!(fields[0].rule(), "unique_email");
     assert_eq!(fields[0].reason(), "unique");
-    assert_eq!(fields[0].params().text("field"), Some("email"));
+    assert_eq!(param_list(&fields[0], "fields"), vec!["email"]);
+}
+
+#[test]
+fn schema_alias_preserves_compound_unique_field_context() {
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules: unique_account
+    fields:
+      tenant_id:
+        type: uint
+      profile:
+        type: object
+        fields:
+          email:
+            type: string
+"#,
+    )
+    .unwrap();
+    let validator = Validator::with_schema(schema)
+        .alias("unique_account", "unique=tenant_id profile.email")
+        .unwrap();
+
+    let fields = fields(
+        validator
+            .validate_map(&json!({
+                "users": [
+                    { "tenant_id": 1, "profile": { "email": "same@example.com" } },
+                    { "tenant_id": 1, "profile": { "email": "same@example.com" } }
+                ]
+            }))
+            .unwrap_err(),
+    );
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "unique_account");
+    assert_eq!(fields[0].reason(), "unique");
+    assert_eq!(
+        param_list(&fields[0], "fields"),
+        vec!["tenant_id", "profile.email"]
+    );
 }
 
 #[test]
@@ -2061,6 +2216,32 @@ fields:
           email:
             type: string
 "#,
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: profile.missing
+    fields:
+      profile:
+        type: object
+        fields:
+          email:
+            type: string
+"#,
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: profile..email
+    fields:
+      profile:
+        type: object
+        fields:
+          email:
+            type: string
+"#,
     ] {
         let schema = Schema::from_yaml(yaml).unwrap();
         let error = Validator::with_schema(schema)
@@ -2068,6 +2249,42 @@ fields:
             .unwrap_err();
         assert!(matches!(error, Error::InvalidSchema { .. }));
     }
+}
+
+#[test]
+fn schema_unique_fields_reject_invalid_lists() {
+    let error = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: []
+    fields:
+      email:
+        type: string
+"#,
+    )
+    .unwrap_err();
+    assert!(matches!(error, Error::InvalidSchema { .. }));
+
+    let schema = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: [email, email]
+    fields:
+      email:
+        type: string
+"#,
+    )
+    .unwrap();
+    let error = Validator::with_schema(schema)
+        .validate_map(&json!({ "users": [] }))
+        .unwrap_err();
+    assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
 #[test]
@@ -2108,7 +2325,7 @@ fields:
     assert!(matches!(
         error,
         Error::InvalidSchema { reason }
-            if reason.contains("references undeclared item field 'email'")
+            if reason.contains("references undeclared field 'email'")
     ));
 }
 
@@ -2144,7 +2361,7 @@ fields:
         .unwrap();
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].rule(), "unique");
-    assert_eq!(fields[0].params().text("field"), Some("nickname"));
+    assert_eq!(param_list(&fields[0], "fields"), vec!["nickname"]);
 }
 
 #[test]
@@ -2496,7 +2713,7 @@ fields:
 #[test]
 fn direct_value_uses_new_common_rules() {
     Validator::new()
-        .value(&"https://example.com", "required,http_url,https_url")
+        .value(&"https://example.com", "required,http,https")
         .unwrap();
     Validator::new()
         .value(&"urn:isbn:0451450523", "uri")
@@ -2572,7 +2789,7 @@ fields:
   source_url:
     type: string
     rules:
-      - https_url
+      - https
   canonical_uri:
     type: string
     rules:
@@ -2689,7 +2906,7 @@ fields:
             ("request_id", "uuid4"),
             ("request_ip", "ip"),
             ("rfc_host", "hostname_rfc1123"),
-            ("source_url", "https_url"),
+            ("source_url", "https"),
             ("state", "eq"),
             ("tags", "unique"),
             ("username", "noneof"),

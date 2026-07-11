@@ -1,18 +1,13 @@
 use validator::prelude::*;
 
 #[derive(Debug)]
-struct Profile {
-    email: String,
-}
-
-#[derive(Debug)]
 struct User {
-    profile: Profile,
+    email: String,
 }
 
 #[derive(Debug, Validate)]
 struct Request {
-    #[validate(unique = "profile.email")]
+    #[validate(unique = [])]
     users: Vec<User>,
 }
 

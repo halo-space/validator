@@ -1,0 +1,7 @@
+error: unique field list cannot be empty
+ --> tests/ui/unique_fields_empty.rs:8:17
+  |
+8 | #[derive(Debug, Validate)]
+  |                 ^^^^^^^^
+  |
+  = note: this error originates in the derive macro `Validate` (in Nightly builds, run with -Z macro-backtrace for more info)
