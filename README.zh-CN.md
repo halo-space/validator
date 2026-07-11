@@ -43,6 +43,7 @@ validator = { git = "ssh://git@github-halo/halo-space/validator.git" }
 Go 版 validator 可以直接依赖语言级运行时反射来读取结构体字段、字段类型和值。Rust 当前没有等价的内置结构体反射能力。生态里的反射库通常也要求用户额外 `derive` 一个反射 trait，库才能在运行时读取字段信息。
 
 因此，`validator` 当前把用户 API 收敛在 `#[derive(Validate)]` 上，由 derive 宏生成校验引擎需要的轻量字段元数据和访问代码。这样用户不需要再额外写一个反射 derive，同时规则执行、`Value` 类型分派、错误结果和 i18n 仍然保持在同一套核心模型里。
+生成的访问代码是按需的：只有校验属性实际引用的直接字段和完整嵌套目标才会进入访问层。
 
 这一层是内部实现细节。后续如果 Rust 本身提供成熟反射能力，或者某个反射库可以足够干净地隐藏在 `validator` 内部，我们可以把字段访问层替换成反射实现，而不改变外部的校验 DSL。
 
@@ -214,7 +215,7 @@ struct Basket {
 
 ## 跨字段校验
 
-当一个字段需要和同级字段比较时，使用 `*_field` 规则。
+当一个字段需要和同级字段或向下嵌套字段比较时，使用 `*_field` 规则。
 
 ```rust
 use validator::prelude::*;
@@ -234,13 +235,31 @@ struct Event {
     #[validate(gt_field = "start_at")]
     end_at: i64,
 }
+
+struct Contact {
+    email: String,
+}
+
+struct Profile {
+    contact: Contact,
+}
+
+#[derive(Debug, Validate)]
+struct Account {
+    profile: Option<Profile>,
+
+    #[validate(eq_field = "profile.contact.email")]
+    email: String,
+}
 ```
 
-当前支持 `eq_field`、`ne_field`、`gt_field`、`gte_field`、`lt_field`、`lte_field`。目标字段必须是同级 sibling field。目标字段缺失或为 `None` 时校验失败；当前字段是 `Option::None` 时会跳过非 `required` 的跨字段规则。
+当前支持 `eq_field`、`ne_field`、`gt_field`、`gte_field`、`lt_field`、`lte_field`。单段目标仍然表示同级 sibling；点分目标相对当前属性所在结构体向下解析。路径中的每个 `Option<T>` 都会自动借用；任一目标段为 `None` 时都视为目标缺失，包括 `ne_field` 在内的比较规则都会失败。当前字段是 `Option::None` 时仍会跳过非 `required` 的跨字段规则。
 
-Equality 与 ordering 分开处理：字符串 equality 比较内容，字符串 ordering 按 Unicode 字符数量比较；集合按元素数量比较，数字和 `SystemTime` 按各自类型族比较，bool 只支持 `eq_field` / `ne_field`。浮点 NaN 不相等也不可排序。raw Rust 字段在字符串目标和错误中使用不带 `r#` 的规范名称，例如 `r#type` 使用 `"type"` 引用。
+只有终点字段需要实现 `Value`，中间结构体不需要实现 `Value` 或 `Validate`。读取路径不会触发嵌套校验；只有显式 `#[validate(nested)]` 才会校验嵌套结构体自身。路径只接受规范的点分 Rust 字段名，不支持父级/root、数组索引、Map key 或通配符。raw 字段 `r#type` 写成 `"type"`。
 
-条件字段规则也使用同级字段：
+Equality 与 ordering 分开处理：字符串 equality 比较内容，字符串 ordering 按 Unicode 字符数量比较；集合按元素数量比较，数字和 `SystemTime` 按各自类型族比较，bool 只支持 `eq_field` / `ne_field`。浮点 NaN 不相等也不可排序。
+
+条件字段规则仍然只使用同级字段：
 
 ```rust
 #[derive(Debug, Validate)]
@@ -534,6 +553,23 @@ fields:
 
 这条路径复用同一套规则注册表、alias、`Value` 类型分派、`Error` 和 `Namespace` 模型，不是另一套校验引擎。
 
+Schema 的单目标字段规则使用同一套相对点分语法：
+
+```yaml
+fields:
+  profile:
+    type: object
+    fields:
+      email:
+        type: string
+  email:
+    type: string
+    rules:
+      - eq_field: profile.email
+```
+
+每个中间 Schema 段都必须声明为 `object`；这项能力不会穿过 array。运行时中间段缺失或为 null 时，目标按缺失处理，同时保留终点字段声明的 `Kind`。Schema alias 可以包含点分字段规则，因为 alias 展开和路径校验都发生在 Schema Tree 编译阶段。单段目标按序列化字段名精确匹配，因此 `source-url` 这类名称仍然有效；包含 `.` 的目标固定表示嵌套路径。如果同一层还声明了同名字面点分字段，Schema 编译会直接拒绝歧义配置，而不是按查找优先级选择其中一个。
+
 Schema 配置采用严格模式：顶层只允许 `fields`，字段定义只允许 `type`、`rules` 和 `fields`。`type` 只接受 `string`、`boolean`、`integer`、`uint`、`number`、`array`、`object`，只有 `object` 和 `array` 可以定义嵌套 `fields`。即使 `fields: {}` 为空，它仍然表示结构声明：省略 `type` 时推断为 `object`，标量类型配置空 `fields` 仍会报错，array 配置空 `fields` 时每个元素仍必须是 object；完全没有 `fields` 的 array 不限制元素必须是 object。未知键或未知类型返回 `Error::InvalidSchema`；不符合 Rule `Signature` 的参数在 Schema 编译时返回 `Error::InvalidRuleExpression`。语义参数也会在缓存 Schema Tree 构建时完成预检，早于根数据或字段数据的类型检查短路。
 
 Schema 面向 JSON/YAML 数据。它支持把 `datetime` 当成字符串规则使用，但不支持原生 `SystemTime` 值，也不支持 `type: time`。数字规则按 Schema 声明族执行：`integer` 使用有符号整数，`uint` 使用无符号整数，`number` 使用浮点数，即使 JSON 数字写成整数形式也不会改变。
@@ -683,6 +719,7 @@ URL 和 URI 使用结构化解析器；`hostname` 遵循 RFC952，`hostname_rfc1
 这些是当前 API 有意保留的边界：
 
 - `unique=field` 只支持 Vec、数组、切片引用和 Schema object arrays 的直接元素字段；不支持 Map、嵌套路径、原生 direct value，也不能写在 `dive(...)` 内。
+- 嵌套字段目标只支持相对当前结构体向下解析；不支持父级/root、集合索引、Map key，也不支持条件规则路径。
 - derive 代码必须显式写 `#[validate(unique = "field")]`，运行时 alias 无法生成 Rust 字段访问；Schema 在运行时已有字段定义，因此 Schema alias 可以包含 `unique=field`。
 - 原生集合使用 `dive(...)` 之外的通用规则时，元素或 Map value 类型必须实现 `Value`；纯 `dive(nested)` 只要求元素实现 `Validate`。
 - 原生时间校验只支持 `std::time::SystemTime`；不内置 `Duration`、`chrono`、`time` crate 值。

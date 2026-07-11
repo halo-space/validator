@@ -24,6 +24,38 @@ pub trait Access {
 }
 
 #[doc(hidden)]
+pub struct Segment<'a, T: ?Sized>(&'a T);
+
+impl<'a, T: ?Sized> Segment<'a, T> {
+    pub fn new(value: &'a T) -> Self {
+        Self(value)
+    }
+}
+
+#[doc(hidden)]
+pub trait Resolve<'a> {
+    type Target: ?Sized;
+
+    fn resolve(self) -> Option<&'a Self::Target>;
+}
+
+impl<'a, T> Resolve<'a> for Segment<'a, Option<T>> {
+    type Target = T;
+
+    fn resolve(self) -> Option<&'a Self::Target> {
+        self.0.as_ref()
+    }
+}
+
+impl<'a, T: ?Sized> Resolve<'a> for &Segment<'a, T> {
+    type Target = T;
+
+    fn resolve(self) -> Option<&'a Self::Target> {
+        Some(self.0)
+    }
+}
+
+#[doc(hidden)]
 pub trait Items {
     fn visit<'a>(
         &'a self,

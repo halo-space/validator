@@ -367,6 +367,25 @@ fn function_template_can_read_param_and_kind() {
     assert_eq!(messages[0].text, "name needs 3 chars");
 }
 
+#[test]
+fn template_substitutions_are_not_rendered_twice() {
+    let fields = fields(
+        Validator::new()
+            .value(&"actual", r#"eq(value="{field}")"#)
+            .unwrap_err(),
+    );
+    let locale = validator::i18n::Locale::new("en")
+        .rule("eq", "{field} expected {value} ({unknown})")
+        .field("$value", "{rule}");
+
+    let messages = validator::i18n::new()
+        .use_locale(locale)
+        .locale("en")
+        .render(&fields);
+
+    assert_eq!(messages[0].text, "{rule} expected {field} ({unknown})");
+}
+
 #[derive(Debug, Validate)]
 struct NewRuleMessages {
     #[validate(eq = "published")]

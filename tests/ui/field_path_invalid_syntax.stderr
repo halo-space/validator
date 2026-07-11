@@ -1,0 +1,15 @@
+error: validate rule 'eq_field' has invalid field path 'profile..email'; expected dot-separated Rust field identifiers
+ --> tests/ui/field_path_invalid_syntax.rs:8:17
+  |
+8 | #[derive(Debug, Validate)]
+  |                 ^^^^^^^^
+  |
+  = note: this error originates in the derive macro `Validate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: validate rule 'eq_field' has invalid field path 'profile[0].email'; expected dot-separated Rust field identifiers
+  --> tests/ui/field_path_invalid_syntax.rs:16:17
+   |
+16 | #[derive(Debug, Validate)]
+   |                 ^^^^^^^^
+   |
+   = note: this error originates in the derive macro `Validate` (in Nightly builds, run with -Z macro-backtrace for more info)

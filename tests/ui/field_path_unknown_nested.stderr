@@ -1,0 +1,7 @@
+error[E0609]: no field `missing` on type `&Profile`
+ --> tests/ui/field_path_unknown_nested.rs:8:17
+  |
+8 | #[derive(Debug, Validate)]
+  |                 ^^^^^^^^ unknown field
+  |
+  = note: this error originates in the derive macro `Validate` (in Nightly builds, run with -Z macro-backtrace for more info)

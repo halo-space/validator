@@ -43,11 +43,30 @@ enum Check {
     OmitEmpty,
 }
 
-#[derive(Clone, Copy)]
-struct CompileMode {
-    fields: bool,
-    items: bool,
-    alias_context: bool,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Mode {
+    Value,
+    Fields,
+    FieldsWithAliases,
+    FieldsAndItems,
+    FieldsAndItemsWithAliases,
+}
+
+impl Mode {
+    const fn fields(self) -> bool {
+        !matches!(self, Self::Value)
+    }
+
+    const fn items(self) -> bool {
+        matches!(self, Self::FieldsAndItems | Self::FieldsAndItemsWithAliases)
+    }
+
+    const fn alias(self) -> Self {
+        match self {
+            Self::FieldsWithAliases | Self::FieldsAndItemsWithAliases => self,
+            Self::Value | Self::Fields | Self::FieldsAndItems => Self::Value,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -78,40 +97,18 @@ impl Value for TypeValue {
 
 impl Group {
     pub(crate) fn compile(exprs: &[Expr], registry: &Registry) -> Result<Self, Error> {
-        Self::build(
-            exprs,
-            registry,
-            CompileMode {
-                fields: false,
-                items: false,
-                alias_context: false,
-            },
-            &mut Vec::new(),
-        )
+        Self::build(exprs, registry, Mode::Value, &mut Vec::new())
     }
 
     pub(crate) fn compile_with_fields(exprs: &[Expr], registry: &Registry) -> Result<Self, Error> {
-        Self::build(
-            exprs,
-            registry,
-            CompileMode {
-                fields: true,
-                items: false,
-                alias_context: true,
-            },
-            &mut Vec::new(),
-        )
+        Self::build(exprs, registry, Mode::FieldsWithAliases, &mut Vec::new())
     }
 
     pub(crate) fn compile_spec(spec: &super::Spec, registry: &Registry) -> Result<Self, Error> {
         Self::build(
             &[Expr::Single(spec.clone())],
             registry,
-            CompileMode {
-                fields: true,
-                items: false,
-                alias_context: false,
-            },
+            Mode::Fields,
             &mut Vec::new(),
         )
     }
@@ -123,11 +120,7 @@ impl Group {
         Self::build(
             &[Expr::Single(spec.clone())],
             registry,
-            CompileMode {
-                fields: true,
-                items: true,
-                alias_context: false,
-            },
+            Mode::FieldsAndItems,
             &mut Vec::new(),
         )
     }
@@ -139,11 +132,7 @@ impl Group {
         Self::build(
             exprs,
             registry,
-            CompileMode {
-                fields: true,
-                items: true,
-                alias_context: true,
-            },
+            Mode::FieldsAndItemsWithAliases,
             &mut Vec::new(),
         )
     }
@@ -359,7 +348,7 @@ impl Group {
     fn build(
         exprs: &[Expr],
         registry: &Registry,
-        mode: CompileMode,
+        mode: Mode,
         aliases: &mut Vec<String>,
     ) -> Result<Self, Error> {
         let mut steps = Vec::new();
@@ -370,7 +359,7 @@ impl Group {
                     spec.name(),
                     spec.params(),
                     registry,
-                    &mode,
+                    mode,
                     aliases,
                 )?));
                 continue;
@@ -380,7 +369,7 @@ impl Group {
                 let checks = alternatives
                     .iter()
                     .map(|spec| {
-                        Self::build_check(spec.name(), spec.params(), registry, &mode, aliases)
+                        Self::build_check(spec.name(), spec.params(), registry, mode, aliases)
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 let reason = alternatives
@@ -399,7 +388,7 @@ impl Group {
         name: &str,
         params: &super::RawParams,
         registry: &Registry,
-        mode: &CompileMode,
+        mode: Mode,
         aliases: &mut Vec<String>,
     ) -> Result<Check, Error> {
         if name == "omitempty" {
@@ -410,12 +399,12 @@ impl Group {
             Some(Entry::Rule(handler)) => {
                 let signature = handler.signature();
                 let params = signature.bind(name, params)?;
-                if signature.requires_fields() && !mode.fields {
+                if signature.requires_fields() && !mode.fields() {
                     return Err(Error::MissingFieldContext {
                         name: name.to_owned(),
                     });
                 }
-                if signature.requires_items(&params) && !mode.items {
+                if signature.requires_items(&params) && !mode.items() {
                     return Err(Error::MissingFieldContext {
                         name: name.to_owned(),
                     });
@@ -439,12 +428,7 @@ impl Group {
                     });
                 }
                 aliases.push(name.to_owned());
-                let alias_mode = CompileMode {
-                    fields: mode.fields && mode.alias_context,
-                    items: mode.items && mode.alias_context,
-                    alias_context: mode.alias_context,
-                };
-                let group = Self::build(exprs, registry, alias_mode, aliases)?;
+                let group = Self::build(exprs, registry, mode.alias(), aliases)?;
                 aliases.pop();
                 Ok(Check::Alias {
                     name: name.to_owned(),
@@ -711,5 +695,38 @@ impl Group {
         .with_context(context, scope.access, scope.items);
 
         call(&field)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Mode;
+
+    #[test]
+    fn modes_expose_only_their_declared_context() {
+        assert!(!Mode::Value.fields());
+        assert!(!Mode::Value.items());
+
+        for mode in [Mode::Fields, Mode::FieldsWithAliases] {
+            assert!(mode.fields());
+            assert!(!mode.items());
+        }
+
+        for mode in [Mode::FieldsAndItems, Mode::FieldsAndItemsWithAliases] {
+            assert!(mode.fields());
+            assert!(mode.items());
+        }
+    }
+
+    #[test]
+    fn only_alias_modes_preserve_context_inside_aliases() {
+        assert_eq!(Mode::Value.alias(), Mode::Value);
+        assert_eq!(Mode::Fields.alias(), Mode::Value);
+        assert_eq!(Mode::FieldsAndItems.alias(), Mode::Value);
+        assert_eq!(Mode::FieldsWithAliases.alias(), Mode::FieldsWithAliases);
+        assert_eq!(
+            Mode::FieldsAndItemsWithAliases.alias(),
+            Mode::FieldsAndItemsWithAliases
+        );
     }
 }

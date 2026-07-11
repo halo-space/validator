@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro_crate::{FoundCrate, crate_name};
 use quote::{format_ident, quote};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use syn::ext::IdentExt;
 use syn::meta::ParseNestedMeta;
 use syn::{
@@ -49,12 +49,13 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
     };
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let fields = fields.into_iter().collect::<Vec<_>>();
-    let field_names = fields
+    let field_members = fields
         .iter()
         .filter_map(|field| field.ident.as_ref())
-        .map(canonical)
-        .collect::<BTreeSet<_>>();
+        .map(|ident| (canonical(ident), ident.clone()))
+        .collect::<BTreeMap<_, _>>();
     let mut access_fields = BTreeSet::new();
+    let mut access_paths = BTreeMap::new();
 
     let mut checks = Vec::new();
     let mut access_arms = Vec::new();
@@ -73,8 +74,13 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
         };
         let field_name = canonical(field_ident);
         let rules = parse_rules(&field.attrs)?;
-        validate_field_targets(&rules, &field_names)?;
-        collect_access_fields(&rules, &field_name, &mut access_fields);
+        collect_access(
+            &rules,
+            field_ident,
+            &field_members,
+            &mut access_fields,
+            &mut access_paths,
+        )?;
         let target = quote! {
             #crate_path::FieldTarget::new(
                 #type_name,
@@ -118,6 +124,29 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                 #field_name => Some(#crate_path::__private::FieldRef::new(#field_name, &self.#field_ident)),
             });
         }
+    }
+
+    for (path, segments) in access_paths {
+        let first = segments
+            .first()
+            .expect("validated field path must contain a segment");
+        let mut resolve = quote! {
+            #crate_path::__private::Segment::new(&self.#first).resolve()
+        };
+        for segment in &segments[1..] {
+            resolve = quote! {
+                #resolve.and_then(|value| {
+                    #crate_path::__private::Segment::new(&value.#segment).resolve()
+                })
+            };
+        }
+
+        access_arms.push(quote! {
+            #path => {
+                use #crate_path::__private::Resolve as _;
+                #resolve.map(|value| #crate_path::__private::FieldRef::new(#path, value))
+            },
+        });
     }
 
     Ok(quote! {
@@ -240,25 +269,45 @@ fn exposes_value_access(rules: &[RuleAttr]) -> bool {
     })
 }
 
-fn collect_access_fields(rules: &[RuleAttr], current: &str, access_fields: &mut BTreeSet<String>) {
+fn collect_access(
+    rules: &[RuleAttr],
+    current: &syn::Ident,
+    field_members: &BTreeMap<String, syn::Ident>,
+    access_fields: &mut BTreeSet<String>,
+    access_paths: &mut BTreeMap<String, Vec<syn::Ident>>,
+) -> syn::Result<()> {
     if exposes_value_access(rules) {
-        access_fields.insert(current.to_owned());
+        access_fields.insert(canonical(current));
     }
 
     for rule in rules {
         if let RuleAttr::FieldRule { name, params } = rule {
             for target in field_targets(name, params) {
-                access_fields.insert(target.to_owned());
-            }
-        }
-    }
-}
+                if supports_nested_target(name) {
+                    let mut segments = parse_field_path(name, target)?;
+                    let first_name = canonical(
+                        segments
+                            .first()
+                            .expect("validated field path must contain a segment"),
+                    );
+                    let Some(first) = field_members.get(&first_name) else {
+                        return Err(syn::Error::new(
+                            proc_macro2::Span::call_site(),
+                            format!(
+                                "validate rule '{name}' references unknown field '{first_name}' in path '{target}'"
+                            ),
+                        ));
+                    };
+                    segments[0] = first.clone();
 
-fn validate_field_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) -> syn::Result<()> {
-    for rule in rules {
-        if let RuleAttr::FieldRule { name, params } = rule {
-            for target in field_targets(name, params) {
-                if !field_names.contains(target) {
+                    if segments.len() == 1 {
+                        access_fields.insert(first_name);
+                    } else {
+                        access_paths.entry(target.to_owned()).or_insert(segments);
+                    }
+                } else if field_members.contains_key(target) {
+                    access_fields.insert(target.to_owned());
+                } else {
                     return Err(syn::Error::new(
                         proc_macro2::Span::call_site(),
                         format!("validate rule '{name}' references unknown field '{target}'"),
@@ -269,6 +318,39 @@ fn validate_field_targets(rules: &[RuleAttr], field_names: &BTreeSet<String>) ->
     }
 
     Ok(())
+}
+
+fn supports_nested_target(rule: &str) -> bool {
+    !CONDITIONAL_PAIR_RULES.contains(&rule) && !CONDITIONAL_FIELD_LIST_RULES.contains(&rule)
+}
+
+fn parse_field_path(rule: &str, path: &str) -> syn::Result<Vec<syn::Ident>> {
+    if path.is_empty() {
+        return Err(invalid_field_path(rule, path));
+    }
+
+    path.split('.')
+        .map(|segment| {
+            if segment.is_empty() {
+                return Err(invalid_field_path(rule, path));
+            }
+
+            let ident = member_name(segment).ok_or_else(|| invalid_field_path(rule, path))?;
+            if canonical(&ident) != segment {
+                return Err(invalid_field_path(rule, path));
+            }
+            Ok(ident)
+        })
+        .collect()
+}
+
+fn invalid_field_path(rule: &str, path: &str) -> syn::Error {
+    syn::Error::new(
+        proc_macro2::Span::call_site(),
+        format!(
+            "validate rule '{rule}' has invalid field path '{path}'; expected dot-separated Rust field identifiers"
+        ),
+    )
 }
 
 fn field_targets<'a>(rule: &str, params: &'a [ParamAttr]) -> Vec<&'a str> {
@@ -1058,9 +1140,15 @@ fn canonical(ident: &syn::Ident) -> String {
 
 fn member(field: &LitStr) -> syn::Result<syn::Ident> {
     let name = field.value();
-    syn::parse_str::<syn::Ident>(&name)
+    member_name(&name).ok_or_else(|| {
+        syn::Error::new_spanned(field, "unique field must be a Rust field identifier")
+    })
+}
+
+fn member_name(name: &str) -> Option<syn::Ident> {
+    syn::parse_str::<syn::Ident>(name)
         .or_else(|_| syn::parse_str::<syn::Ident>(&format!("r#{name}")))
-        .map_err(|_| syn::Error::new_spanned(field, "unique field must be a Rust field identifier"))
+        .ok()
 }
 
 const CONDITIONAL_PAIR_RULES: &[&str] = &[

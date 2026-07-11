@@ -24,7 +24,9 @@ pub use validator_derive::Validate;
 
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::core::{Access, Context, FieldRef, Projection, RawParams, Spec};
+    pub use crate::core::{
+        Access, Context, FieldRef, Projection, RawParams, Resolve, Segment, Spec,
+    };
 }
 
 pub mod prelude {

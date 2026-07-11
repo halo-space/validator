@@ -2071,6 +2071,48 @@ fields:
 }
 
 #[test]
+fn schema_unique_field_distinguishes_absent_and_empty_fields() {
+    let without_fields = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: email
+"#,
+    )
+    .unwrap();
+    let error = Validator::with_schema(without_fields)
+        .validate_map(&json!({ "users": [] }))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        Error::InvalidSchema { reason }
+            if reason.contains("requires an array with object fields")
+    ));
+
+    let empty_fields = Schema::from_yaml(
+        r#"
+fields:
+  users:
+    type: array
+    rules:
+      - unique: email
+    fields: {}
+"#,
+    )
+    .unwrap();
+    let error = Validator::with_schema(empty_fields)
+        .validate_map(&json!({ "users": [] }))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        Error::InvalidSchema { reason }
+            if reason.contains("references undeclared item field 'email'")
+    ));
+}
+
+#[test]
 fn schema_unique_field_treats_missing_and_null_as_none() {
     let schema = Schema::from_yaml(
         r#"

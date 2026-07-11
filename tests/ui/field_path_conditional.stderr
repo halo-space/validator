@@ -1,0 +1,7 @@
+error: validate rule 'required_with' references unknown field 'profile.email'
+ --> tests/ui/field_path_conditional.rs:8:17
+  |
+8 | #[derive(Debug, Validate)]
+  |                 ^^^^^^^^
+  |
+  = note: this error originates in the derive macro `Validate` (in Nightly builds, run with -Z macro-backtrace for more info)

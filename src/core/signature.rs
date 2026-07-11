@@ -146,6 +146,13 @@ impl Signature {
         }
     }
 
+    pub(crate) fn field_target(self, params: &Params) -> Option<&str> {
+        match self.fields {
+            Fields::Text(name) => params.text(name),
+            Fields::None | Fields::List(_) | Fields::Pairs(_) => None,
+        }
+    }
+
     pub(crate) fn requires_items(self, params: &Params) -> bool {
         self.items && !params.is_empty()
     }

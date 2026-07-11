@@ -92,11 +92,29 @@ impl Schema {
 }
 
 #[derive(Clone, Debug)]
+enum Fields<T> {
+    Absent,
+    Declared(T),
+}
+
+impl<T> Fields<T> {
+    const fn declared(&self) -> Option<&T> {
+        match self {
+            Self::Absent => None,
+            Self::Declared(fields) => Some(fields),
+        }
+    }
+
+    const fn is_declared(&self) -> bool {
+        matches!(self, Self::Declared(_))
+    }
+}
+
+#[derive(Clone, Debug)]
 struct FieldDef {
     ty: Option<Type>,
     exprs: Vec<Expr>,
-    fields: BTreeMap<String, FieldDef>,
-    has_fields: bool,
+    fields: Fields<BTreeMap<String, FieldDef>>,
 }
 
 impl FieldDef {
@@ -114,18 +132,16 @@ impl FieldDef {
             &["type", "rules", "fields"],
             &format!("field '{name}'"),
         )?;
-        let has_fields = object.contains_key("fields");
-        let fields = object
-            .get("fields")
-            .map(|fields| parse_fields(name, fields))
-            .transpose()?
-            .unwrap_or_default();
+        let fields = match object.get("fields") {
+            Some(fields) => Fields::Declared(parse_fields(name, fields)?),
+            None => Fields::Absent,
+        };
         let ty = object
             .get("type")
             .map(|value| Type::from_value(name, value))
             .transpose()?
-            .or(has_fields.then_some(Type::Object));
-        if has_fields && !matches!(ty, Some(Type::Array | Type::Object)) {
+            .or(fields.is_declared().then_some(Type::Object));
+        if fields.is_declared() && !matches!(ty, Some(Type::Array | Type::Object)) {
             return Err(invalid(format!(
                 "field '{name}' can define nested fields only for type 'object' or 'array'"
             )));
@@ -136,12 +152,7 @@ impl FieldDef {
             .transpose()?
             .unwrap_or_default();
 
-        Ok(Self {
-            ty,
-            exprs,
-            fields,
-            has_fields,
-        })
+        Ok(Self { ty, exprs, fields })
     }
 }
 
@@ -214,17 +225,15 @@ impl Type {
 }
 
 pub(crate) struct Tree {
-    fields: BTreeMap<String, Node>,
+    root: Scope,
 }
 
 impl Tree {
     fn compile(fields: &BTreeMap<String, FieldDef>, registry: &Registry) -> Result<Self, Error> {
-        let fields = fields
-            .iter()
-            .map(|(name, field)| Ok((name.clone(), Node::compile(field, fields, registry)?)))
-            .collect::<Result<BTreeMap<_, _>, Error>>()?;
-        let tree = Self { fields };
-        preflight_fields(&Context::new(), "", &tree.fields)?;
+        let tree = Self {
+            root: Scope::compile(fields, registry)?,
+        };
+        preflight_fields(&Context::new(), "", &tree.root)?;
         Ok(tree)
     }
 
@@ -247,15 +256,36 @@ impl Tree {
             return Ok(());
         };
 
-        validate_fields(context, errors, "", &self.fields, object)
+        validate_fields(context, errors, "", &self.root, object)
+    }
+}
+
+struct Scope {
+    fields: BTreeMap<String, Node>,
+    paths: BTreeMap<String, Path>,
+}
+
+impl Scope {
+    fn compile(fields: &BTreeMap<String, FieldDef>, registry: &Registry) -> Result<Self, Error> {
+        let mut paths = BTreeMap::new();
+        let fields = fields
+            .iter()
+            .map(|(name, field)| {
+                Ok((
+                    name.clone(),
+                    Node::compile(field, fields, registry, &mut paths)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>, Error>>()?;
+
+        Ok(Self { fields, paths })
     }
 }
 
 struct Node {
     ty: Option<Type>,
     group: Group,
-    fields: BTreeMap<String, Node>,
-    has_fields: bool,
+    children: Fields<Scope>,
 }
 
 impl Node {
@@ -263,31 +293,35 @@ impl Node {
         field: &FieldDef,
         siblings: &BTreeMap<String, FieldDef>,
         registry: &Registry,
+        paths: &mut BTreeMap<String, Path>,
     ) -> Result<Self, Error> {
-        let item_fields = (field.ty == Some(Type::Array)).then_some(&field.fields);
+        let item_fields = if field.ty == Some(Type::Array) {
+            field.fields.declared()
+        } else {
+            None
+        };
         ensure_field_targets(
             &field.exprs,
             siblings,
             item_fields,
             registry,
             &mut Vec::new(),
+            paths,
         )?;
         let group = if item_fields.is_some() {
             Group::compile_with_fields_and_items(&field.exprs, registry)?
         } else {
             Group::compile_with_fields(&field.exprs, registry)?
         };
-        let children = &field.fields;
-        let fields = children
-            .iter()
-            .map(|(name, field)| Ok((name.clone(), Self::compile(field, children, registry)?)))
-            .collect::<Result<BTreeMap<_, _>, Error>>()?;
+        let children = match &field.fields {
+            Fields::Absent => Fields::Absent,
+            Fields::Declared(fields) => Fields::Declared(Scope::compile(fields, registry)?),
+        };
 
         Ok(Self {
             ty: field.ty,
             group,
-            fields,
-            has_fields: field.has_fields,
+            children,
         })
     }
 }
@@ -298,16 +332,17 @@ fn ensure_field_targets(
     item_fields: Option<&BTreeMap<String, FieldDef>>,
     registry: &Registry,
     aliases: &mut Vec<String>,
+    paths: &mut BTreeMap<String, Path>,
 ) -> Result<(), Error> {
     for expr in exprs {
         if let Some(spec) = expr.single() {
-            ensure_field_target(spec, fields, item_fields, registry, aliases)?;
+            ensure_field_target(spec, fields, item_fields, registry, aliases, paths)?;
             continue;
         }
 
         if let Some(alternatives) = expr.alternatives() {
             for spec in alternatives {
-                ensure_field_target(spec, fields, item_fields, registry, aliases)?;
+                ensure_field_target(spec, fields, item_fields, registry, aliases, paths)?;
             }
         }
     }
@@ -321,6 +356,7 @@ fn ensure_field_target(
     item_fields: Option<&BTreeMap<String, FieldDef>>,
     registry: &Registry,
     aliases: &mut Vec<String>,
+    paths: &mut BTreeMap<String, Path>,
 ) -> Result<(), Error> {
     let (signature, params) = match registry.get(spec.name()) {
         Some(Entry::Rule(rule)) => {
@@ -336,7 +372,7 @@ fn ensure_field_target(
                 });
             }
             aliases.push(spec.name().to_owned());
-            ensure_field_targets(exprs, fields, item_fields, registry, aliases)?;
+            ensure_field_targets(exprs, fields, item_fields, registry, aliases, paths)?;
             aliases.pop();
             return Ok(());
         }
@@ -350,8 +386,19 @@ fn ensure_field_target(
             )));
         }
 
+        let path_target = signature.field_target(&params);
         for target in targets {
-            if !fields.contains_key(target) {
+            if path_target == Some(target) {
+                let path = Path::compile(spec.name(), target, fields)?;
+                if path.segments.len() > 1 && fields.contains_key(target) {
+                    return Err(invalid(format!(
+                        "field rule '{}' path '{}' conflicts with a literal field of the same name",
+                        spec.name(),
+                        target
+                    )));
+                }
+                paths.entry(target.to_owned()).or_insert(path);
+            } else if !fields.contains_key(target) {
                 return Err(invalid(format!(
                     "field rule '{}' references undeclared field '{}'",
                     spec.name(),
@@ -388,6 +435,66 @@ fn ensure_field_target(
     }
 
     Ok(())
+}
+
+struct Path {
+    name: String,
+    segments: Vec<String>,
+    ty: Option<Type>,
+}
+
+impl Path {
+    fn compile(rule: &str, name: &str, fields: &BTreeMap<String, FieldDef>) -> Result<Self, Error> {
+        if !name.contains('.') {
+            let field = fields.get(name).ok_or_else(|| {
+                invalid(format!(
+                    "field rule '{rule}' references undeclared field '{name}'"
+                ))
+            })?;
+            return Ok(Self {
+                name: name.to_owned(),
+                segments: vec![name.to_owned()],
+                ty: field.ty,
+            });
+        }
+
+        let segments = parse_path(rule, name)?;
+        let mut fields = fields;
+        let mut ty = None;
+
+        for (index, segment) in segments.iter().enumerate() {
+            let Some(field) = fields.get(segment) else {
+                let reason = if segments.len() == 1 {
+                    format!("field rule '{rule}' references undeclared field '{name}'")
+                } else {
+                    format!("field rule '{rule}' references undeclared path '{name}'")
+                };
+                return Err(invalid(reason));
+            };
+            if index + 1 == segments.len() {
+                ty = field.ty;
+                break;
+            }
+            if field.ty != Some(Type::Object) {
+                let prefix = segments[..=index].join(".");
+                return Err(invalid(format!(
+                    "field rule '{rule}' path '{name}' requires object segment '{prefix}'"
+                )));
+            }
+            let Some(children) = field.fields.declared() else {
+                return Err(invalid(format!(
+                    "field rule '{rule}' references undeclared path '{name}'"
+                )));
+            };
+            fields = children;
+        }
+
+        Ok(Self {
+            name: name.to_owned(),
+            segments,
+            ty,
+        })
+    }
 }
 
 struct SchemaValue<'a> {
@@ -455,30 +562,40 @@ impl Value for SchemaValue<'_> {
 }
 
 struct SchemaAccess<'a> {
-    values: BTreeMap<&'a str, SchemaValue<'a>>,
+    fields: BTreeMap<&'a str, SchemaValue<'a>>,
+    paths: BTreeMap<&'a str, SchemaValue<'a>>,
 }
 
 impl<'a> SchemaAccess<'a> {
-    fn new(
-        fields: &'a BTreeMap<String, Node>,
-        object: &'a serde_json::Map<String, JsonValue>,
-    ) -> Self {
-        let values = fields
+    fn new(scope: &'a Scope, object: &'a serde_json::Map<String, JsonValue>) -> Self {
+        let fields = scope
+            .fields
             .iter()
             .map(|(name, field)| (name.as_str(), SchemaValue::new(object.get(name), field.ty)))
+            .collect::<BTreeMap<_, _>>();
+        let paths = scope
+            .paths
+            .values()
+            .map(|path| {
+                (
+                    path.name.as_str(),
+                    SchemaValue::new(resolve(object, &path.segments), path.ty),
+                )
+            })
             .collect();
-        Self { values }
+        Self { fields, paths }
     }
 
     fn get(&self, name: &str) -> Option<&SchemaValue<'a>> {
-        self.values.get(name)
+        self.fields.get(name)
     }
 }
 
 impl Access for SchemaAccess<'_> {
     fn field<'a>(&'a self, name: &'a str) -> Option<FieldRef<'a>> {
-        self.values
+        self.paths
             .get(name)
+            .or_else(|| self.fields.get(name))
             .map(|value| FieldRef::new(name, value))
     }
 }
@@ -491,24 +608,24 @@ enum JsonItem<'a> {
 
 struct JsonItems<'a> {
     values: Vec<JsonItem<'a>>,
-    fields: &'a BTreeMap<String, Node>,
+    scope: &'a Scope,
 }
 
 impl<'a> JsonItems<'a> {
-    fn new(values: &'a [JsonValue], fields: &'a BTreeMap<String, Node>) -> Self {
+    fn new(values: &'a [JsonValue], scope: &'a Scope) -> Self {
         let values = values
             .iter()
             .map(|value| {
                 if value.is_null() {
                     JsonItem::Null
                 } else if let Some(object) = value.as_object() {
-                    JsonItem::Object(SchemaAccess::new(fields, object))
+                    JsonItem::Object(SchemaAccess::new(scope, object))
                 } else {
                     JsonItem::Invalid
                 }
             })
             .collect();
-        Self { values, fields }
+        Self { values, scope }
     }
 }
 
@@ -518,11 +635,12 @@ impl Items for JsonItems<'_> {
         field: &str,
         visitor: &mut dyn FnMut(Option<&'a dyn Value>) -> bool,
     ) -> Result<(), Error> {
-        if !self.fields.contains_key(field) {
+        if !self.scope.fields.contains_key(field) {
             return Err(invalid(format!("undeclared array item field '{field}'")));
         }
 
         let definition = self
+            .scope
             .fields
             .get(field)
             .expect("projected field is checked above");
@@ -553,11 +671,11 @@ fn validate_fields<'a>(
     context: &Context,
     errors: &mut Vec<FieldError>,
     parent: &str,
-    fields: &'a BTreeMap<String, Node>,
+    scope: &'a Scope,
     object: &'a serde_json::Map<String, JsonValue>,
 ) -> Result<(), Error> {
-    let access = SchemaAccess::new(fields, object);
-    for (name, field) in fields {
+    let access = SchemaAccess::new(scope, object);
+    for (name, field) in &scope.fields {
         let target = FieldTarget::schema_field(parent, name);
         let value = access
             .get(name)
@@ -591,34 +709,35 @@ fn validate_fields<'a>(
             let values = raw
                 .as_array()
                 .expect("array type is checked before rule execution");
-            let items = JsonItems::new(values, &field.fields);
-            field.group.run_with_fields_and_items(
-                errors,
-                target.clone(),
-                value,
-                context,
-                &access,
-                &items,
-            )?;
-            validate_array_fields(
-                context,
-                errors,
-                parent,
-                name,
-                &field.fields,
-                field.has_fields,
-                values,
-            )?;
+            match &field.children {
+                Fields::Absent => {
+                    field
+                        .group
+                        .run_with_fields(errors, target.clone(), value, context, &access)?;
+                }
+                Fields::Declared(children) => {
+                    let items = JsonItems::new(values, children);
+                    field.group.run_with_fields_and_items(
+                        errors,
+                        target.clone(),
+                        value,
+                        context,
+                        &access,
+                        &items,
+                    )?;
+                    validate_array_fields(context, errors, parent, name, children, values)?;
+                }
+            }
         } else {
             field
                 .group
                 .run_with_fields(errors, target.clone(), value, context, &access)?;
 
-            if !field.fields.is_empty()
-                && let Some(child) = raw.as_object()
+            if let Fields::Declared(children) = &field.children
+                && let Some(object) = raw.as_object()
             {
                 let parent = namespace(parent, name);
-                validate_fields(context, errors, &parent, &field.fields, child)?;
+                validate_fields(context, errors, &parent, children, object)?;
             }
         }
     }
@@ -626,15 +745,11 @@ fn validate_fields<'a>(
     Ok(())
 }
 
-fn preflight_fields(
-    context: &Context,
-    parent: &str,
-    fields: &BTreeMap<String, Node>,
-) -> Result<(), Error> {
+fn preflight_fields(context: &Context, parent: &str, scope: &Scope) -> Result<(), Error> {
     let object = serde_json::Map::new();
-    let access = SchemaAccess::new(fields, &object);
+    let access = SchemaAccess::new(scope, &object);
 
-    for (name, field) in fields {
+    for (name, field) in &scope.fields {
         let target = FieldTarget::schema_field(parent, name);
         let value = access
             .get(name)
@@ -643,8 +758,8 @@ fn preflight_fields(
             .group
             .validate_with_fields(target, value, context, &access)?;
 
-        if !field.fields.is_empty() {
-            preflight_fields(context, &namespace(parent, name), &field.fields)?;
+        if let Fields::Declared(children) = &field.children {
+            preflight_fields(context, &namespace(parent, name), children)?;
         }
     }
 
@@ -656,14 +771,9 @@ fn validate_array_fields(
     errors: &mut Vec<FieldError>,
     parent: &str,
     name: &str,
-    fields: &BTreeMap<String, Node>,
-    has_fields: bool,
+    scope: &Scope,
     values: &[JsonValue],
 ) -> Result<(), Error> {
-    if !has_fields {
-        return Ok(());
-    }
-
     let array = namespace(parent, name);
     for (index, value) in values.iter().enumerate() {
         let Some(object) = value.as_object() else {
@@ -679,13 +789,7 @@ fn validate_array_fields(
             continue;
         };
 
-        validate_fields(
-            context,
-            errors,
-            &format!("{array}[{index}]"),
-            fields,
-            object,
-        )?;
+        validate_fields(context, errors, &format!("{array}[{index}]"), scope, object)?;
     }
 
     Ok(())
@@ -799,6 +903,55 @@ fn namespace(parent: &str, field: &str) -> String {
     } else {
         format!("{parent}.{field}")
     }
+}
+
+fn resolve<'a>(
+    object: &'a serde_json::Map<String, JsonValue>,
+    segments: &[String],
+) -> Option<&'a JsonValue> {
+    let mut value = object.get(segments.first()?)?;
+    for segment in &segments[1..] {
+        value = value.as_object()?.get(segment)?;
+    }
+    Some(value)
+}
+
+fn parse_path(rule: &str, path: &str) -> Result<Vec<String>, Error> {
+    if path.is_empty() {
+        return Err(invalid_path(rule, path));
+    }
+
+    path.split('.')
+        .map(|segment| {
+            if is_identifier(segment) {
+                Ok(segment.to_owned())
+            } else {
+                Err(invalid_path(rule, path))
+            }
+        })
+        .collect()
+}
+
+fn is_identifier(segment: &str) -> bool {
+    if segment.is_empty()
+        || segment.starts_with("r#")
+        || matches!(segment, "_" | "Self" | "crate" | "self" | "super")
+    {
+        return false;
+    }
+
+    let mut chars = segment.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first == '_' || unicode_ident::is_xid_start(first))
+        && chars.all(unicode_ident::is_xid_continue)
+}
+
+fn invalid_path(rule: &str, path: &str) -> Error {
+    invalid(format!(
+        "field rule '{rule}' has invalid field path '{path}'; expected dot-separated Rust field identifiers"
+    ))
 }
 
 fn invalid(reason: impl Into<String>) -> Error {

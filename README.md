@@ -65,6 +65,8 @@ For that reason, `validator` keeps the user-facing API centered on
 field metadata and access code needed by the validation engine. This avoids
 requiring users to derive a separate reflection trait while keeping rule
 execution, `Value` dispatch, errors, and i18n centralized.
+Generated access remains selective: direct fields and complete nested targets
+are emitted only when a validation attribute actually references them.
 
 This layer is intentionally an internal implementation detail. If Rust gains a
 stable reflection story, or a reflection crate becomes mature enough to hide
@@ -268,7 +270,8 @@ preflight work even when no concrete value is present.
 
 ## Cross-Field Validation
 
-Use `*_field` rules when one field should be compared with a sibling field.
+Use `*_field` rules when one field should be compared with a sibling or a
+downward nested field.
 
 ```rust
 use validator::prelude::*;
@@ -288,21 +291,45 @@ struct Event {
     #[validate(gt_field = "start_at")]
     end_at: i64,
 }
+
+struct Contact {
+    email: String,
+}
+
+struct Profile {
+    contact: Contact,
+}
+
+#[derive(Debug, Validate)]
+struct Account {
+    profile: Option<Profile>,
+
+    #[validate(eq_field = "profile.contact.email")]
+    email: String,
+}
 ```
 
 Supported rules are `eq_field`, `ne_field`, `gt_field`, `gte_field`,
-`lt_field`, and `lte_field`. Target names are same-level sibling fields. Missing
-or `None` target values fail validation; a current `Option::None` skips the
+`lt_field`, and `lte_field`. A one-segment target remains a same-level sibling;
+a dotted target is relative to the struct containing the validated field and
+walks downward. Every `Option<T>` segment is borrowed automatically. If any
+target segment is `None`, the target is missing and every comparison rule,
+including `ne_field`, fails. A current `Option::None` still skips the
 cross-field rule unless `required` is also present.
+
+Only the terminal target must implement `Value`; intermediate structs do not
+need `Value` or `Validate`. Reading a path does not run nested validation:
+`#[validate(nested)]` remains the only derive instruction that validates the
+nested struct itself. Paths accept canonical dot-separated Rust field names
+only. They do not support parent/root traversal, arrays, map keys, or
+wildcards. A raw field such as `r#type` is written as `"type"`.
 
 Equality and ordering are separate: string equality compares content, while
 ordered string rules compare Unicode character count. Collections compare item
 count, numeric and `SystemTime` values use their own families, and bool supports
-only `eq_field` / `ne_field`. Float NaN is unequal and unordered. Raw Rust field
-names use their canonical spelling in string targets and errors, so a field
-declared as `r#type` is referenced as `"type"`.
+only `eq_field` / `ne_field`. Float NaN is unequal and unordered.
 
-Conditional field rules also use sibling fields:
+Conditional field rules continue to use same-level sibling fields:
 
 ```rust
 #[derive(Debug, Validate)]
@@ -644,6 +671,31 @@ fields:
 This path reuses the same rule registry, aliases, `Value` dispatch, `Error`,
 and `Namespace` model as code-level validation.
 
+Schema single-target field rules use the same relative dotted syntax:
+
+```yaml
+fields:
+  profile:
+    type: object
+    fields:
+      email:
+        type: string
+  email:
+    type: string
+    rules:
+      - eq_field: profile.email
+```
+
+Every intermediate Schema segment must be a declared `object`; arrays are not
+traversed by this feature. Missing or null runtime segments produce a missing
+target while preserving the terminal field's declared `Kind`. Schema aliases
+may contain dotted field rules because alias expansion and path validation both
+run while the Schema tree is compiled. A one-segment target is an exact
+serialized field name, so names such as `source-url` remain valid. A target
+containing `.` always means a nested path; Schema compilation rejects a scope
+that also declares a literal dotted field with the same name rather than
+choosing one meaning by precedence.
+
 Schema resources are strict. The top level accepts only `fields`, and each
 field definition accepts only `type`, `rules`, and `fields`. The only type names
 are `string`, `boolean`, `integer`, `uint`, `number`, `array`, and `object`.
@@ -852,6 +904,8 @@ These are intentional limits in the current API surface:
 - `unique=field` supports only direct element fields in Vec, arrays, slice
   references, and Schema object arrays; it does not support maps, nested paths,
   native direct values, or use inside `dive(...)`.
+- Nested field targets are relative and downward-only. Parent/root paths,
+  collection indices, map keys, and conditional-rule paths are not supported.
 - Derive code must spell `#[validate(unique = "field")]` explicitly because a
   runtime alias cannot generate Rust field access. Schema aliases can contain
   `unique=field` because Schema fields are available at runtime.
