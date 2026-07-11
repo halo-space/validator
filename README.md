@@ -1045,5 +1045,15 @@ checked with `cargo package`.
 ## Examples
 
 ```sh
-cargo run --example v1
+cargo run --example basic
+cargo run --example value
+cargo run --example collections
+cargo run --example selective
+cargo run --example custom_rule
+cargo run --example custom_value
+cargo run --example struct_check
+cargo run --example schema
+cargo run --example i18n
 ```
+
+Each example is self-contained and focuses on one validation workflow.

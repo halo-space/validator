@@ -820,5 +820,15 @@ Schema 冷/热路径、`validate_serde`、集合 dive 和 compound unique 投影
 ## 示例
 
 ```sh
-cargo run --example v1
+cargo run --example basic
+cargo run --example value
+cargo run --example collections
+cargo run --example selective
+cargo run --example custom_rule
+cargo run --example custom_value
+cargo run --example struct_check
+cargo run --example schema
+cargo run --example i18n
 ```
+
+每个示例都可以独立运行，并且只聚焦一种校验场景。
