@@ -1,9 +1,7 @@
 use std::collections::BTreeSet;
 
 use syn::meta::ParseNestedMeta;
-use syn::{
-    Expr, ExprLit, ExprUnary, Lit, LitStr, Token, UnOp, bracketed, parenthesized,
-};
+use syn::{Expr, ExprLit, ExprUnary, Lit, LitStr, Token, UnOp, bracketed, parenthesized};
 
 use super::access::parse_field_path;
 use super::ident::canonical;
@@ -185,10 +183,7 @@ fn custom_params(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ParamAttr>> {
         if content.peek(syn::Ident) && content.peek2(Token![=]) {
             let name: syn::Ident = content.parse()?;
             content.parse::<Token![=]>()?;
-            params.push(ParamAttr::Named(
-                canonical(&name),
-                param_value(&content)?,
-            ));
+            params.push(ParamAttr::Named(canonical(&name), param_value(&content)?));
         } else {
             params.push(ParamAttr::Positional(param_value(&content)?));
         }
