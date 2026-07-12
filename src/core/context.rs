@@ -16,7 +16,7 @@ impl Context<'_> {
     pub fn new() -> Self {
         Self {
             now: SystemTime::now(),
-            selection: Selection::All,
+            selection: Selection::Full,
             prefix: String::new(),
         }
     }
@@ -46,6 +46,9 @@ impl Context<'_> {
     }
 
     pub fn includes(&self, field: &str) -> bool {
+        if self.selection.is_full() {
+            return true;
+        }
         self.selection.includes(&self.path(field))
     }
 
@@ -53,8 +56,8 @@ impl Context<'_> {
         self.selection.active(&self.prefix)
     }
 
-    pub fn is_all(&self) -> bool {
-        self.selection.is_all()
+    pub fn is_full(&self) -> bool {
+        self.selection.is_full()
     }
 
     pub fn child(&self, field: &str) -> Self {
@@ -62,7 +65,7 @@ impl Context<'_> {
             now: self.now,
             selection: self.selection,
             prefix: match self.selection {
-                Selection::All => String::new(),
+                Selection::Full => String::new(),
                 Selection::Partial(_) | Selection::Except(_) | Selection::Filter(_) => {
                     self.path(field)
                 }

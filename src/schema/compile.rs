@@ -310,7 +310,6 @@ fn ensure_field_target(
 }
 
 pub(super) struct Path {
-    pub(super) name: String,
     pub(super) segments: Vec<String>,
     pub(super) ty: Option<Type>,
 }
@@ -324,7 +323,6 @@ impl Path {
                 ))
             })?;
             return Ok(Self {
-                name: name.to_owned(),
                 segments: vec![name.to_owned()],
                 ty: field.ty,
             });
@@ -361,10 +359,6 @@ impl Path {
             fields = children;
         }
 
-        Ok(Self {
-            name: name.to_owned(),
-            segments,
-            ty,
-        })
+        Ok(Self { segments, ty })
     }
 }

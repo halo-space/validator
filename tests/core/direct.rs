@@ -33,6 +33,22 @@ fn repeated_direct_value_validation_preserves_errors() {
 }
 
 #[test]
+fn cached_groups_remain_valid_after_registry_extension() -> Result<(), Box<dyn std::error::Error>> {
+    let validator = Validator::new();
+    validator.value(&"team@example.com", "required,email")?;
+
+    let validator = validator
+        .rule("slug", Slug)?
+        .alias("mail", "required,email")?;
+
+    validator.value(&"team@example.com", "required,email")?;
+    validator.value(&"hello-rust", "slug")?;
+    validator.value(&"team@example.com", "mail")?;
+
+    Ok(())
+}
+
+#[test]
 fn direct_value_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new().value(&String::new(), "omitempty,email")?;
 
@@ -191,4 +207,3 @@ fn direct_value_alias_with_unknown_rule_returns_error() -> Result<(), Box<dyn st
 
     Ok(())
 }
-

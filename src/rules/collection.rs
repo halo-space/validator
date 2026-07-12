@@ -1,8 +1,9 @@
 mod unique;
 
 use std::borrow::Cow;
-use std::collections::HashSet;
-use std::hash::Hash;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
+use std::hash::{BuildHasher, Hash, RandomState};
 use std::time::SystemTime;
 
 use crate::core::Items;
@@ -21,10 +22,37 @@ enum Part<'a> {
     Time(SystemTime),
 }
 
+enum Positions {
+    One(usize),
+    Many(Vec<usize>),
+}
+
+impl Positions {
+    fn contains(&self, parts: &[Part<'_>], start: usize, width: usize) -> bool {
+        match self {
+            Self::One(position) => parts[*position..*position + width] == parts[start..],
+            Self::Many(positions) => positions
+                .iter()
+                .any(|position| parts[*position..*position + width] == parts[start..]),
+        }
+    }
+
+    fn push(&mut self, start: usize) {
+        match self {
+            Self::One(position) => {
+                let first = *position;
+                *self = Self::Many(vec![first, start]);
+            }
+            Self::Many(positions) => positions.push(start),
+        }
+    }
+}
+
 pub(crate) fn values_are_unique<'a>(
     items: impl IntoIterator<Item = &'a dyn Value>,
 ) -> Result<bool, Error> {
-    let mut seen = HashSet::new();
+    let items = items.into_iter();
+    let mut seen = HashSet::with_capacity(items.size_hint().0);
 
     for item in items {
         match part(Some(item)) {
@@ -59,12 +87,16 @@ pub(crate) fn fields_are_unique(items: &dyn Items, fields: &[String]) -> Result<
         return field_is_unique(items, fields);
     }
 
-    let mut seen = HashSet::new();
+    let width = fields.len();
+    let capacity = items.len();
+    let mut parts = Vec::with_capacity(capacity.saturating_mul(width));
+    let mut seen = HashMap::with_capacity(capacity);
+    let hashes = RandomState::new();
     let mut unique = true;
     let mut invalid: Option<(String, Kind)> = None;
 
     items.visit(fields, &mut |values| {
-        let mut parts = Vec::with_capacity(fields.len());
+        let start = parts.len();
         let mut distinct = false;
 
         for field in fields {
@@ -72,7 +104,6 @@ pub(crate) fn fields_are_unique(items: &dyn Items, fields: &[String]) -> Result<
                 invalid = Some((field.clone(), Kind::Other));
                 return false;
             };
-
             match part(value) {
                 Ok(Some(part)) => parts.push(part),
                 Ok(None) => distinct = true,
@@ -87,15 +118,23 @@ pub(crate) fn fields_are_unique(items: &dyn Items, fields: &[String]) -> Result<
             invalid = Some(("<row>".to_owned(), Kind::Other));
             return false;
         }
-
         if distinct {
+            parts.truncate(start);
             return true;
         }
 
-        let key = parts.into_boxed_slice();
-        if !seen.insert(key) {
-            unique = false;
-            return false;
+        let hash = hashes.hash_one(&parts[start..]);
+        match seen.entry(hash) {
+            Entry::Vacant(entry) => {
+                entry.insert(Positions::One(start));
+            }
+            Entry::Occupied(mut entry) => {
+                if entry.get().contains(&parts, start, width) {
+                    unique = false;
+                    return false;
+                }
+                entry.get_mut().push(start);
+            }
         }
         true
     })?;
@@ -114,7 +153,7 @@ fn field_is_unique(items: &dyn Items, fields: &[String]) -> Result<bool, Error> 
     let field = fields
         .first()
         .expect("single-field unique requires one field");
-    let mut seen = HashSet::new();
+    let mut seen = HashSet::with_capacity(items.len());
     let mut unique = true;
     let mut invalid = None;
 

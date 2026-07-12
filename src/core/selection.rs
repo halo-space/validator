@@ -76,7 +76,7 @@ impl Fields {
 
 #[derive(Clone, Copy)]
 pub(crate) enum Selection<'a> {
-    All,
+    Full,
     Partial(&'a Fields),
     Except(&'a Fields),
     Filter(&'a dyn Fn(&Namespace) -> bool),
@@ -85,7 +85,7 @@ pub(crate) enum Selection<'a> {
 impl Selection<'_> {
     pub(crate) fn includes(&self, path: &str) -> bool {
         match self {
-            Self::All => true,
+            Self::Full => true,
             Self::Partial(fields) => fields.partial(path),
             Self::Except(fields) => fields.except(path),
             Self::Filter(filter) => {
@@ -96,7 +96,7 @@ impl Selection<'_> {
 
     pub(crate) fn active(&self, path: &str) -> bool {
         match self {
-            Self::All => true,
+            Self::Full => true,
             Self::Partial(fields) => fields.active(path, true),
             Self::Except(fields) => fields.active(path, false),
             Self::Filter(filter) => {
@@ -106,8 +106,8 @@ impl Selection<'_> {
         }
     }
 
-    pub(crate) fn is_all(&self) -> bool {
-        matches!(self, Self::All)
+    pub(crate) fn is_full(&self) -> bool {
+        matches!(self, Self::Full)
     }
 }
 

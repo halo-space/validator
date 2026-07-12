@@ -385,7 +385,7 @@ Validator::with_schema(schema).validate_map(&payload)?;
 说明：
 
 - `Schema::from_yaml` / `Schema::from_json` 负责加载配置
-- `Validator::with_schema` 负责绑定 schema，校验时按 validator generation 编译并缓存 Schema `Tree`
+- `Validator::with_schema` 负责绑定 schema，校验时按 `SchemaId` 编译并缓存 Schema `Tree`
 - `validate_map` 当前接收 `serde_json::Value` object
 - `validate_serde` 已支持 `serde::Serialize` 对象校验；它先取得并编译 Schema Tree，再序列化成 `serde_json::Value`，最后与 `validate_map` 复用同一个内部数据校验函数
 - `serde_yaml::Value` 直传可以作为后续增强，但不新增第二套 Schema 执行模型
@@ -914,8 +914,10 @@ V2 已完成增强：
 
 已实现缓存点：
 
-- direct value 的规则表达式解析和执行编译：`Validator::new().value(&value, "required,email")?` 多次使用同一个表达式时，会复用解析后的 `Vec<Expr>`，并按 validator generation 复用编译后的 `Group`。
-- dynamic Schema 的执行树：`Validator::with_schema(schema).validate_map(&data)?` 多次复用同一个 validator / schema 时，会按 `(SchemaId, generation)` 复用编译后的 `Tree`，其中每个字段节点持有对应的执行 `Group`。
+- direct value 的规则表达式解析和执行编译：`Validator::new().value(&value, "required,email")?` 多次使用同一个表达式时，会复用解析后的 `Vec<Expr>` 和编译后的 `Group`。
+- derive Spec 按完整 `Spec` 和 item access 模式复用编译后的 `Group`，热路径查询不重复克隆参数。
+- dynamic Schema 的执行树：`Validator::with_schema(schema).validate_map(&data)?` 多次复用同一个 validator / schema 时，会按 `SchemaId` 复用编译后的 `Tree`，其中每个字段节点持有对应的执行 `Group`。
+- Rule 与 Alias 只能新增、不能覆盖；失败的编译结果不写入缓存，因此注册新名称不会使已有成功缓存失效，也不需要额外缓存版本字段。
 - dynamic `regex` 规则：用户传入的 `regex(pattern="...")` 会在同一个 `RegexRule` 实例内缓存编译结果，包括非法 pattern 的失败结果。
 
 性能 benchmark 作为长期维护的工程能力保留，覆盖 derive、direct value

@@ -59,6 +59,8 @@ impl<'a, T: ?Sized> Resolve<'a> for &Segment<'a, T> {
 
 #[doc(hidden)]
 pub trait Items {
+    fn len(&self) -> usize;
+
     fn visit<'a>(&'a self, fields: &[String], visitor: &mut ItemVisitor<'a>) -> Result<(), Error>;
 }
 
@@ -104,6 +106,10 @@ impl<T> Value for Projection<'_, T> {
 }
 
 impl<T> Items for Projection<'_, T> {
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+
     fn visit<'a>(&'a self, fields: &[String], visitor: &mut ItemVisitor<'a>) -> Result<(), Error> {
         if fields.len() != self.fields.len()
             || fields

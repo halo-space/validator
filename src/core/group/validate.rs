@@ -1,7 +1,7 @@
 use crate::core::{Access, Context, Error, Items, Kind, Value};
 use crate::target::FieldTarget;
 
-use super::model::{Check, Group, Scope, Step, TypeValue};
+use super::model::{Check, FieldMeta, Group, Scope, Step, TypeValue};
 
 impl Group {
     pub(crate) fn validate_spec<V, A>(
@@ -15,8 +15,9 @@ impl Group {
         V: Value,
         A: Access,
     {
+        let target = FieldMeta::new(target);
         self.declared_params::<V>(
-            target,
+            &target,
             Some(value),
             context,
             Scope {
@@ -36,8 +37,9 @@ impl Group {
         V: Value,
         A: Access,
     {
+        let target = FieldMeta::new(target);
         self.declared_params::<V>(
-            target,
+            &target,
             None,
             context,
             Scope {
@@ -60,8 +62,9 @@ impl Group {
         A: Access,
         I: Items,
     {
+        let target = FieldMeta::new(target);
         self.params(
-            target,
+            &target,
             value,
             context,
             Scope {
@@ -82,8 +85,9 @@ impl Group {
         V: Value,
         A: Access,
     {
+        let target = FieldMeta::new(target);
         self.params(
-            target,
+            &target,
             value,
             context,
             Scope {
@@ -95,17 +99,17 @@ impl Group {
 
     fn params<V: Value>(
         &self,
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: &V,
         context: &Context<'_>,
         scope: Scope<'_>,
     ) -> Result<(), Error> {
         for step in &self.steps {
             match step {
-                Step::Check(check) => self.check(target.clone(), value, context, check, scope)?,
+                Step::Check(check) => self.check(target, value, context, check, scope)?,
                 Step::Any { checks, .. } => {
                     for check in checks {
-                        self.check(target.clone(), value, context, check, scope)?;
+                        self.check(target, value, context, check, scope)?;
                     }
                 }
             }
@@ -115,7 +119,7 @@ impl Group {
 
     pub(super) fn declared_params<V: Value>(
         &self,
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: Option<&V>,
         context: &Context<'_>,
         scope: Scope<'_>,
@@ -132,7 +136,7 @@ impl Group {
 
     fn check<V: Value>(
         &self,
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: &V,
         context: &Context<'_>,
         check: &Check,

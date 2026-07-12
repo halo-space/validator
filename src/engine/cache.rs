@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::Error;
-use crate::core::{Expr, Group, RawParams, Spec, parse_expression};
+use crate::core::{Expr, Group, Spec, parse_expression};
 use crate::schema::{Schema, Tree};
 
 use super::Validator;
@@ -23,9 +23,7 @@ impl<T> RwLockExt<T> for RwLock<T> {
 
 #[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub(super) struct SpecKey {
-    generation: u64,
-    name: String,
-    params: RawParams,
+    spec: Spec,
     items: bool,
 }
 
@@ -51,24 +49,28 @@ impl Validator {
     }
 
     pub(super) fn compile(&self, expression: &str) -> Result<Arc<Group>, Error> {
-        let key = (self.generation, expression.to_owned());
-        if let Some(group) = self.compiled_cache.read_unpoisoned().get(&key).cloned() {
+        if let Some(group) = self
+            .compiled_cache
+            .read_unpoisoned()
+            .get(expression)
+            .cloned()
+        {
             return Ok(group);
         }
 
         let exprs = self.parse(expression)?;
         let group = Arc::new(Group::compile(exprs.as_ref(), &self.registry)?);
         let mut cache = self.compiled_cache.write_unpoisoned();
-        if let Some(group) = cache.get(&key).cloned() {
+        if let Some(group) = cache.get(expression).cloned() {
             return Ok(group);
         }
 
-        cache.insert(key, group.clone());
+        cache.insert(expression.to_owned(), group.clone());
         Ok(group)
     }
 
     pub(super) fn schema_tree(&self, schema: &Schema) -> Result<Arc<Tree>, Error> {
-        let key = (schema.id(), self.generation);
+        let key = schema.id();
         if let Some(tree) = self.schema_cache.read_unpoisoned().get(&key).cloned() {
             return Ok(tree);
         }
@@ -84,20 +86,15 @@ impl Validator {
     }
 
     pub(super) fn compile_spec(&self, spec: Spec, items: bool) -> Result<Arc<Group>, Error> {
-        let key = SpecKey {
-            generation: self.generation,
-            name: spec.name().to_owned(),
-            params: spec.params().clone(),
-            items,
-        };
+        let key = SpecKey { spec, items };
         if let Some(group) = self.spec_cache.read_unpoisoned().get(&key).cloned() {
             return Ok(group);
         }
 
         let group = Arc::new(if items {
-            Group::compile_spec_with_items(&spec, &self.registry)?
+            Group::compile_spec_with_items(&key.spec, &self.registry)?
         } else {
-            Group::compile_spec(&spec, &self.registry)?
+            Group::compile_spec(&key.spec, &self.registry)?
         });
         let mut cache = self.spec_cache.write_unpoisoned();
         if let Some(group) = cache.get(&key).cloned() {

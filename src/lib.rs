@@ -24,7 +24,7 @@ pub use self::core::{
 };
 pub use self::engine::Validator;
 pub use self::schema::Schema;
-pub(crate) use self::target::{field_error, namespace_for};
+pub(crate) use self::target::field_error;
 pub use self::traits::{Selective, Validate};
 pub use validator_derive::Validate;
 

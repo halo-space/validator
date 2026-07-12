@@ -27,6 +27,7 @@ pub use value::{FloatKind, IntKind, Kind, Number, UintKind, Value};
 
 pub(crate) use cache::{CAPACITY, Cache};
 pub(crate) use error::FieldErrorParts;
+pub(crate) use field::FieldParts;
 pub(crate) use group::{Flow, Group};
 pub(crate) use raw_params::RawParam;
 #[doc(hidden)]

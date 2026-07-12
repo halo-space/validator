@@ -15,6 +15,15 @@ pub struct Field<'a> {
     now: SystemTime,
 }
 
+pub(crate) struct FieldParts<'a> {
+    pub(crate) namespace: &'a Namespace,
+    pub(crate) struct_namespace: &'a Namespace,
+    pub(crate) field: &'a str,
+    pub(crate) struct_field: &'a str,
+    pub(crate) params: &'a Params,
+    pub(crate) value: &'a dyn Value,
+}
+
 impl<'a> Field<'a> {
     /// Creates a field context for custom validation execution.
     pub fn new(
@@ -38,16 +47,23 @@ impl<'a> Field<'a> {
         }
     }
 
-    pub(crate) fn with_context(
-        mut self,
+    pub(crate) fn for_validation(
+        parts: FieldParts<'a>,
         context: &Context<'_>,
         access: Option<&'a dyn Access>,
         items: Option<&'a dyn Items>,
     ) -> Self {
-        self.access = access;
-        self.items = items;
-        self.now = context.now();
-        self
+        Self {
+            namespace: parts.namespace,
+            struct_namespace: parts.struct_namespace,
+            field: parts.field,
+            struct_field: parts.struct_field,
+            params: parts.params,
+            value: parts.value,
+            access,
+            items,
+            now: context.now(),
+        }
     }
 
     /// Returns the runtime namespace for this field.

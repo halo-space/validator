@@ -1,12 +1,10 @@
-use std::sync::Arc;
-
 use crate::core::{
-    Access, Context, Error, Field, FieldError, Items, Namespace, Params, Rule, Value,
+    Access, Context, Error, Field, FieldError, FieldParts, Items, Params, Rule, Value,
 };
+use crate::field_error;
 use crate::target::FieldTarget;
-use crate::{field_error, namespace_for};
 
-use super::model::{Check, CheckOutput, Execution, Flow, Group, Scope, Step};
+use super::model::{Check, CheckOutput, Execution, FieldMeta, Flow, Group, Scope, Step};
 
 impl Group {
     pub(crate) fn execute<V: Value>(
@@ -17,8 +15,9 @@ impl Group {
         context: &Context<'_>,
     ) -> Result<(), Error> {
         let scope = Scope::default();
-        self.declared_params::<V>(target.clone(), Some(value), context, scope)?;
-        self.run(errors, target, value, context, None, scope)
+        let target = FieldMeta::new(target);
+        self.declared_params::<V>(&target, Some(value), context, scope)?;
+        self.run(errors, &target, value, context, None, scope)
             .map(|_| ())
     }
 
@@ -34,9 +33,10 @@ impl Group {
         V: Value,
         A: Access,
     {
+        let target = FieldMeta::new(target);
         self.run(
             errors,
-            target,
+            &target,
             value,
             context,
             None,
@@ -61,9 +61,10 @@ impl Group {
         A: Access,
         I: Items,
     {
+        let target = FieldMeta::new(target);
         self.run(
             errors,
-            target,
+            &target,
             value,
             context,
             None,
@@ -86,9 +87,10 @@ impl Group {
         V: Value,
         A: Access,
     {
+        let target = FieldMeta::new(target);
         self.run(
             errors,
-            target,
+            &target,
             value,
             context,
             None,
@@ -114,9 +116,10 @@ impl Group {
         A: Access,
         I: Items,
     {
+        let target = FieldMeta::new(target);
         self.run(
             errors,
-            target,
+            &target,
             value,
             context,
             None,
@@ -131,7 +134,7 @@ impl Group {
     fn run<V: Value>(
         &self,
         errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: &V,
         context: &Context<'_>,
         display_rule: Option<&str>,
@@ -146,16 +149,14 @@ impl Group {
         for step in &self.steps {
             match step {
                 Step::Check(check) => {
-                    if self.execute_check(errors, target.clone(), value, check, &exec)?
-                        == Flow::Stop
-                    {
+                    if self.execute_check(errors, target, value, check, &exec)? == Flow::Stop {
                         return Ok(Flow::Stop);
                     }
                 }
                 Step::Any { checks, reason } => {
                     let mut passes = false;
                     for check in checks {
-                        match self.evaluate(target.clone(), value, check, &exec)? {
+                        match self.evaluate(target, value, check, &exec)? {
                             CheckOutput::Pass => {
                                 passes = true;
                                 break;
@@ -168,7 +169,7 @@ impl Group {
                     if !passes {
                         let rule = exec.display_rule.unwrap_or(reason);
                         errors.push(field_error(
-                            target.clone(),
+                            target.target.clone(),
                             value.kind(),
                             rule,
                             reason,
@@ -185,7 +186,7 @@ impl Group {
     fn execute_check<V: Value>(
         &self,
         errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: &V,
         check: &Check,
         exec: &Execution<'_, '_, '_>,
@@ -202,15 +203,15 @@ impl Group {
                 handler,
             } => {
                 if !self.rule_passes(
-                    target.clone(),
+                    target,
                     value,
                     exec.context,
                     params,
-                    handler.clone(),
+                    handler.as_ref(),
                     exec.scope,
                 )? {
                     errors.push(field_error(
-                        target,
+                        target.target.clone(),
                         value.kind(),
                         exec.display_rule.unwrap_or(name),
                         name,
@@ -235,7 +236,7 @@ impl Group {
 
     fn evaluate<V: Value>(
         &self,
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: &V,
         check: &Check,
         exec: &Execution<'_, '_, '_>,
@@ -256,7 +257,7 @@ impl Group {
                     value,
                     exec.context,
                     params,
-                    handler.clone(),
+                    handler.as_ref(),
                     exec.scope,
                 )
                 .map(|passes| {
@@ -282,11 +283,11 @@ impl Group {
 
     fn rule_passes<V: Value>(
         &self,
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: &V,
         context: &Context<'_>,
         params: &Params,
-        handler: Arc<dyn Rule>,
+        handler: &dyn Rule,
         scope: Scope<'_>,
     ) -> Result<bool, Error> {
         if value.is_none() && !handler.validates_none() {
@@ -299,7 +300,7 @@ impl Group {
     }
 
     pub(super) fn with_field<V, T>(
-        target: FieldTarget<'_>,
+        target: &FieldMeta<'_>,
         value: &V,
         context: &Context<'_>,
         params: &Params,
@@ -309,18 +310,19 @@ impl Group {
     where
         V: Value,
     {
-        let namespace = Namespace::new(namespace_for(&target.type_name, &target.field_name));
-        let struct_namespace =
-            Namespace::new(namespace_for(&target.type_name, &target.struct_field_name));
-        let field = Field::new(
-            &namespace,
-            &struct_namespace,
-            target.field_name.as_ref(),
-            target.struct_field_name.as_ref(),
-            params,
-            value,
-        )
-        .with_context(context, scope.access, scope.items);
+        let field = Field::for_validation(
+            FieldParts {
+                namespace: &target.namespace,
+                struct_namespace: &target.struct_namespace,
+                field: target.target.field_name.as_ref(),
+                struct_field: target.target.struct_field_name.as_ref(),
+                params,
+                value,
+            },
+            context,
+            scope.access,
+            scope.items,
+        );
 
         call(&field)
     }

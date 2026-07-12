@@ -46,6 +46,10 @@ impl<'a> Collection<'a> {
 }
 
 impl CoreItems for Collection<'_> {
+    fn len(&self) -> usize {
+        self.values.len()
+    }
+
     fn visit<'a>(&'a self, fields: &[String], visitor: &mut ItemVisitor<'a>) -> Result<(), Error> {
         if let Some(field) = fields
             .iter()

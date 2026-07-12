@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crate::core::{CAPACITY, Cache, Context, Expr, Fields, Group, Registry};
-use crate::schema::{self, Schema, Tree};
+use crate::schema::{Schema, SchemaId, Tree};
 use crate::target::FieldTarget;
 use crate::traits::{Selective, Validate};
 use crate::{Error, Namespace, Rule, Value};
@@ -13,11 +13,10 @@ mod derive;
 pub struct Validator {
     registry: Registry,
     schema: Option<Schema>,
-    generation: u64,
     expression_cache: RwLock<Cache<String, Arc<Vec<Expr>>>>,
-    compiled_cache: RwLock<Cache<(u64, String), Arc<Group>>>,
+    compiled_cache: RwLock<Cache<String, Arc<Group>>>,
     spec_cache: RwLock<Cache<cache::SpecKey, Arc<Group>>>,
-    schema_cache: RwLock<Cache<(schema::SchemaId, u64), Arc<Tree>>>,
+    schema_cache: RwLock<Cache<SchemaId, Arc<Tree>>>,
 }
 
 impl Validator {
@@ -30,7 +29,6 @@ impl Validator {
         Self {
             registry,
             schema: None,
-            generation: 0,
             expression_cache: RwLock::new(Cache::new(CAPACITY)),
             compiled_cache: RwLock::new(Cache::new(CAPACITY)),
             spec_cache: RwLock::new(Cache::new(CAPACITY)),
@@ -94,14 +92,12 @@ impl Validator {
         R: Rule + Send + Sync + 'static,
     {
         self.registry.rule(name, rule)?;
-        self.bump_generation();
         Ok(self)
     }
 
     /// Registers an alias for a reusable rule expression.
     pub fn alias(mut self, name: impl Into<String>, expr: impl AsRef<str>) -> Result<Self, Error> {
         self.registry.alias(name, expr)?;
-        self.bump_generation();
         Ok(self)
     }
 
@@ -152,10 +148,6 @@ impl Validator {
         } else {
             Err(Error::failed(errors))
         }
-    }
-
-    fn bump_generation(&mut self) {
-        self.generation = self.generation.wrapping_add(1);
     }
 }
 

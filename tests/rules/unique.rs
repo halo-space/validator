@@ -306,6 +306,21 @@ struct UniqueCompoundFloat {
     users: Vec<UniqueCompoundItem>,
 }
 
+#[derive(Debug)]
+struct WideUniqueItem {
+    first: u8,
+    second: u8,
+    third: u8,
+    fourth: u8,
+    fifth: u8,
+}
+
+#[derive(Debug, Validate)]
+struct WideUniqueFields {
+    #[validate(unique = ["first", "second", "third", "fourth", "fifth"])]
+    items: Vec<WideUniqueItem>,
+}
+
 fn unique_account(email: &str, age: u32, nickname: Option<&str>, second: u64) -> UniqueAccount {
     UniqueAccount {
         email: email.to_owned(),
@@ -411,6 +426,38 @@ fn unique_compound_fields_compare_complete_nested_keys() {
         vec!["tenant_id", "profile.email"]
     );
     assert_eq!(fields[0].params().text("field"), None);
+}
+
+#[test]
+fn unique_compound_fields_support_more_than_inline_capacity() {
+    let item = |fifth| WideUniqueItem {
+        first: 1,
+        second: 2,
+        third: 3,
+        fourth: 4,
+        fifth,
+    };
+
+    Validator::new()
+        .validate(&WideUniqueFields {
+            items: vec![item(5), item(6)],
+        })
+        .unwrap();
+
+    let fields = Validator::new()
+        .validate(&WideUniqueFields {
+            items: vec![item(5), item(5)],
+        })
+        .unwrap_err()
+        .into_fields()
+        .unwrap();
+
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].rule(), "unique");
+    assert_eq!(
+        param_list(&fields[0], "fields"),
+        vec!["first", "second", "third", "fourth", "fifth"]
+    );
 }
 
 #[test]
