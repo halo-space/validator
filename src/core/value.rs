@@ -110,6 +110,21 @@ pub trait Value {
     /// Returns whether this value satisfies the `required` rule.
     fn required(&self) -> bool;
 
+    /// Returns whether this value is the type's default value.
+    ///
+    /// Most built-in value types use the same empty-value semantics for
+    /// `required` and `isdefault`. Types such as `bool` are different: both
+    /// `false` and `true` are present values, while only `false` is the
+    /// default.
+    fn is_default(&self) -> bool {
+        !self.required()
+    }
+
+    /// Returns whether this value should be skipped by `omitempty`.
+    fn is_empty_value(&self) -> bool {
+        !self.required()
+    }
+
     /// Exposes this value as text when supported.
     fn string(&self) -> Option<Cow<'_, str>> {
         None

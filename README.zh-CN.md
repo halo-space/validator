@@ -47,6 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 文档
 
+- [使用手册](docs/usage-manual.zh-CN.md)：从安装到结构体、Schema、扩展和国际化的完整接入流程。
 - [校验指南](docs/guide.zh-CN.md)：derive、嵌套结构体、集合、选择性校验、
   单值和跨字段规则。
 - [扩展能力](docs/extensions.zh-CN.md)：alias、自定义规则和自定义值类型。

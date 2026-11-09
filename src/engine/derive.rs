@@ -98,7 +98,7 @@ impl Validator {
 
     #[doc(hidden)]
     pub fn __skip_empty<V: Value>(&self, value: &V) -> bool {
-        !value.required()
+        value.is_empty_value()
     }
 
     #[doc(hidden)]

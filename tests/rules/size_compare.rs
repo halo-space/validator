@@ -180,3 +180,29 @@ fn isdefault_rejects_non_default_values() {
         vec!["isdefault", "isdefault", "isdefault", "isdefault"]
     );
 }
+
+#[derive(Debug, Validate)]
+struct RequiredBoolean {
+    #[validate(required)]
+    enabled: bool,
+}
+
+#[test]
+fn required_accepts_false_boolean_values() {
+    Validator::new()
+        .validate(&RequiredBoolean { enabled: false })
+        .unwrap();
+}
+
+#[test]
+fn isdefault_still_accepts_false_boolean_values() {
+    #[derive(Debug, Validate)]
+    struct DefaultBoolean {
+        #[validate(isdefault)]
+        enabled: bool,
+    }
+
+    Validator::new()
+        .validate(&DefaultBoolean { enabled: false })
+        .unwrap();
+}

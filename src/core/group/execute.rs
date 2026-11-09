@@ -193,7 +193,7 @@ impl Group {
     ) -> Result<Flow, Error> {
         match check {
             Check::OmitEmpty => {
-                if !value.required() {
+                if value.is_empty_value() {
                     return Ok(Flow::Stop);
                 }
             }
@@ -242,10 +242,10 @@ impl Group {
         exec: &Execution<'_, '_, '_>,
     ) -> Result<CheckOutput, Error> {
         match check {
-            Check::OmitEmpty => Ok(if value.required() {
-                CheckOutput::Pass
-            } else {
+            Check::OmitEmpty => Ok(if value.is_empty_value() {
                 CheckOutput::Stop
+            } else {
+                CheckOutput::Pass
             }),
             Check::Rule {
                 name: _,

@@ -20,6 +20,14 @@ impl<T: Value> Value for Option<T> {
         self.is_some()
     }
 
+    fn is_default(&self) -> bool {
+        self.as_ref().is_none_or(Value::is_default)
+    }
+
+    fn is_empty_value(&self) -> bool {
+        self.as_ref().is_none_or(Value::is_empty_value)
+    }
+
     fn string(&self) -> Option<Cow<'_, str>> {
         self.as_ref().and_then(Value::string)
     }
@@ -129,7 +137,15 @@ impl Value for bool {
     }
 
     fn required(&self) -> bool {
-        *self
+        true
+    }
+
+    fn is_default(&self) -> bool {
+        !*self
+    }
+
+    fn is_empty_value(&self) -> bool {
+        !*self
     }
 
     fn boolean(&self) -> Option<bool> {

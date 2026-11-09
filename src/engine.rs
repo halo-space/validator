@@ -22,18 +22,24 @@ pub struct Validator {
 impl Validator {
     /// Creates a validator with all built-in rules and aliases.
     pub fn new() -> Self {
-        let mut registry = Registry::new();
-        crate::rules::load(&mut registry).expect("default validator rules must be valid");
-        crate::rules::load_aliases(&mut registry).expect("default validator aliases must be valid");
+        Self::try_new().expect("default validator rules must be valid")
+    }
 
-        Self {
+    /// Creates a validator with all built-in rules and aliases without
+    /// panicking if the built-in registry configuration is invalid.
+    pub fn try_new() -> Result<Self, Error> {
+        let mut registry = Registry::new();
+        crate::rules::load(&mut registry)?;
+        crate::rules::load_aliases(&mut registry)?;
+
+        Ok(Self {
             registry,
             schema: None,
             expression_cache: RwLock::new(Cache::new(CAPACITY)),
             compiled_cache: RwLock::new(Cache::new(CAPACITY)),
             spec_cache: RwLock::new(Cache::new(CAPACITY)),
             schema_cache: RwLock::new(Cache::new(CAPACITY)),
-        }
+        })
     }
 
     /// Creates a validator configured to execute the supplied dynamic schema.
@@ -41,6 +47,13 @@ impl Validator {
         let mut validator = Self::new();
         validator.schema = Some(schema);
         validator
+    }
+
+    /// Creates a schema-configured validator through the fallible constructor.
+    pub fn try_with_schema(schema: Schema) -> Result<Self, Error> {
+        let mut validator = Self::try_new()?;
+        validator.schema = Some(schema);
+        Ok(validator)
     }
 
     /// Validates a value through its [`Validate`] implementation.

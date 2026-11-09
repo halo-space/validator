@@ -104,6 +104,10 @@ struct User {
 
 对于 `Option<T>`，`None` 会跳过嵌套校验。如果这个可选子结构体必须存在，可以写 `required, nested`。
 
+`required` 表示值已经提供。布尔字段的 `false` 也是一个已提供的值，因此
+`#[validate(required)] enabled: bool` 在 `enabled == false` 时会通过；如果需要检查
+布尔字段是否为默认值，应使用 `isdefault`。
+
 ## 集合 Dive
 
 当规则需要应用到集合里的每个元素时，可以使用 `dive(...)`。

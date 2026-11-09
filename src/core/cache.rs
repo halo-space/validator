@@ -22,11 +22,20 @@ where
         }
     }
 
-    pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V>
+    pub(crate) fn get<Q>(&mut self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
     {
+        if self.values.contains_key(key)
+            && let Some(index) = self
+                .order
+                .iter()
+                .position(|candidate| candidate.borrow() == key)
+            && let Some(touched) = self.order.remove(index)
+        {
+            self.order.push_back(touched);
+        }
         self.values.get(key)
     }
 
@@ -37,6 +46,11 @@ where
 
         if let Some(current) = self.values.get_mut(&key) {
             *current = value;
+            if let Some(index) = self.order.iter().position(|candidate| candidate == &key)
+                && let Some(touched) = self.order.remove(index)
+            {
+                self.order.push_back(touched);
+            }
             return;
         }
 
@@ -61,15 +75,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn evicts_oldest_entry_at_capacity() {
+    fn evicts_least_recently_used_entry_at_capacity() {
         let mut cache = Cache::new(2);
         cache.insert("first", 1);
         cache.insert("second", 2);
+        assert_eq!(cache.get(&"first"), Some(&1));
         cache.insert("third", 3);
 
         assert_eq!(cache.len(), 2);
-        assert_eq!(cache.get(&"first"), None);
-        assert_eq!(cache.get(&"second"), Some(&2));
+        assert_eq!(cache.get(&"first"), Some(&1));
+        assert_eq!(cache.get(&"second"), None);
         assert_eq!(cache.get(&"third"), Some(&3));
     }
 }

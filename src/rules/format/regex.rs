@@ -51,7 +51,7 @@ impl Regex {
     fn pattern(&self, pattern: &str) -> Result<Arc<Pattern>, crate::Error> {
         if let Some(regex) = self
             .cache
-            .read()
+            .write()
             .unwrap_or_else(|error| error.into_inner())
             .get(pattern)
             .cloned()

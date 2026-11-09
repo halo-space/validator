@@ -5,6 +5,6 @@ pub(crate) struct IsDefault;
 
 impl Rule for IsDefault {
     fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
-        Ok(!field.value().required())
+        Ok(field.value().is_default())
     }
 }

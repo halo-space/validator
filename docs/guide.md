@@ -114,6 +114,10 @@ struct User {
 For `Option<T>`, `None` skips nested validation. Use `required, nested` when
 the optional child must be present.
 
+`required` checks that a value is present. A boolean `false` is still present,
+so `#[validate(required)] enabled: bool` passes when `enabled == false`; use
+`isdefault` when the boolean must be its default value.
+
 ## Collection Dive
 
 Use `dive(...)` when rules should apply to each collection element.
