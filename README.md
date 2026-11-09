@@ -18,7 +18,7 @@ The crate is available from crates.io:
 
 ```toml
 [dependencies]
-validator = "0.1"
+validator = { package = "halo-validator", version = "0.1" }
 ```
 
 Pin an exact version and commit `Cargo.lock` when reproducible builds matter.
@@ -26,7 +26,7 @@ Pin an exact version and commit `Cargo.lock` when reproducible builds matter.
 ## Quick Start
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct User {

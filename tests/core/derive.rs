@@ -3,15 +3,15 @@ use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 use serde_json::json;
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
-fn fields(error: validator::Error) -> Vec<validator::FieldError> {
+fn fields(error: halo::validator::Error) -> Vec<halo::validator::FieldError> {
     error
         .into_fields()
         .unwrap_or_else(|| panic!("expected validation errors"))
 }
 
-fn param_list<'a>(field: &'a validator::FieldError, name: &str) -> Vec<&'a str> {
+fn param_list<'a>(field: &'a halo::validator::FieldError, name: &str) -> Vec<&'a str> {
     field
         .params()
         .list(name)
@@ -21,7 +21,7 @@ fn param_list<'a>(field: &'a validator::FieldError, name: &str) -> Vec<&'a str> 
         .collect()
 }
 
-fn param_pairs<'a>(field: &'a validator::FieldError, name: &str) -> Vec<(&'a str, &'a str)> {
+fn param_pairs<'a>(field: &'a halo::validator::FieldError, name: &str) -> Vec<(&'a str, &'a str)> {
     field
         .params()
         .pairs(name)
@@ -31,7 +31,7 @@ fn param_pairs<'a>(field: &'a validator::FieldError, name: &str) -> Vec<(&'a str
         .collect()
 }
 
-fn param_pair<'a>(field: &'a validator::FieldError, name: &str) -> Option<&'a str> {
+fn param_pair<'a>(field: &'a halo::validator::FieldError, name: &str) -> Option<&'a str> {
     field
         .params()
         .pairs("conditions")?
@@ -60,11 +60,11 @@ fn derive_exposes_validated_field_access() {
         name: "alice".to_owned(),
     };
 
-    let field = validator::__private::Access::field(&user, "name").unwrap();
+    let field = halo::validator::__private::Access::field(&user, "name").unwrap();
 
     assert_eq!(field.name(), "name");
     assert_eq!(field.value().string().as_deref(), Some("alice"));
-    assert!(validator::__private::Access::field(&user, "missing").is_none());
+    assert!(halo::validator::__private::Access::field(&user, "missing").is_none());
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn pure_nested_field_is_not_exposed_as_value_access() {
         },
     };
 
-    assert!(validator::__private::Access::field(&user, "profile").is_none());
+    assert!(halo::validator::__private::Access::field(&user, "profile").is_none());
 }
 
 #[derive(Debug, Validate)]
@@ -461,7 +461,7 @@ struct Event {
     end_at: i64,
 }
 
-fn validate_event(event: &Event, valid: &mut validator::valid::Valid<'_>) {
+fn validate_event(event: &Event, valid: &mut halo::validator::valid::Valid<'_>) {
     if event.end_at <= event.start_at {
         valid
             .field("end_at")
@@ -502,7 +502,7 @@ struct TypedFields {
     nickname: Option<String>,
 }
 
-fn validate_typed_fields(value: &TypedFields, valid: &mut validator::valid::Valid<'_>) {
+fn validate_typed_fields(value: &TypedFields, valid: &mut halo::validator::valid::Valid<'_>) {
     let _ = (&value.name, value.score, value.created_at);
     for field in ["name", "score", "created_at", "nickname"] {
         valid.field(field).rule("typed").push();
@@ -1114,7 +1114,7 @@ struct Draft {
     title: String,
 }
 
-fn validate_name_or_title(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
+fn validate_name_or_title(draft: &Draft, valid: &mut halo::validator::valid::Valid<'_>) {
     if draft.name.is_empty() && draft.title.is_empty() {
         valid
             .field("name")
@@ -1160,7 +1160,7 @@ struct CheckedFieldName {
 }
 
 fn check_unknown_field(
-    value: &CheckedFieldName, valid: &mut validator::valid::Valid<'_>,
+    value: &CheckedFieldName, valid: &mut halo::validator::valid::Valid<'_>,
 ) {
     let _ = &value.known;
     valid.field("unknown").rule("custom").push();
@@ -1218,7 +1218,7 @@ fn derive_alias_with_unknown_rule_returns_error() -> Result<(), Box<dyn std::err
 
     assert!(matches!(
         error,
-        validator::Error::UnknownRule { name } if name == "missing_rule"
+        halo::validator::Error::UnknownRule { name } if name == "missing_rule"
     ));
 
     Ok(())
@@ -1233,7 +1233,7 @@ fn derive_unknown_alias_returns_error() {
 
     assert!(matches!(
         error,
-        validator::Error::UnknownRule { name } if name == "username"
+        halo::validator::Error::UnknownRule { name } if name == "username"
     ));
 }
 

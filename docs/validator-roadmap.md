@@ -30,7 +30,7 @@ V1 主线是代码层声明式校验；V2 已引入 YAML / JSON dynamic Schema �
 最小使用示例：
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct User {
@@ -90,7 +90,7 @@ impl Validator {
 - 不定义 `ValidatorResult`、`ValidationResult`、`RuleResult` 这类别名。
 - 不使用 `register_rule`、`register_alias` 作为公开方法名，对外统一叫 `rule`、`alias`。
 - 不引入会改变公开写法的 builder 形态，例如不能把主路径改成 `Validator::builder().alias(...).build()?`。
-- 链式示例中的 `?` 只需要调用方错误类型能承载 `validator::Error`，例如应用层自定义错误或 `Box<dyn std::error::Error>`。
+- 链式示例中的 `?` 只需要调用方错误类型能承载 `halo::validator::Error`，例如应用层自定义错误或 `Box<dyn std::error::Error>`。
 
 ### 错误模型
 
@@ -763,7 +763,7 @@ labels: HashMap<String, String>
 - 不使用 `schema = "..."` 表达 struct-level 校验，避免和 V2 `Schema` 概念混淆
 - 重点是表达能力和调用体验
 - 简单同级字段比较直接使用 `#[validate(eq_field = "...")]` 这类规则
-- 结构体级错误上报使用 `validator::valid::Valid`
+- 结构体级错误上报使用 `halo::validator::valid::Valid`
 - 上报链式 API 使用 `valid.field(...).rule(...).compare(...).param(...).push()`
 
 完成标准：
@@ -954,7 +954,7 @@ unique。benchmark 不使用固定耗时阈值作为正确性判断。
 - 显式 `#[validate(nested)]`
 - `dive(...)` for `Vec` / array / slice
 - `dive(keys(...), values(...))` for map
-- `validator::valid::Valid`
+- `halo::validator::valid::Valid`
 - `#[validate(check = "...")]`
 - `eq_field` / `ne_field` / `gt_field` / `gte_field` / `lt_field` / `lte_field` derive 跨字段规则，支持同级字段和相对向下点分目标
 - Schema 中等价的 `*_field` 同级/嵌套对象字段规则，并在 Tree 编译时校验路径
@@ -972,7 +972,7 @@ unique。benchmark 不使用固定耗时阈值作为正确性判断。
 - 单目标自定义跨字段规则使用 `*_field` 命名和 `Signature::field("compare")`；derive 据此生成目标字段访问，复杂多字段逻辑使用 struct-level `check`。
 - runtime expression 严格拒绝空规则、空 alternative、不平衡括号和未闭合引号；alias 不能为空，多层 alias 保留最外层 `rule`。
 - Schema type 仅接受 `string`、`boolean`、`int`、`uint`、`float`、`array`、`object`；Locale 资源仅接受 `locale`。
-- `validator::i18n` message rendering，包含内置 `zh_cn()` / `en()`、用户 `Locale` 覆盖、locale fallback、模板查找和 `Template::Fn`。
+- `halo::validator::i18n` message rendering，包含内置 `zh_cn()` / `en()`、用户 `Locale` 覆盖、locale fallback、模板查找和 `Template::Fn`。
 - `Locale::from_yaml` / `Locale::from_json`，用于从字符串资源加载用户自定义 locale。
 - i18n 覆盖率 guard，防止新增内置 rule / alias 后遗漏 `zh-CN` / `en` 默认文案。
 - V1 network/equality common rules: `eq`, `ne`, `http`, `https`, `ip`, `ipv4`, `ipv6`, `uuid`。

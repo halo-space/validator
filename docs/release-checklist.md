@@ -4,16 +4,16 @@
 
 ## 当前结论
 
-- `validator` 和 `validator-derive` 均允许发布到 crates.io。
+- `halo-validator` 和 `halo-validator-derive` 均允许发布到 crates.io。
 - 两个包保持版本一致。
-- package name 保持 `validator` 和 `validator-derive`。
+- package name 使用 `halo-validator` 和 `halo-validator-derive`，Rust 导入名保持 `validator`。
 - 两个包均包含 `LICENSE-MIT` / `LICENSE-APACHE`。
 
 ## crates.io 用法
 
 ```toml
 [dependencies]
-validator = "0.1"
+validator = { package = "halo-validator", version = "0.1" }
 ```
 
 业务项目需要可复现构建时，应固定具体版本并提交 `Cargo.lock`。
@@ -48,11 +48,11 @@ derive 尚未进入索引的本地准备阶段，可以先检查根包的打包�
 cargo package --list --allow-dirty
 ```
 
-根包依赖 crates.io 上的 `validator-derive`，因此正式发布顺序必须是：
+根包依赖 crates.io 上的 `halo-validator-derive`，因此正式发布顺序必须是：
 
-1. 发布 `validator-derive`。
+1. 发布 `halo-validator-derive`。
 2. 等待 crates.io 索引可见后，执行根包的完整 `cargo package` 验证。
-3. 发布 `validator`。
+3. 发布 `halo-validator`。
 
 `cargo package --no-verify` 仍然需要先解析 crates.io 依赖，不能绕过 derive
 尚未发布的问题。

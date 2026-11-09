@@ -17,7 +17,7 @@ Schema 校验和可扩展规则注册表实现。项目处于早期开发阶段�
 
 ```toml
 [dependencies]
-validator = "0.1"
+validator = { package = "halo-validator", version = "0.1" }
 ```
 
 需要可复现构建时，请固定具体版本，并提交 `Cargo.lock`。
@@ -25,7 +25,7 @@ validator = "0.1"
 ## 快速开始
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct User {

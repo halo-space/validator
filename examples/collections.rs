@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Team {

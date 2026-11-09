@@ -20,7 +20,7 @@ collection dive and compound unique projection at 10, 100, and 1,000 elements.
 Use `cargo bench --bench validation -- --quick` for a short local verification
 run.
 
-The project publishes both `validator` and `validator-derive` to crates.io.
+The project publishes both `halo-validator` and `halo-validator-derive` to crates.io.
 Before publishing, package and inspect the derive crate first, then the root
 crate.
 

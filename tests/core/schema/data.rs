@@ -4,7 +4,7 @@ fn validate_map_without_schema_returns_error() {
         .validate_map(&json!({ "title": "Rust" }))
         .unwrap_err();
 
-    assert!(matches!(&error, validator::Error::MissingSchema));
+    assert!(matches!(&error, halo::validator::Error::MissingSchema));
     assert_eq!(
         error.to_string(),
         "schema is required for Schema validation"
@@ -336,7 +336,7 @@ fields:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidData { reason } if reason.contains("broken serde value")
+        halo::validator::Error::InvalidData { reason } if reason.contains("broken serde value")
     ));
 
     Ok(())
@@ -346,7 +346,7 @@ fields:
 fn validate_serde_without_schema_returns_error() {
     let error = Validator::new().validate_serde(&BrokenSerde).unwrap_err();
 
-    assert!(matches!(error, validator::Error::MissingSchema));
+    assert!(matches!(error, halo::validator::Error::MissingSchema));
 }
 
 #[test]

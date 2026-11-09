@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug)]
 struct Email(String);

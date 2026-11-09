@@ -350,7 +350,7 @@ fields:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidSchema { reason }
+        halo::validator::Error::InvalidSchema { reason }
             if reason.contains("references undeclared field 'missing'")
     ));
 
@@ -398,7 +398,7 @@ fields:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidSchema { reason }
+        halo::validator::Error::InvalidSchema { reason }
             if reason.contains("references undeclared field 'password'")
     ));
 

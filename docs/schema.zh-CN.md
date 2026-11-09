@@ -8,7 +8,7 @@
 
 ```rust
 use serde_json::json;
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
@@ -89,7 +89,7 @@ Schema 字段名跟随序列化后的数据结构，包括 `serde(rename)`、`se
 
 ```rust
 use serde::Serialize;
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Serialize)]
 struct User {

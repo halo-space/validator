@@ -179,7 +179,7 @@ fn direct_value_invalid_expression_returns_error() {
 
     assert!(matches!(
         error,
-        validator::Error::InvalidRuleExpression { .. }
+        halo::validator::Error::InvalidRuleExpression { .. }
     ));
 }
 
@@ -189,7 +189,7 @@ fn direct_value_unknown_rule_returns_error() {
 
     assert!(matches!(
         error,
-        validator::Error::UnknownRule { name } if name == "missing_rule"
+        halo::validator::Error::UnknownRule { name } if name == "missing_rule"
     ));
 }
 
@@ -202,7 +202,7 @@ fn direct_value_alias_with_unknown_rule_returns_error() -> Result<(), Box<dyn st
 
     assert!(matches!(
         error,
-        validator::Error::UnknownRule { name } if name == "missing_rule"
+        halo::validator::Error::UnknownRule { name } if name == "missing_rule"
     ));
 
     Ok(())

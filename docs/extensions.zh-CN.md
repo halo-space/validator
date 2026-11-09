@@ -7,7 +7,7 @@
 Alias 用来给一组规则起名字，适合复用常见校验组合。
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Account {
@@ -49,7 +49,7 @@ Rule 和 Alias 共用同一个名称空间。`.rule(...)` 与 `.alias(...)` 只�
 自定义规则实现 `Rule` trait，然后注册到 `Validator` 上。
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 struct Slug;
 

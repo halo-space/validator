@@ -1,8 +1,8 @@
 use std::hint::black_box;
 
 use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use halo::validator::prelude::*;
 use serde::Serialize;
-use validator::prelude::*;
 
 const DIRECT_EXPRESSION: &str = "required,email,length(min=6,max=254)";
 

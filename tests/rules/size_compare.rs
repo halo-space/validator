@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 fn param_list<'a>(field: &'a FieldError, name: &str) -> Vec<&'a str> {
     field

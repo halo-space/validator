@@ -173,7 +173,7 @@ fields:
 
     assert!(matches!(
         error,
-        validator::Error::UnknownRule { name } if name == "missing_rule"
+        halo::validator::Error::UnknownRule { name } if name == "missing_rule"
     ));
 
     Ok(())
@@ -271,7 +271,7 @@ fields:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidSchema { reason }
+        halo::validator::Error::InvalidSchema { reason }
             if reason.contains("unsupported key 'types'")
     ));
 
@@ -432,7 +432,7 @@ fields:
             .all(|field| field.params().text("value").is_none())
     );
 
-    let messages = validator::i18n::en().render(&fields);
+    let messages = halo::validator::i18n::en().render(&fields);
     assert!(
         messages
             .iter()

@@ -5,7 +5,7 @@
 //! [`Value`] for custom value types.
 #![warn(missing_docs)]
 
-extern crate self as validator;
+extern crate self as halo;
 
 mod core;
 mod engine;
@@ -43,4 +43,19 @@ pub mod prelude {
         Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
         Schema, Signature, UintKind, Validate, Validator, Value,
     };
+}
+
+/// Public validator namespace used by the `halo::validator` entry point.
+pub mod validator {
+    pub use super::__private;
+    pub use super::{
+        Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
+        Schema, Signature, UintKind, Validate, Validator, Value,
+    };
+    pub use super::{i18n, valid};
+
+    /// Common validator types for `use halo::validator::prelude::*` imports.
+    pub mod prelude {
+        pub use super::super::prelude::*;
+    }
 }

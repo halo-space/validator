@@ -1,5 +1,5 @@
-use validator::i18n::{self, Locale};
-use validator::prelude::*;
+use halo::validator::i18n::{self, Locale};
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct User {

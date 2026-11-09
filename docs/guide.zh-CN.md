@@ -5,7 +5,7 @@
 ## 基本用法
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct User {
@@ -63,7 +63,7 @@ namespace 可能被回调多次，业务逻辑不能依赖调用次数。struct-
 如果不需要定义结构体，可以直接校验一个值。
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let email = "alice@example.com";
@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 嵌套校验必须显式声明。只有写了 `nested`，子结构体才会执行自己的 `Validate` 实现。
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Profile {
@@ -113,7 +113,7 @@ struct User {
 当规则需要应用到集合里的每个元素时，可以使用 `dive(...)`。
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Form {
@@ -126,7 +126,7 @@ struct Form {
 
 ```rust
 use std::collections::HashMap;
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Labels {
@@ -142,7 +142,7 @@ Map entry 错误会带上 key，比如 `Labels.labels["source"]`。
 结构体集合可以按元素的一个或多个相对字段去重：
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug)]
 struct Profile {
@@ -167,7 +167,7 @@ struct Team {
 原生集合通过 `Value` 参与 `dive(...)` 外层的通用规则。字符串、数字等内置标量已经实现了 `Value`；自定义元素类型的集合如果要使用无参数 `unique` 等需要读取元素本身的规则，需要先为元素实现 `Value`：
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug)]
 struct Item {
@@ -208,7 +208,7 @@ struct Basket {
 当一个字段需要和同级字段或向下嵌套字段比较时，使用 `*_field` 规则。
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Signup {
@@ -294,7 +294,7 @@ struct Post {
 
 ```rust
 use std::time::{Duration, SystemTime};
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Event {
@@ -331,7 +331,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 当校验条件属于内置规则表达不了的业务逻辑时，可以使用结构体级 check 函数。
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 #[validate(check = "validate_draft")]
@@ -340,7 +340,7 @@ struct Draft {
     title: String,
 }
 
-fn validate_draft(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
+fn validate_draft(draft: &Draft, valid: &mut halo::validator::valid::Valid<'_>) {
     if draft.name.is_empty() && draft.title.is_empty() {
         valid
             .field("name")

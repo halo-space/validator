@@ -1,4 +1,4 @@
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Event {
@@ -15,7 +15,7 @@ struct Draft {
     title: String,
 }
 
-fn check_draft(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
+fn check_draft(draft: &Draft, valid: &mut halo::validator::valid::Valid<'_>) {
     if draft.name.is_empty() && draft.title.is_empty() {
         valid
             .field("name")

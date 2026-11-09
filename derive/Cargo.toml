@@ -1,5 +1,5 @@
 [package]
-name = "validator-derive"
+name = "halo-validator-derive"
 version = "0.1.0"
 edition = "2024"
 description = "Derive macro implementation for the validator crate."

@@ -1,6 +1,6 @@
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
-fn fields(error: validator::Error) -> Vec<validator::FieldError> {
+fn fields(error: halo::validator::Error) -> Vec<halo::validator::FieldError> {
     error.into_fields().expect("expected validation errors")
 }
 
@@ -17,7 +17,7 @@ fn zh_cn_renders_messages_and_keeps_context() {
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
 
-    let messages = validator::i18n::zh_cn().render(&fields);
+    let messages = halo::validator::i18n::zh_cn().render(&fields);
 
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].text, "email格式不正确");
@@ -35,7 +35,7 @@ fn en_renders_messages() {
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
 
-    let messages = validator::i18n::en().render(&fields);
+    let messages = halo::validator::i18n::en().render(&fields);
 
     assert_eq!(messages[0].text, "email must be a valid email address");
 }
@@ -46,7 +46,7 @@ fn dynamic_locale_selection_uses_fallback() {
         email: "not-email".to_owned(),
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
-    let i18n = validator::i18n::new().zh_cn().en().fallback("zh-CN");
+    let i18n = halo::validator::i18n::new().zh_cn().en().fallback("zh-CN");
 
     let en = i18n.locale("en").render(&fields);
     let fr = i18n.locale("fr").render(&fields);
@@ -61,7 +61,7 @@ fn missing_locale_and_fallback_still_render_default_text() {
         email: "not-email".to_owned(),
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
-    let i18n = validator::i18n::new().fallback("zh-CN");
+    let i18n = halo::validator::i18n::new().fallback("zh-CN");
 
     let messages = i18n.locale("fr").render(&fields);
 
@@ -74,10 +74,10 @@ fn user_locale_overrides_rule_and_field_label() {
         email: "not-email".to_owned(),
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
-    let zh = validator::i18n::Locale::new("zh-CN")
+    let zh = halo::validator::i18n::Locale::new("zh-CN")
         .rule("email", "请输入正确的{field}")
         .field("email", "邮箱");
-    let i18n = validator::i18n::new()
+    let i18n = halo::validator::i18n::new()
         .zh_cn()
         .use_locale(zh)
         .fallback("zh-CN");
@@ -94,7 +94,7 @@ fn yaml_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
         email: "not-email".to_owned(),
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
-    let zh = validator::i18n::Locale::from_yaml(
+    let zh = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
 rules:
@@ -104,7 +104,7 @@ fields:
 "#,
     )?;
 
-    let messages = validator::i18n::new()
+    let messages = halo::validator::i18n::new()
         .use_locale(zh)
         .locale("zh-CN")
         .render(&fields);
@@ -121,7 +121,7 @@ fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
         email: "not-email".to_owned(),
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
-    let en = validator::i18n::Locale::from_json(
+    let en = halo::validator::i18n::Locale::from_json(
         r#"{
   "locale": "en",
   "rules": {
@@ -133,7 +133,7 @@ fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
 }"#,
     )?;
 
-    let messages = validator::i18n::new()
+    let messages = halo::validator::i18n::new()
         .use_locale(en)
         .locale("en")
         .render(&fields);
@@ -146,7 +146,7 @@ fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn locale_loader_rejects_name_alias() {
-    let Err(error) = validator::i18n::Locale::from_yaml(
+    let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 name: zh-CN
 rules:
@@ -158,7 +158,7 @@ rules:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidData { reason }
+        halo::validator::Error::InvalidData { reason }
             if reason.contains("unknown field `name`")
                 || reason.contains("unknown field 'name'")
     ));
@@ -170,7 +170,7 @@ fn loaded_locale_overrides_builtin_locale() -> Result<(), Box<dyn std::error::Er
         email: "not-email".to_owned(),
     };
     let fields = fields(Validator::new().validate(&account).unwrap_err());
-    let zh = validator::i18n::Locale::from_yaml(
+    let zh = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
 rules:
@@ -178,7 +178,7 @@ rules:
 "#,
     )?;
 
-    let messages = validator::i18n::new()
+    let messages = halo::validator::i18n::new()
         .zh_cn()
         .use_locale(zh)
         .locale("zh-CN")
@@ -191,7 +191,7 @@ rules:
 
 #[test]
 fn locale_loader_requires_locale_name() {
-    let Err(error) = validator::i18n::Locale::from_yaml(
+    let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 rules:
   email: "{field}格式不正确"
@@ -202,7 +202,7 @@ rules:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidData { reason }
+        halo::validator::Error::InvalidData { reason }
             if reason.contains("invalid locale resource")
                 && reason.contains("locale name is required")
     ));
@@ -210,7 +210,7 @@ rules:
 
 #[test]
 fn locale_loader_rejects_invalid_rule_template() {
-    let Err(error) = validator::i18n::Locale::from_yaml(
+    let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
 rules:
@@ -223,14 +223,14 @@ rules:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidData { reason }
+        halo::validator::Error::InvalidData { reason }
             if reason.contains("invalid locale resource")
     ));
 }
 
 #[test]
 fn locale_loader_rejects_unknown_key() {
-    let Err(error) = validator::i18n::Locale::from_yaml(
+    let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
 rulse:
@@ -242,7 +242,7 @@ rulse:
 
     assert!(matches!(
         error,
-        validator::Error::InvalidData { reason }
+        halo::validator::Error::InvalidData { reason }
             if reason.contains("unknown field `rulse`")
     ));
 }
@@ -264,11 +264,11 @@ fn alias_template_is_checked_before_reason_template() -> Result<(), Box<dyn std:
             .validate(&profile)
             .unwrap_err(),
     );
-    let zh = validator::i18n::Locale::new("zh-CN")
+    let zh = halo::validator::i18n::Locale::new("zh-CN")
         .rule("username", "用户名不合法")
         .rule("length", "{field}长度必须在{min}到{max}之间");
 
-    let messages = validator::i18n::new()
+    let messages = halo::validator::i18n::new()
         .use_locale(zh)
         .locale("zh-CN")
         .render(&fields);
@@ -292,7 +292,7 @@ fn alias_falls_back_to_reason_template() -> Result<(), Box<dyn std::error::Error
             .unwrap_err(),
     );
 
-    let messages = validator::i18n::zh_cn().render(&fields);
+    let messages = halo::validator::i18n::zh_cn().render(&fields);
 
     assert_eq!(messages[0].text, "name长度必须在3到20之间");
 
@@ -308,8 +308,8 @@ fn nested_alias_uses_outer_template_and_actual_reason() -> Result<(), Box<dyn st
             .value(&"invalid", "outer")
             .unwrap_err(),
     );
-    let locale = validator::i18n::Locale::new("en").rule("outer", "outer failed {reason}");
-    let messages = validator::i18n::new()
+    let locale = halo::validator::i18n::Locale::new("en").rule("outer", "outer failed {reason}");
+    let messages = halo::validator::i18n::new()
         .use_locale(locale)
         .locale("en")
         .render(&fields);
@@ -333,8 +333,8 @@ fn built_in_locales_render_iscolor_alias_message() {
     };
     let fields = fields(Validator::new().validate(&value).unwrap_err());
 
-    let zh = validator::i18n::zh_cn().render(&fields);
-    let en = validator::i18n::en().render(&fields);
+    let zh = halo::validator::i18n::zh_cn().render(&fields);
+    let en = halo::validator::i18n::en().render(&fields);
 
     assert_eq!(fields[0].rule(), "iscolor");
     assert_eq!(fields[0].reason(), "hexcolor|rgb|rgba|hsl|hsla|cmyk");
@@ -354,12 +354,12 @@ fn function_template_can_read_param_and_kind() {
         name: "ab".to_owned(),
     };
     let fields = fields(Validator::new().validate(&bounds).unwrap_err());
-    let en = validator::i18n::Locale::new("en").rule_fn("min", |ctx| {
+    let en = halo::validator::i18n::Locale::new("en").rule_fn("min", |ctx| {
         assert_eq!(ctx.kind(), Kind::String);
         format!("{} needs {} chars", ctx.field(), ctx.param("min").unwrap())
     });
 
-    let messages = validator::i18n::new()
+    let messages = halo::validator::i18n::new()
         .use_locale(en)
         .locale("en")
         .render(&fields);
@@ -397,7 +397,7 @@ fn function_template_can_read_compound_unique_fields() {
             })
             .unwrap_err(),
     );
-    let en = validator::i18n::Locale::new("en").rule_fn("unique", |ctx| {
+    let en = halo::validator::i18n::Locale::new("en").rule_fn("unique", |ctx| {
         format!(
             "{} must be unique by {}",
             ctx.field(),
@@ -405,7 +405,7 @@ fn function_template_can_read_compound_unique_fields() {
         )
     });
 
-    let messages = validator::i18n::new()
+    let messages = halo::validator::i18n::new()
         .use_locale(en)
         .locale("en")
         .render(&fields);
@@ -423,11 +423,11 @@ fn template_substitutions_are_not_rendered_twice() {
             .value(&"actual", r#"eq(value="{field}")"#)
             .unwrap_err(),
     );
-    let locale = validator::i18n::Locale::new("en")
+    let locale = halo::validator::i18n::Locale::new("en")
         .rule("eq", "{field} expected {value} ({unknown})")
         .field("$value", "{rule}");
 
-    let messages = validator::i18n::new()
+    let messages = halo::validator::i18n::new()
         .use_locale(locale)
         .locale("en")
         .render(&fields);
@@ -480,7 +480,7 @@ fn i18n_renders_new_rule_messages() {
     };
     let fields = fields(Validator::new().validate(&value).unwrap_err());
 
-    let messages = validator::i18n::en().render(&fields);
+    let messages = halo::validator::i18n::en().render(&fields);
 
     assert_eq!(messages[0].text, "state must be equal to published");
     assert_eq!(messages[1].text, "source_url must be a valid HTTPS URL");
@@ -512,8 +512,8 @@ fn i18n_renders_cross_field_messages() {
     };
     let fields = fields(Validator::new().validate(&value).unwrap_err());
 
-    let zh = validator::i18n::zh_cn().render(&fields);
-    let en = validator::i18n::en().render(&fields);
+    let zh = halo::validator::i18n::zh_cn().render(&fields);
+    let en = halo::validator::i18n::en().render(&fields);
 
     assert_eq!(zh[0].text, "confirm_password必须等于password");
     assert_eq!(en[0].text, "confirm_password must be equal to password");

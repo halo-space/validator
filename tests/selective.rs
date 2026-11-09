@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Validate)]
 struct FlatUser {
@@ -73,13 +73,13 @@ struct CheckedNestedPath {
     profile: Profile,
 }
 
-fn check_pair(value: &CheckedPair, valid: &mut validator::valid::Valid<'_>) {
+fn check_pair(value: &CheckedPair, valid: &mut halo::validator::valid::Valid<'_>) {
     let _equal = value.left == value.right;
     valid.field("left").rule("pair").push();
     valid.field("right").rule("pair").push();
 }
 
-fn check_nested_path(value: &CheckedNestedPath, valid: &mut validator::valid::Valid<'_>) {
+fn check_nested_path(value: &CheckedNestedPath, valid: &mut halo::validator::valid::Valid<'_>) {
     let _ = &value.profile;
     valid.field("profile.email").rule("nested_pair").push();
 }

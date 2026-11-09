@@ -31,11 +31,11 @@ i18n 不负责执行校验，不改变 `Error::Failed(Vec<FieldError>)` 的结�
 动态语言是主路径：
 
 ```rust
-let zh = validator::i18n::Locale::new("zh-CN")
+let zh = halo::validator::i18n::Locale::new("zh-CN")
     .rule("email", "{field}格式不正确")
     .field("email", "邮箱");
 
-let i18n = validator::i18n::new()
+let i18n = halo::validator::i18n::new()
     .zh_cn()
     .en()
     .use_locale(zh)
@@ -49,7 +49,7 @@ let messages = i18n
 也支持一次性链式写法：
 
 ```rust
-let messages = validator::i18n::new()
+let messages = halo::validator::i18n::new()
     .zh_cn()
     .en()
     .use_locale(zh)
@@ -61,7 +61,7 @@ let messages = validator::i18n::new()
 固定语言快捷方式：
 
 ```rust
-let messages = validator::i18n::zh_cn()
+let messages = halo::validator::i18n::zh_cn()
     .render(error.fields().unwrap());
 ```
 
@@ -74,7 +74,7 @@ let messages = validator::i18n::zh_cn()
 Rust 构造示例：
 
 ```rust
-let zh = validator::i18n::Locale::new("zh-CN")
+let zh = halo::validator::i18n::Locale::new("zh-CN")
     .rule("required", "{field}不能为空")
     .rule("email", "{field}格式不正确")
     .rule("min", "{field}不能小于{min}")
@@ -89,12 +89,12 @@ let zh = validator::i18n::Locale::new("zh-CN")
 复杂规则可以使用 `.rule_fn(...)` 注册动态函数。动态函数适合 `min`、`max`、`length`、`gt`、`gte`、`lt`、`lte`、`range` 这类需要根据字段类型、参数或复数规则选择不同文案的场景。
 
 ```rust
-let zh = validator::i18n::Locale::new("zh-CN")
+let zh = halo::validator::i18n::Locale::new("zh-CN")
     .rule("email", "{field}格式不正确")
     .rule_fn("min", |ctx| {
         let min = ctx.param("min").unwrap_or_default();
         match ctx.kind() {
-            validator::Kind::String => format!("{}长度不能小于{}", ctx.field(), min),
+            halo::validator::Kind::String => format!("{}长度不能小于{}", ctx.field(), min),
             _ => format!("{}不能小于{}", ctx.field(), min),
         }
     })
@@ -122,8 +122,8 @@ impl<'a> Context<'a> {
 也可以直接注册 `Template`，用于高级场景：
 
 ```rust
-let zh = validator::i18n::Locale::new("zh-CN")
-    .template("email", validator::i18n::Template::Text("{field}格式不正确".to_owned()));
+let zh = halo::validator::i18n::Locale::new("zh-CN")
+    .template("email", halo::validator::i18n::Template::Text("{field}格式不正确".to_owned()));
 ```
 
 对应数据含义：
@@ -208,9 +208,9 @@ Redis、DB、配置中心等来源由用户自己读取，再转换成 `Locale`�
 
 ```rust
 let yaml = redis.get::<_, String>("validator:i18n:zh-CN")?;
-let zh = validator::i18n::Locale::from_yaml(&yaml)?;
+let zh = halo::validator::i18n::Locale::from_yaml(&yaml)?;
 
-let i18n = validator::i18n::new()
+let i18n = halo::validator::i18n::new()
     .zh_cn()
     .use_locale(zh)
     .fallback("zh-CN");
@@ -242,11 +242,11 @@ render 时只查合并后的最终表
 示例：
 
 ```rust
-let zh = validator::i18n::Locale::new("zh-CN")
+let zh = halo::validator::i18n::Locale::new("zh-CN")
     .rule("email", "请输入正确的{field}")
     .field("email", "邮箱");
 
-let i18n = validator::i18n::new()
+let i18n = halo::validator::i18n::new()
     .zh_cn()
     .use_locale(zh)
     .fallback("zh-CN");
@@ -385,10 +385,10 @@ Template::Fn   -> 调用 rule_fn 动态生成 text
 合并时后注册的同名 rule 覆盖先注册的同名 rule，因此用户模板可以覆盖内置动态函数：
 
 ```rust
-let i18n = validator::i18n::new()
+let i18n = halo::validator::i18n::new()
     .zh_cn()
     .use_locale(
-        validator::i18n::Locale::new("zh-CN")
+        halo::validator::i18n::Locale::new("zh-CN")
             .rule("min", "{field}太小了")
     );
 ```

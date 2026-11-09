@@ -1,4 +1,4 @@
-use validator::{Error, Validate, Validator};
+use halo::validator::{Error, Validate, Validator};
 
 struct Manual;
 

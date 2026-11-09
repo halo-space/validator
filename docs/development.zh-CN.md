@@ -18,7 +18,7 @@ Schema map 和 `validate_serde` 的成功/失败路径、选择性校验、冷/�
 以及 10、100、1,000 个元素下的集合 dive 和 compound unique 投影。
 本地快速检查可以运行 `cargo bench --bench validation -- --quick`。
 
-项目同时发布 `validator` 和 `validator-derive` 两个 crates.io 包。发布前应先打包并检查 derive 包，再检查根包。
+项目同时发布 `halo-validator` 和 `halo-validator-derive` 两个 crates.io 包，Rust 导入名仍为 `validator`。发布前应先打包并检查 derive 包，再检查根包。
 
 ## 示例
 

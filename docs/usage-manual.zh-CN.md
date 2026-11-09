@@ -8,13 +8,13 @@
 
 ```toml
 [dependencies]
-validator = "0.1"
+validator = { package = "halo-validator", version = "0.1" }
 ```
 
 也可以固定精确版本：
 
 ```toml
-validator = "=0.1.0"
+validator = { package = "halo-validator", version = "=0.1.0" }
 ```
 
 要求 Rust edition 2024，最低 rustc 版本为 1.97。
@@ -24,7 +24,7 @@ validator = "=0.1.0"
 使用 `#[derive(Validate)]` 生成校验实现：
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct User {
@@ -191,7 +191,7 @@ match Validator::new().validate(&user) {
 
 ```rust
 use serde_json::json;
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 let schema = Schema::from_yaml(r#"
 fields:
@@ -253,7 +253,7 @@ let validator = Validator::new().rule("slug", Slug)?;
 项目内置中文和英文消息：
 
 ```rust
-let messages = validator::i18n::new()
+let messages = halo::validator::i18n::new()
     .zh_cn()
     .en()
     .fallback("zh-CN")

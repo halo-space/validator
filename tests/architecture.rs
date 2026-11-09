@@ -1,5 +1,5 @@
+use halo::validator::prelude::*;
 use serde_json::json;
-use validator::prelude::*;
 
 #[derive(Debug)]
 struct Slug;

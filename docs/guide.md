@@ -5,7 +5,7 @@
 ## Usage
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct User {
@@ -68,7 +68,7 @@ a hand-written `Validate` implementation supports full validation only.
 Use `value(...)` when a struct is unnecessary.
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let email = "alice@example.com";
@@ -96,7 +96,7 @@ Nested validation is explicit. Use `nested` when a child struct should run its
 own `Validate` implementation.
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Profile {
@@ -123,7 +123,7 @@ so `#[validate(required)] enabled: bool` passes when `enabled == false`; use
 Use `dive(...)` when rules should apply to each collection element.
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Form {
@@ -139,7 +139,7 @@ iteration, so an empty collection cannot hide an invalid rule configuration.
 
 ```rust
 use std::collections::HashMap;
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Labels {
@@ -158,7 +158,7 @@ rejected during parameter preflight, so `omitempty` cannot hide invalid use of
 Struct collections can be unique by one or more element-relative fields:
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug)]
 struct Profile {
@@ -192,7 +192,7 @@ custom element type must implement `Value` before its collection can use rules
 that read the elements themselves, such as no-parameter `unique`:
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug)]
 struct Item {
@@ -240,7 +240,7 @@ Use `*_field` rules when one field should be compared with a sibling or a
 downward nested field.
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Signup {
@@ -352,7 +352,7 @@ standard-library time point closest to Go's `time.Time` use case.
 
 ```rust
 use std::time::{Duration, SystemTime};
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Event {
@@ -397,7 +397,7 @@ Use a struct-level check when validation depends on custom business logic that
 does not fit a built-in rule.
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 #[validate(check = "validate_draft")]
@@ -406,7 +406,7 @@ struct Draft {
     title: String,
 }
 
-fn validate_draft(draft: &Draft, valid: &mut validator::valid::Valid<'_>) {
+fn validate_draft(draft: &Draft, valid: &mut halo::validator::valid::Valid<'_>) {
     if draft.name.is_empty() && draft.title.is_empty() {
         valid
             .field("name")

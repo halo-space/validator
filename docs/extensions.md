@@ -7,7 +7,7 @@
 Aliases let you name reusable rule expressions.
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 #[derive(Debug, Validate)]
 struct Account {
@@ -58,7 +58,7 @@ Custom rules implement the `Rule` trait and are registered directly on
 `Validator`.
 
 ```rust
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 struct Slug;
 

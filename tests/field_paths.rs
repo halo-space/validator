@@ -1,5 +1,5 @@
+use halo::validator::prelude::*;
 use serde_json::json;
-use validator::prelude::*;
 
 fn fields(error: Error) -> Vec<FieldError> {
     error
@@ -38,11 +38,11 @@ fn derive_resolves_arbitrarily_deep_borrowed_targets() {
 
     Validator::new().validate(&user).unwrap();
 
-    let target = validator::__private::Access::field(&user, "profile.contact.email")
+    let target = halo::validator::__private::Access::field(&user, "profile.contact.email")
         .expect("referenced path must be available");
     assert_eq!(target.name(), "profile.contact.email");
     assert_eq!(target.value().string().as_deref(), Some("user@example.com"));
-    assert!(validator::__private::Access::field(&user, "profile").is_none());
+    assert!(halo::validator::__private::Access::field(&user, "profile").is_none());
 }
 
 #[test]

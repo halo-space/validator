@@ -1,4 +1,4 @@
-use validator::prelude::*;
+use halo::validator::prelude::*;
 
 struct Slug;
 
