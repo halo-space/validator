@@ -42,10 +42,10 @@ cargo package --manifest-path derive/Cargo.toml --allow-dirty
 cargo package --allow-dirty
 ```
 
-derive 尚未进入索引的本地准备阶段，可以先检查打包内容：
+derive 尚未进入索引的本地准备阶段，可以先检查根包的打包文件清单：
 
 ```sh
-cargo package --allow-dirty --no-verify
+cargo package --list --allow-dirty
 ```
 
 根包依赖 crates.io 上的 `validator-derive`，因此正式发布顺序必须是：
@@ -53,6 +53,9 @@ cargo package --allow-dirty --no-verify
 1. 发布 `validator-derive`。
 2. 等待 crates.io 索引可见后，执行根包的完整 `cargo package` 验证。
 3. 发布 `validator`。
+
+`cargo package --no-verify` 仍然需要先解析 crates.io 依赖，不能绕过 derive
+尚未发布的问题。
 
 ## 后续可选收口
 
