@@ -20,10 +20,9 @@ collection dive and compound unique projection at 10, 100, and 1,000 elements.
 Use `cargo bench --bench validation -- --quick` for a short local verification
 run.
 
-The current distribution path is Git dependency usage. Registry publishing is
-out of scope for now. The root `validator` crate is intentionally not packaged
-for crates.io in this phase; only the technical `validator-derive` package is
-checked with `cargo package`.
+The project publishes both `validator` and `validator-derive` to crates.io.
+Before publishing, package and inspect the derive crate first, then the root
+crate.
 
 ## Examples
 

@@ -1,22 +1,22 @@
 # Release Checklist
 
-本文记录 Git 依赖模式下的发布前检查结论。
+本文记录 crates.io 发布前的检查清单。
 
 ## 当前结论
 
-- 当前先不发布 crates.io，也不发布私有 registry。
-- 当前分发方式是 Git 依赖。
-- package name 保持 `validator`。
-- 根包 package 清单已经包含 `LICENSE-MIT` / `LICENSE-APACHE`。
+- `validator` 和 `validator-derive` 均允许发布到 crates.io。
+- 两个包保持版本一致。
+- package name 保持 `validator` 和 `validator-derive`。
+- 两个包均包含 `LICENSE-MIT` / `LICENSE-APACHE`。
 
-## Git 依赖用法
+## crates.io 用法
 
 ```toml
 [dependencies]
-validator = { git = "https://github.com/halo-space/validator.git" }
+validator = "0.1"
 ```
 
-业务项目需要可复现构建时，应固定 `rev`、`tag` 或 `branch`。
+业务项目需要可复现构建时，应固定具体版本并提交 `Cargo.lock`。
 
 ## 检查命令
 
@@ -36,16 +36,24 @@ derive 包：
 cargo package --manifest-path derive/Cargo.toml --allow-dirty
 ```
 
-根包 Git 依赖模式下只检查清单：
+根包在 derive 已发布并进入 crates.io 索引后：
 
 ```sh
-cargo package --list --allow-dirty
+cargo package --allow-dirty
 ```
 
-注意：`cargo package --list` 中出现的 `Cargo.toml.orig` 是 Cargo 打包 path dependency 时自动保留的原始 manifest，不是工作区脏文件。
+derive 尚未进入索引的本地准备阶段，可以先检查打包内容：
+
+```sh
+cargo package --allow-dirty --no-verify
+```
+
+根包依赖 crates.io 上的 `validator-derive`，因此正式发布顺序必须是：
+
+1. 发布 `validator-derive`。
+2. 等待 crates.io 索引可见后，执行根包的完整 `cargo package` 验证。
+3. 发布 `validator`。
 
 ## 后续可选收口
 
-- 如果后续走 crates.io，单独设计 package name，同时尽量保持 Rust 代码导入路径仍是 `validator`。
 - 如果后续走私有 registry，确认 registry 名称、登录 token、发布权限和索引同步延迟。
-- 如果后续发布 registry，需要先处理 `validator-derive` 与根包的发布顺序。

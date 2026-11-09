@@ -13,14 +13,14 @@ Schema 校验和可扩展规则注册表实现。项目处于早期开发阶段�
 
 ## 安装
 
-当前项目按 Git 依赖使用，不发布到 crates.io：
+项目发布在 crates.io，可直接添加依赖：
 
 ```toml
 [dependencies]
-validator = { git = "https://github.com/halo-space/validator.git" }
+validator = "0.1"
 ```
 
-需要可复现构建时，请固定 `rev`、`tag` 或 `branch`。
+需要可复现构建时，请固定具体版本，并提交 `Cargo.lock`。
 
 ## 快速开始
 

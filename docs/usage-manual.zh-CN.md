@@ -4,17 +4,17 @@
 
 ## 1. 安装
 
-项目当前通过 Git 依赖使用，不发布到 crates.io：
+项目发布在 crates.io：
 
 ```toml
 [dependencies]
-validator = { git = "https://github.com/halo-space/validator.git" }
+validator = "0.1"
 ```
 
-需要可复现构建时固定提交：
+也可以固定精确版本：
 
 ```toml
-validator = { git = "https://github.com/halo-space/validator.git", rev = "<commit>" }
+validator = "=0.1.0"
 ```
 
 要求 Rust edition 2024，最低 rustc 版本为 1.97。
@@ -278,7 +278,7 @@ let validator = Validator::try_new()?;
 let validator = Validator::try_with_schema(schema)?;
 ```
 
-生产构建建议固定 Git 依赖的 `rev`、`tag` 或 `branch`，避免依赖内容无提示变化。
+生产构建建议固定具体版本，并提交 `Cargo.lock`，避免依赖内容无提示变化。
 
 ## 12. 进一步阅读
 

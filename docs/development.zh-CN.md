@@ -18,7 +18,7 @@ Schema map 和 `validate_serde` 的成功/失败路径、选择性校验、冷/�
 以及 10、100、1,000 个元素下的集合 dive 和 compound unique 投影。
 本地快速检查可以运行 `cargo bench --bench validation -- --quick`。
 
-当前分发路径是 Git 依赖使用，暂不处理 registry 发布。根 `validator` crate 这一阶段不按 crates.io package 方式收口；这里只对技术包 `validator-derive` 做 `cargo package` 检查。
+项目同时发布 `validator` 和 `validator-derive` 两个 crates.io 包。发布前应先打包并检查 derive 包，再检查根包。
 
 ## 示例
 

@@ -14,14 +14,14 @@ configuration spellings.
 
 ## Install
 
-This project is currently consumed from Git rather than crates.io:
+The crate is available from crates.io:
 
 ```toml
 [dependencies]
-validator = { git = "https://github.com/halo-space/validator.git" }
+validator = "0.1"
 ```
 
-Pin a `rev`, `tag`, or `branch` when reproducible builds matter.
+Pin an exact version and commit `Cargo.lock` when reproducible builds matter.
 
 ## Quick Start
 
