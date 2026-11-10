@@ -1,8 +1,13 @@
-use super::{choice, collection, compare, field, format, network, required, size, string};
+#[cfg(feature = "format")]
+use super::format;
+#[cfg(feature = "network")]
+use super::network;
+use super::{choice, collection, compare, field, required, size, string};
 use crate::core::{Error, Registry};
 use choice::{NoneOf, NoneOfCi, OneOf, OneOfCi};
 use collection::Unique;
 use compare::{Eq, EqIgnoreCase, Gt, Gte, Lt, Lte, Ne, NeIgnoreCase};
+#[cfg(feature = "format")]
 use format::{
     Base32, Base64, Base64RawUrl, Base64Url, Bic, BicIso93622014, Cmyk, CreditCard, Cron, Cve,
     DataUri, DateTime, DnsRfc1035Label, E164, Ein, Email, EthAddr, HexColor, Hexadecimal, Hsl,
@@ -11,6 +16,7 @@ use format::{
     Ripemd128, Ripemd160, Semver, Sha256, Sha384, Sha512, Ssn, Tiger128, Tiger160, Tiger192,
     UrlEncoded,
 };
+#[cfg(feature = "network")]
 use network::{
     Cidr, Cidrv4, Cidrv6, Fqdn, Hostname, HostnamePort, HostnameRfc1123, Http, Https, Ip, Ipv4,
     Ipv6, Port, Tcp, Tcp4, Tcp6, Udp, Udp4, Udp6, Ulid, Uri, Url, Uuid, Uuid3, Uuid3Rfc4122, Uuid4,
@@ -40,37 +46,46 @@ pub(crate) fn load(registry: &mut Registry) -> Result<(), Error> {
     registry.rule("lt", Lt)?;
     registry.rule("lte", Lte)?;
     registry.rule("range", Range)?;
+    registry.rule("oneof", OneOf)?;
+    registry.rule("oneofci", OneOfCi)?;
+    registry.rule("noneof", NoneOf)?;
+    registry.rule("noneofci", NoneOfCi)?;
+    registry.rule("unique", Unique)?;
+    registry.rule("contains", Contains)?;
+    registry.rule("containsany", ContainsAny)?;
+    registry.rule("containsrune", ContainsRune)?;
+    registry.rule("excludes", Excludes)?;
+    registry.rule("excludesall", ExcludesAll)?;
+    registry.rule("excludesrune", ExcludesRune)?;
+    registry.rule("startswith", StartsWith)?;
+    registry.rule("endswith", EndsWith)?;
+    registry.rule("startsnotwith", StartsNotWith)?;
+    registry.rule("endsnotwith", EndsNotWith)?;
+    registry.rule("ascii", Ascii)?;
+    registry.rule("printascii", PrintAscii)?;
+    registry.rule("multibyte", Multibyte)?;
+    registry.rule("alpha", Alpha)?;
+    registry.rule("alphaspace", AlphaSpace)?;
+    registry.rule("alphaunicode", AlphaUnicode)?;
+    registry.rule("alphanum", Alphanum)?;
+    registry.rule("alphanumspace", AlphanumSpace)?;
+    registry.rule("alphanumunicode", AlphanumUnicode)?;
+    registry.rule("numeric", Numeric)?;
+    registry.rule("number", Number)?;
+    registry.rule("lowercase", Lowercase)?;
+    registry.rule("uppercase", Uppercase)?;
+    registry.rule("boolean", Boolean)?;
+    field::load(registry)?;
+    #[cfg(feature = "format")]
+    load_format(registry)?;
+    #[cfg(feature = "network")]
+    load_network(registry)?;
+    Ok(())
+}
+
+#[cfg(feature = "format")]
+fn load_format(registry: &mut Registry) -> Result<(), Error> {
     registry.rule("email", Email)?;
-    registry.rule("url", Url)?;
-    registry.rule("uri", Uri)?;
-    registry.rule("http", Http)?;
-    registry.rule("https", Https)?;
-    registry.rule("ip", Ip)?;
-    registry.rule("ipv4", Ipv4)?;
-    registry.rule("ipv6", Ipv6)?;
-    registry.rule("cidr", Cidr)?;
-    registry.rule("cidrv4", Cidrv4)?;
-    registry.rule("cidrv6", Cidrv6)?;
-    registry.rule("hostname", Hostname)?;
-    registry.rule("hostname_port", HostnamePort)?;
-    registry.rule("hostname_rfc1123", HostnameRfc1123)?;
-    registry.rule("fqdn", Fqdn)?;
-    registry.rule("port", Port)?;
-    registry.rule("uuid", Uuid)?;
-    registry.rule("uuid3", Uuid3)?;
-    registry.rule("uuid4", Uuid4)?;
-    registry.rule("uuid5", Uuid5)?;
-    registry.rule("uuid_rfc4122", UuidRfc4122)?;
-    registry.rule("uuid3_rfc4122", Uuid3Rfc4122)?;
-    registry.rule("uuid4_rfc4122", Uuid4Rfc4122)?;
-    registry.rule("uuid5_rfc4122", Uuid5Rfc4122)?;
-    registry.rule("ulid", Ulid)?;
-    registry.rule("tcp4", Tcp4)?;
-    registry.rule("tcp6", Tcp6)?;
-    registry.rule("tcp", Tcp)?;
-    registry.rule("udp4", Udp4)?;
-    registry.rule("udp6", Udp6)?;
-    registry.rule("udp", Udp)?;
     registry.rule("json", Json)?;
     registry.rule("datetime", DateTime)?;
     registry.rule("regex", Regex::default())?;
@@ -122,35 +137,40 @@ pub(crate) fn load(registry: &mut Registry) -> Result<(), Error> {
     registry.rule("hsl", Hsl)?;
     registry.rule("hsla", Hsla)?;
     registry.rule("cmyk", Cmyk)?;
-    registry.rule("oneof", OneOf)?;
-    registry.rule("oneofci", OneOfCi)?;
-    registry.rule("noneof", NoneOf)?;
-    registry.rule("noneofci", NoneOfCi)?;
-    registry.rule("unique", Unique)?;
-    registry.rule("contains", Contains)?;
-    registry.rule("containsany", ContainsAny)?;
-    registry.rule("containsrune", ContainsRune)?;
-    registry.rule("excludes", Excludes)?;
-    registry.rule("excludesall", ExcludesAll)?;
-    registry.rule("excludesrune", ExcludesRune)?;
-    registry.rule("startswith", StartsWith)?;
-    registry.rule("endswith", EndsWith)?;
-    registry.rule("startsnotwith", StartsNotWith)?;
-    registry.rule("endsnotwith", EndsNotWith)?;
-    registry.rule("ascii", Ascii)?;
-    registry.rule("printascii", PrintAscii)?;
-    registry.rule("multibyte", Multibyte)?;
-    registry.rule("alpha", Alpha)?;
-    registry.rule("alphaspace", AlphaSpace)?;
-    registry.rule("alphaunicode", AlphaUnicode)?;
-    registry.rule("alphanum", Alphanum)?;
-    registry.rule("alphanumspace", AlphanumSpace)?;
-    registry.rule("alphanumunicode", AlphanumUnicode)?;
-    registry.rule("numeric", Numeric)?;
-    registry.rule("number", Number)?;
-    registry.rule("lowercase", Lowercase)?;
-    registry.rule("uppercase", Uppercase)?;
-    registry.rule("boolean", Boolean)?;
-    field::load(registry)?;
+    Ok(())
+}
+
+#[cfg(feature = "network")]
+fn load_network(registry: &mut Registry) -> Result<(), Error> {
+    registry.rule("url", Url)?;
+    registry.rule("uri", Uri)?;
+    registry.rule("http", Http)?;
+    registry.rule("https", Https)?;
+    registry.rule("ip", Ip)?;
+    registry.rule("ipv4", Ipv4)?;
+    registry.rule("ipv6", Ipv6)?;
+    registry.rule("cidr", Cidr)?;
+    registry.rule("cidrv4", Cidrv4)?;
+    registry.rule("cidrv6", Cidrv6)?;
+    registry.rule("hostname", Hostname)?;
+    registry.rule("hostname_port", HostnamePort)?;
+    registry.rule("hostname_rfc1123", HostnameRfc1123)?;
+    registry.rule("fqdn", Fqdn)?;
+    registry.rule("port", Port)?;
+    registry.rule("uuid", Uuid)?;
+    registry.rule("uuid3", Uuid3)?;
+    registry.rule("uuid4", Uuid4)?;
+    registry.rule("uuid5", Uuid5)?;
+    registry.rule("uuid_rfc4122", UuidRfc4122)?;
+    registry.rule("uuid3_rfc4122", Uuid3Rfc4122)?;
+    registry.rule("uuid4_rfc4122", Uuid4Rfc4122)?;
+    registry.rule("uuid5_rfc4122", Uuid5Rfc4122)?;
+    registry.rule("ulid", Ulid)?;
+    registry.rule("tcp4", Tcp4)?;
+    registry.rule("tcp6", Tcp6)?;
+    registry.rule("tcp", Tcp)?;
+    registry.rule("udp4", Udp4)?;
+    registry.rule("udp6", Udp6)?;
+    registry.rule("udp", Udp)?;
     Ok(())
 }

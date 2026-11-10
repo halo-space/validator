@@ -164,3 +164,6 @@ struct Pair {
 
 默认目标参数名是 `compare`；如果规则使用其他参数名，可以写
 `param = "other"`。
+
+Rule 也可以覆盖 `check_async`，并通过 `Validator::value_async(...)` 执行
+异步单值规则；未覆盖时会自动委托到同步 `check`。

@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use crate::core::{
     Access, Context, Error, Field, FieldError, FieldParts, Items, Params, Rule, Value,
 };
@@ -297,6 +300,212 @@ impl Group {
         Self::with_field(target, value, context, params, scope, |field| {
             handler.check(field)
         })
+    }
+
+    pub(crate) async fn execute_async<V: Value>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context<'_>,
+    ) -> Result<(), Error> {
+        let target = FieldMeta::new(target);
+        self.run_async(errors, &target, value, context, None, Scope::default())
+            .await
+            .map(|_| ())
+    }
+
+    fn run_async<'a, V: Value + 'a>(
+        &'a self,
+        errors: &'a mut Vec<FieldError>,
+        target: &'a FieldMeta<'a>,
+        value: &'a V,
+        context: &'a Context<'a>,
+        display_rule: Option<&'a str>,
+        scope: Scope<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<Flow, Error>> + 'a>> {
+        Box::pin(async move {
+            let exec = Execution {
+                context,
+                display_rule,
+                scope,
+            };
+
+            for step in &self.steps {
+                match step {
+                    Step::Check(check) => {
+                        if self
+                            .execute_check_async(errors, target, value, check, &exec)
+                            .await?
+                            == Flow::Stop
+                        {
+                            return Ok(Flow::Stop);
+                        }
+                    }
+                    Step::Any { checks, reason } => {
+                        let mut passes = false;
+                        for check in checks {
+                            match self.evaluate_async(target, value, check, &exec).await? {
+                                CheckOutput::Pass => {
+                                    passes = true;
+                                    break;
+                                }
+                                CheckOutput::Fail => {}
+                                CheckOutput::Stop => return Ok(Flow::Stop),
+                            }
+                        }
+
+                        if !passes {
+                            let rule = exec.display_rule.unwrap_or(reason);
+                            errors.push(field_error(
+                                target.target.clone(),
+                                value.kind(),
+                                rule,
+                                reason,
+                                Params::new(),
+                            ));
+                        }
+                    }
+                }
+            }
+
+            Ok(Flow::Continue)
+        })
+    }
+
+    async fn execute_check_async<V: Value>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: &FieldMeta<'_>,
+        value: &V,
+        check: &Check,
+        exec: &Execution<'_, '_, '_>,
+    ) -> Result<Flow, Error> {
+        match check {
+            Check::OmitEmpty => {
+                if value.is_empty_value() {
+                    return Ok(Flow::Stop);
+                }
+            }
+            Check::Rule {
+                name,
+                params,
+                handler,
+            } => {
+                if !self
+                    .rule_passes_async(
+                        target,
+                        value,
+                        exec.context,
+                        params,
+                        handler.as_ref(),
+                        exec.scope,
+                    )
+                    .await?
+                {
+                    errors.push(field_error(
+                        target.target.clone(),
+                        value.kind(),
+                        exec.display_rule.unwrap_or(name),
+                        name,
+                        params.clone(),
+                    ));
+                }
+            }
+            Check::Alias { name, group } => {
+                return group
+                    .run_async(
+                        errors,
+                        target,
+                        value,
+                        exec.context,
+                        Some(exec.display_rule.unwrap_or(name)),
+                        exec.scope,
+                    )
+                    .await;
+            }
+        }
+
+        Ok(Flow::Continue)
+    }
+
+    async fn evaluate_async<V: Value>(
+        &self,
+        target: &FieldMeta<'_>,
+        value: &V,
+        check: &Check,
+        exec: &Execution<'_, '_, '_>,
+    ) -> Result<CheckOutput, Error> {
+        match check {
+            Check::OmitEmpty => Ok(if value.is_empty_value() {
+                CheckOutput::Stop
+            } else {
+                CheckOutput::Pass
+            }),
+            Check::Rule {
+                name: _,
+                params,
+                handler,
+            } => Ok(
+                if self
+                    .rule_passes_async(
+                        target,
+                        value,
+                        exec.context,
+                        params,
+                        handler.as_ref(),
+                        exec.scope,
+                    )
+                    .await?
+                {
+                    CheckOutput::Pass
+                } else {
+                    CheckOutput::Fail
+                },
+            ),
+            Check::Alias { name: _, group } => {
+                let mut errors = Vec::new();
+                let flow = group
+                    .run_async(&mut errors, target, value, exec.context, None, exec.scope)
+                    .await?;
+                if flow == Flow::Stop && errors.is_empty() {
+                    Ok(CheckOutput::Stop)
+                } else if errors.is_empty() {
+                    Ok(CheckOutput::Pass)
+                } else {
+                    Ok(CheckOutput::Fail)
+                }
+            }
+        }
+    }
+
+    async fn rule_passes_async<V: Value>(
+        &self,
+        target: &FieldMeta<'_>,
+        value: &V,
+        context: &Context<'_>,
+        params: &Params,
+        handler: &dyn Rule,
+        scope: Scope<'_>,
+    ) -> Result<bool, Error> {
+        if value.is_none() && !handler.validates_none() {
+            return Ok(true);
+        }
+
+        let field = Field::for_validation(
+            FieldParts {
+                namespace: &target.namespace,
+                struct_namespace: &target.struct_namespace,
+                field: target.target.field_name.as_ref(),
+                struct_field: target.target.struct_field_name.as_ref(),
+                params,
+                value,
+            },
+            context,
+            scope.access,
+            scope.items,
+        );
+        handler.check_async(&field).await
     }
 
     pub(super) fn with_field<V, T>(

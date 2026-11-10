@@ -36,6 +36,11 @@ let validator = Validator::from(config);
 缓存容量通过 `Config::cache(capacity)` 配置，执行器内部的表达式、规则组、
 Spec 和 Schema 缓存使用同一容量策略。
 
+`Config::expression_cache(...)`、`compiled_cache(...)`、`spec_cache(...)` 和
+`schema_cache(...)` 可以分别调整容量。`Validator::stats()` 提供命中和未命中
+快照。内置格式规则和网络规则分别由 `format`、`network` feature 控制，默认
+开启；精简构建可以使用 `--no-default-features`。
+
 新的扩展应放入所属领域模块。derive 宏只生成字段访问和执行调用，规则
 实现、参数签名、错误模型和 Schema 执行继续由核心层统一负责。
 

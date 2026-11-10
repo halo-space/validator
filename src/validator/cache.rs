@@ -35,11 +35,14 @@ impl Validator {
             .get(expression)
             .cloned()
         {
+            self.metrics.hit_expression();
             if let Ok(mut cache) = self.expression_cache.try_write() {
                 cache.touch(expression);
             }
             return Ok(exprs);
         }
+
+        self.metrics.miss_expression();
 
         let exprs = Arc::new(parse_expression(expression)?);
         let mut cache = self.expression_cache.write_unpoisoned();
@@ -58,11 +61,14 @@ impl Validator {
             .get(expression)
             .cloned()
         {
+            self.metrics.hit_compiled();
             if let Ok(mut cache) = self.compiled_cache.try_write() {
                 cache.touch(expression);
             }
             return Ok(group);
         }
+
+        self.metrics.miss_compiled();
 
         let exprs = self.parse(expression)?;
         let group = Arc::new(Group::compile(exprs.as_ref(), &self.config.registry)?);
@@ -78,11 +84,14 @@ impl Validator {
     pub(super) fn schema_tree(&self, schema: &Schema) -> Result<Arc<Tree>, Error> {
         let key = schema.id();
         if let Some(tree) = self.schema_cache.read_unpoisoned().get(&key).cloned() {
+            self.metrics.hit_schema();
             if let Ok(mut cache) = self.schema_cache.try_write() {
                 cache.touch(&key);
             }
             return Ok(tree);
         }
+
+        self.metrics.miss_schema();
 
         let tree = Arc::new(schema.compile(&self.config.registry)?);
         let mut cache = self.schema_cache.write_unpoisoned();
@@ -97,11 +106,14 @@ impl Validator {
     pub(super) fn compile_spec(&self, spec: Spec, items: bool) -> Result<Arc<Group>, Error> {
         let key = SpecKey { spec, items };
         if let Some(group) = self.spec_cache.read_unpoisoned().get(&key).cloned() {
+            self.metrics.hit_spec();
             if let Ok(mut cache) = self.spec_cache.try_write() {
                 cache.touch(&key);
             }
             return Ok(group);
         }
+
+        self.metrics.miss_spec();
 
         let group = Arc::new(if items {
             Group::compile_spec_with_items(&key.spec, &self.config.registry)?

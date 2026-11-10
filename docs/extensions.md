@@ -191,3 +191,7 @@ struct Pair {
 
 The target parameter defaults to `compare`; use `param = "other"` when the
 custom rule declares a different field parameter name.
+
+Rules may override `check_async` and run through
+`Validator::value_async(...)`. Rules that do not override it delegate to the
+synchronous `check` implementation.

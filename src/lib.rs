@@ -24,7 +24,7 @@ pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
     Signature, UintKind, Value,
 };
-pub use self::engine::{Config, Validator};
+pub use self::engine::{Config, Stats, Validator};
 pub use self::rule::Provider;
 pub use self::schema::Schema;
 pub(crate) use self::target::field_error;
@@ -44,7 +44,7 @@ pub mod __private {
 pub mod prelude {
     pub use crate::{
         Config, Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param,
-        Params, Provider, Rule, Schema, Signature, UintKind, Validate, Validator, Value,
+        Params, Provider, Rule, Schema, Signature, Stats, UintKind, Validate, Validator, Value,
     };
 }
 
@@ -53,7 +53,7 @@ pub mod validator {
     pub use super::__private;
     pub use super::{
         Config, Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param,
-        Params, Provider, Rule, Schema, Signature, UintKind, Validate, Validator, Value,
+        Params, Provider, Rule, Schema, Signature, Stats, UintKind, Validate, Validator, Value,
     };
     pub use super::{i18n, valid};
 

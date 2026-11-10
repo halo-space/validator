@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use crate::core::{CAPACITY, Cache, Context, Expr, Fields, Group, Registry};
@@ -14,7 +15,15 @@ mod derive;
 /// Configures rules, aliases, and validation extensions.
 pub struct Config {
     pub(crate) registry: Registry,
-    pub(crate) cache_capacity: usize,
+    cache: Limits,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Limits {
+    expression: usize,
+    compiled: usize,
+    spec: usize,
+    schema: usize,
 }
 
 impl Config {
@@ -30,7 +39,12 @@ impl Config {
         crate::rules::load_aliases(&mut registry)?;
         Ok(Self {
             registry,
-            cache_capacity: CAPACITY,
+            cache: Limits {
+                expression: CAPACITY,
+                compiled: CAPACITY,
+                spec: CAPACITY,
+                schema: CAPACITY,
+            },
         })
     }
 
@@ -56,7 +70,36 @@ impl Config {
 
     /// Sets the capacity shared by expression, group, spec, and schema caches.
     pub fn cache(mut self, capacity: usize) -> Self {
-        self.cache_capacity = capacity;
+        self.cache = Limits {
+            expression: capacity,
+            compiled: capacity,
+            spec: capacity,
+            schema: capacity,
+        };
+        self
+    }
+
+    /// Sets the expression parsing cache capacity.
+    pub fn expression_cache(mut self, capacity: usize) -> Self {
+        self.cache.expression = capacity;
+        self
+    }
+
+    /// Sets the compiled expression cache capacity.
+    pub fn compiled_cache(mut self, capacity: usize) -> Self {
+        self.cache.compiled = capacity;
+        self
+    }
+
+    /// Sets the single-spec compilation cache capacity.
+    pub fn spec_cache(mut self, capacity: usize) -> Self {
+        self.cache.spec = capacity;
+        self
+    }
+
+    /// Sets the Schema tree cache capacity.
+    pub fn schema_cache(mut self, capacity: usize) -> Self {
+        self.cache.schema = capacity;
         self
     }
 }
@@ -75,6 +118,88 @@ pub struct Validator {
     compiled_cache: RwLock<Cache<String, Arc<Group>>>,
     spec_cache: RwLock<Cache<cache::SpecKey, Arc<Group>>>,
     schema_cache: RwLock<Cache<SchemaId, Arc<Tree>>>,
+    metrics: Metrics,
+}
+
+/// A point-in-time snapshot of validator cache activity.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Stats {
+    /// Expression parsing cache hits.
+    pub expression_hits: u64,
+    /// Expression parsing cache misses.
+    pub expression_misses: u64,
+    /// Compiled expression cache hits.
+    pub compiled_hits: u64,
+    /// Compiled expression cache misses.
+    pub compiled_misses: u64,
+    /// Spec compilation cache hits.
+    pub spec_hits: u64,
+    /// Spec compilation cache misses.
+    pub spec_misses: u64,
+    /// Schema tree cache hits.
+    pub schema_hits: u64,
+    /// Schema tree cache misses.
+    pub schema_misses: u64,
+}
+
+#[derive(Default)]
+pub(crate) struct Metrics {
+    expression_hits: AtomicU64,
+    expression_misses: AtomicU64,
+    compiled_hits: AtomicU64,
+    compiled_misses: AtomicU64,
+    spec_hits: AtomicU64,
+    spec_misses: AtomicU64,
+    schema_hits: AtomicU64,
+    schema_misses: AtomicU64,
+}
+
+impl Metrics {
+    pub(crate) fn hit_expression(&self) {
+        self.expression_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn miss_expression(&self) {
+        self.expression_misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn hit_compiled(&self) {
+        self.compiled_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn miss_compiled(&self) {
+        self.compiled_misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn hit_spec(&self) {
+        self.spec_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn miss_spec(&self) {
+        self.spec_misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn hit_schema(&self) {
+        self.schema_hits.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn miss_schema(&self) {
+        self.schema_misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(crate) fn snapshot(&self) -> Stats {
+        let load = |counter: &AtomicU64| counter.load(Ordering::Relaxed);
+        Stats {
+            expression_hits: load(&self.expression_hits),
+            expression_misses: load(&self.expression_misses),
+            compiled_hits: load(&self.compiled_hits),
+            compiled_misses: load(&self.compiled_misses),
+            spec_hits: load(&self.spec_hits),
+            spec_misses: load(&self.spec_misses),
+            schema_hits: load(&self.schema_hits),
+            schema_misses: load(&self.schema_misses),
+        }
+    }
 }
 
 impl Validator {
@@ -96,15 +221,21 @@ impl Validator {
 
     /// Creates a validator from a configured rule set without panicking.
     pub fn try_from(config: Config) -> Result<Self, Error> {
-        let capacity = config.cache_capacity;
+        let cache = config.cache;
         Ok(Self {
             config,
             schema: None,
-            expression_cache: RwLock::new(Cache::new(capacity)),
-            compiled_cache: RwLock::new(Cache::new(capacity)),
-            spec_cache: RwLock::new(Cache::new(capacity)),
-            schema_cache: RwLock::new(Cache::new(capacity)),
+            expression_cache: RwLock::new(Cache::new(cache.expression)),
+            compiled_cache: RwLock::new(Cache::new(cache.compiled)),
+            spec_cache: RwLock::new(Cache::new(cache.spec)),
+            schema_cache: RwLock::new(Cache::new(cache.schema)),
+            metrics: Metrics::default(),
         })
+    }
+
+    /// Returns a snapshot of cache hits and misses.
+    pub fn stats(&self) -> Stats {
+        self.metrics.snapshot()
     }
 
     /// Creates a validator configured to execute the supplied dynamic schema.
@@ -186,6 +317,27 @@ impl Validator {
         let target = FieldTarget::value();
         let context = Context::new();
         group.execute(&mut errors, target, value, &context)?;
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::failed(errors))
+        }
+    }
+
+    /// Asynchronously validates one value against a runtime rule expression.
+    pub async fn value_async<V: Value>(
+        &self,
+        value: &V,
+        rules: impl AsRef<str>,
+    ) -> Result<(), Error> {
+        let group = self.compile(rules.as_ref())?;
+        let mut errors = Vec::new();
+        let target = FieldTarget::value();
+        let context = Context::new();
+        group
+            .execute_async(&mut errors, target, value, &context)
+            .await?;
 
         if errors.is_empty() {
             Ok(())

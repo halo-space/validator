@@ -13,6 +13,9 @@ mod signature;
 mod spec;
 mod value;
 
+use std::future::Future;
+use std::pin::Pin;
+
 pub use access::{Access, FieldRef};
 #[doc(hidden)]
 pub use access::{ItemVisitor, Items, Projection, Resolve, Segment};
@@ -57,4 +60,12 @@ pub trait Rule: Send + Sync {
 
     /// Returns whether the field satisfies this rule.
     fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
+
+    /// Asynchronously checks a field. The default delegates to [`Rule::check`].
+    fn check_async<'a>(
+        &'a self,
+        field: &'a Field<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>> {
+        Box::pin(std::future::ready(self.check(field)))
+    }
 }

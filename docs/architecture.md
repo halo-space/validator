@@ -58,6 +58,12 @@ let validator = Validator::from(config);
 Use `Config::cache(capacity)` to configure the shared capacity for expression,
 group, spec, and Schema caches without exposing internal cache types.
 
+`expression_cache(...)`, `compiled_cache(...)`, `spec_cache(...)`, and
+`schema_cache(...)` configure capacities independently. `Validator::stats()`
+returns cache hit and miss counters. Built-in format and network rules are
+controlled by the `format` and `network` features, which are enabled by
+default; use `--no-default-features` for a smaller build.
+
 New extension points belong in their domain module. The derive macro only emits
 field access and execution calls; rule implementations, signatures, errors, and
 Schema execution remain in the shared core.

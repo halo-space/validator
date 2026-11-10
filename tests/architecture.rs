@@ -1,5 +1,8 @@
 use halo::validator::prelude::*;
 use serde_json::json;
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll, Waker};
 
 #[derive(Debug)]
 struct Slug;
@@ -9,6 +12,33 @@ struct SlugProvider;
 impl Provider for SlugProvider {
     fn register(&self, config: Config) -> Result<Config, Error> {
         config.rule("slug", Slug)
+    }
+}
+
+struct AsyncPass;
+
+impl Rule for AsyncPass {
+    fn check(&self, _field: &Field<'_>) -> Result<bool, Error> {
+        Ok(false)
+    }
+
+    fn check_async<'a>(
+        &'a self,
+        _field: &'a Field<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>> {
+        Box::pin(async { Ok(true) })
+    }
+}
+
+fn block_on<F: Future>(future: F) -> F::Output {
+    let waker = Waker::noop();
+    let mut context = Context::from_waker(waker);
+    let mut future = Box::pin(future);
+    loop {
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => std::thread::yield_now(),
+        }
     }
 }
 
@@ -657,4 +687,22 @@ fn explicit_field_rule_syntax_supports_custom_rule_names() {
         .unwrap()
         .validate(&value)
         .unwrap();
+}
+
+#[test]
+fn async_rule_runs_through_async_value_entry_point() {
+    let validator = Validator::new().rule("async_pass", AsyncPass).unwrap();
+    block_on(validator.value_async(&"value", "async_pass")).unwrap();
+}
+
+#[test]
+fn cache_stats_report_hits_and_misses() {
+    let validator = Validator::new();
+    validator.value(&"valid@example.com", "email").unwrap();
+    validator.value(&"valid@example.com", "email").unwrap();
+
+    let stats = validator.stats();
+    assert!(stats.expression_misses >= 1);
+    assert!(stats.compiled_misses >= 1);
+    assert!(stats.compiled_hits >= 1);
 }
