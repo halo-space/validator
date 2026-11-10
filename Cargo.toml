@@ -1,6 +1,6 @@
 [package]
 name = "halo-validator"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Rust 2024 validation library with derive macros, schema validation, and i18n messages."
 license = "MIT OR Apache-2.0"
@@ -9,6 +9,7 @@ readme = "README.md"
 rust-version = "1.97"
 keywords = ["validation", "validator", "derive", "schema", "i18n"]
 categories = ["data-structures", "parsing"]
+exclude = [".github/", "tests/", "benches/"]
 
 [dependencies]
 http = "1"
@@ -19,7 +20,7 @@ serde_yaml_ng = "0.10"
 thiserror = "2"
 unicode-ident = "1"
 url = "2"
-validator-derive = { package = "halo-validator-derive", version = "0.1.1", path = "derive" }
+validator-derive = { package = "halo-validator-derive", version = "0.1.2", path = "derive" }
 
 [lib]
 name = "halo"

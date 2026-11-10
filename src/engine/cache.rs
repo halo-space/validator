@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::Error;
 use crate::core::{Expr, Group, Spec, parse_expression};
@@ -7,10 +7,15 @@ use crate::schema::{Schema, Tree};
 use super::Validator;
 
 trait RwLockExt<T> {
+    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T>;
     fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T>;
 }
 
 impl<T> RwLockExt<T> for RwLock<T> {
+    fn read_unpoisoned(&self) -> RwLockReadGuard<'_, T> {
+        self.read().unwrap_or_else(|error| error.into_inner())
+    }
+
     fn write_unpoisoned(&self) -> RwLockWriteGuard<'_, T> {
         self.write().unwrap_or_else(|error| error.into_inner())
     }
@@ -26,10 +31,13 @@ impl Validator {
     fn parse(&self, expression: &str) -> Result<Arc<Vec<Expr>>, Error> {
         if let Some(exprs) = self
             .expression_cache
-            .write_unpoisoned()
+            .read_unpoisoned()
             .get(expression)
             .cloned()
         {
+            if let Ok(mut cache) = self.expression_cache.try_write() {
+                cache.touch(expression);
+            }
             return Ok(exprs);
         }
 
@@ -46,10 +54,13 @@ impl Validator {
     pub(super) fn compile(&self, expression: &str) -> Result<Arc<Group>, Error> {
         if let Some(group) = self
             .compiled_cache
-            .write_unpoisoned()
+            .read_unpoisoned()
             .get(expression)
             .cloned()
         {
+            if let Ok(mut cache) = self.compiled_cache.try_write() {
+                cache.touch(expression);
+            }
             return Ok(group);
         }
 
@@ -66,7 +77,10 @@ impl Validator {
 
     pub(super) fn schema_tree(&self, schema: &Schema) -> Result<Arc<Tree>, Error> {
         let key = schema.id();
-        if let Some(tree) = self.schema_cache.write_unpoisoned().get(&key).cloned() {
+        if let Some(tree) = self.schema_cache.read_unpoisoned().get(&key).cloned() {
+            if let Ok(mut cache) = self.schema_cache.try_write() {
+                cache.touch(&key);
+            }
             return Ok(tree);
         }
 
@@ -82,7 +96,10 @@ impl Validator {
 
     pub(super) fn compile_spec(&self, spec: Spec, items: bool) -> Result<Arc<Group>, Error> {
         let key = SpecKey { spec, items };
-        if let Some(group) = self.spec_cache.write_unpoisoned().get(&key).cloned() {
+        if let Some(group) = self.spec_cache.read_unpoisoned().get(&key).cloned() {
+            if let Ok(mut cache) = self.spec_cache.try_write() {
+                cache.touch(&key);
+            }
             return Ok(group);
         }
 

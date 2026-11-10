@@ -11,7 +11,6 @@ mod tests;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value as JsonValue;
 
@@ -23,7 +22,6 @@ use self::parser::{
     expressions as parse_expressions, fields as parse_fields, invalid, reject_unknown_keys,
 };
 
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
 pub(crate) const TYPE_FAILURE: &str = "type";
 
 #[cfg(test)]
@@ -31,14 +29,8 @@ pub(crate) fn internal_rule_names() -> impl Iterator<Item = &'static str> {
     [TYPE_FAILURE].into_iter()
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct SchemaId(u64);
-
-impl SchemaId {
-    fn next() -> Self {
-        Self(NEXT_ID.fetch_add(1, Ordering::Relaxed))
-    }
-}
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct SchemaId(String);
 
 #[derive(Clone, Debug)]
 /// A strict dynamic validation schema parsed from YAML or JSON.
@@ -76,7 +68,7 @@ impl Schema {
     }
 
     pub(crate) fn id(&self) -> SchemaId {
-        self.inner.id
+        self.inner.id.clone()
     }
 
     pub(crate) fn compile(&self, registry: &Registry) -> Result<Tree, Error> {
@@ -88,6 +80,7 @@ impl Schema {
             .as_object()
             .ok_or_else(|| invalid("schema must be an object"))?;
         reject_unknown_keys(object, &["fields"], "schema")?;
+        let id = SchemaId(fingerprint(&value));
         let fields = object
             .get("fields")
             .and_then(JsonValue::as_object)
@@ -97,11 +90,38 @@ impl Schema {
             .collect::<Result<BTreeMap<_, _>, Error>>()?;
 
         Ok(Self {
-            inner: Arc::new(Inner {
-                id: SchemaId::next(),
-                fields,
-            }),
+            inner: Arc::new(Inner { id, fields }),
         })
+    }
+}
+
+fn fingerprint(value: &JsonValue) -> String {
+    match value {
+        JsonValue::Null => "null".to_owned(),
+        JsonValue::Bool(value) => format!("bool:{value}"),
+        JsonValue::Number(value) => format!("number:{value}"),
+        JsonValue::String(value) => format!("string:{}:{value}", value.len()),
+        JsonValue::Array(values) => {
+            let mut output = String::from("array[");
+            for value in values {
+                output.push_str(&fingerprint(value));
+                output.push(';');
+            }
+            output.push(']');
+            output
+        }
+        JsonValue::Object(values) => {
+            let mut entries = values.iter().collect::<Vec<_>>();
+            entries.sort_unstable_by_key(|(key, _)| *key);
+            let mut output = String::from("object{");
+            for (key, value) in entries {
+                output.push_str(&format!("{}:{}", key.len(), key));
+                output.push_str(&fingerprint(value));
+                output.push(';');
+            }
+            output.push('}');
+            output
+        }
     }
 }
 

@@ -51,11 +51,14 @@ impl Regex {
     fn pattern(&self, pattern: &str) -> Result<Arc<Pattern>, crate::Error> {
         if let Some(regex) = self
             .cache
-            .write()
+            .read()
             .unwrap_or_else(|error| error.into_inner())
             .get(pattern)
             .cloned()
         {
+            if let Ok(mut cache) = self.cache.try_write() {
+                cache.touch(pattern);
+            }
             return regex.map_err(|reason| invalid(pattern, reason));
         }
 

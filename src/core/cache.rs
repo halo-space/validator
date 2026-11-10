@@ -22,7 +22,15 @@ where
         }
     }
 
-    pub(crate) fn get<Q>(&mut self, key: &Q) -> Option<&V>
+    pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        self.values.get(key)
+    }
+
+    pub(crate) fn touch<Q>(&mut self, key: &Q)
     where
         K: Borrow<Q>,
         Q: Ord + ?Sized,
@@ -36,7 +44,6 @@ where
         {
             self.order.push_back(touched);
         }
-        self.values.get(key)
     }
 
     pub(crate) fn insert(&mut self, key: K, value: V) {
@@ -46,11 +53,7 @@ where
 
         if let Some(current) = self.values.get_mut(&key) {
             *current = value;
-            if let Some(index) = self.order.iter().position(|candidate| candidate == &key)
-                && let Some(touched) = self.order.remove(index)
-            {
-                self.order.push_back(touched);
-            }
+            self.touch(&key);
             return;
         }
 
@@ -80,6 +83,7 @@ mod tests {
         cache.insert("first", 1);
         cache.insert("second", 2);
         assert_eq!(cache.get(&"first"), Some(&1));
+        cache.touch(&"first");
         cache.insert("third", 3);
 
         assert_eq!(cache.len(), 2);
