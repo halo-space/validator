@@ -37,11 +37,11 @@ struct User {
     email: String,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new().validate(&User {
         name: "alice".to_owned(),
         email: "alice@example.com".to_owned(),
-    })?;
+    }).await?;
     Ok(())
 }
 ```

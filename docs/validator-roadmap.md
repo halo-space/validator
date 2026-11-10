@@ -63,7 +63,7 @@ V1 最终对外主路径：
 impl Validator {
     pub fn new() -> Self;
 
-    pub fn validate<T: Validate>(&self, value: &T) -> std::result::Result<(), Error>;
+    pub async fn validate<T: Validate>(&self, value: &T) -> std::result::Result<(), Error>;
 
     pub fn rule<R>(
         self,
@@ -209,7 +209,7 @@ pub(crate) struct Registry;
 
 ```rust
 pub trait Rule {
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
 }
 ```
 
@@ -372,14 +372,14 @@ regex = "1"
 
 ```rust
 let schema = Schema::from_yaml(yaml)?;
-Validator::with_schema(schema).check_map(&payload)?;
+Validator::with_schema(schema).check_map(&payload).await?;
 ```
 
 对应 JSON：
 
 ```rust
 let schema = Schema::from_json(json)?;
-Validator::with_schema(schema).check_map(&payload)?;
+Validator::with_schema(schema).check_map(&payload).await?;
 ```
 
 说明：
@@ -468,7 +468,7 @@ pub trait Validate {
 
 impl Validator {
     pub fn new() -> Self;
-    pub fn validate<T: Validate>(&self, value: &T) -> std::result::Result<(), Error>;
+    pub async fn validate<T: Validate>(&self, value: &T) -> std::result::Result<(), Error>;
 }
 ```
 

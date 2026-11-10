@@ -14,7 +14,7 @@ halo = { package = "halo-validator", version = "0.1" }
 也可以固定精确版本：
 
 ```toml
-halo = { package = "halo-validator", version = "=0.2.0" }
+halo = { package = "halo-validator", version = "=0.2.1" }
 ```
 
 要求 Rust edition 2024，最低 rustc 版本为 1.97。
@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         age: 30,
     };
 
-    Validator::new().validate(&user)?;
+    Validator::new().validate(&user).await?;
     Ok(())
 }
 ```
@@ -149,9 +149,9 @@ validator.filter(&user, |namespace| namespace.as_str().starts_with("profile"))?;
 
 ```rust
 let validator = Validator::new();
-validator.value(&"team@example.com", "required,email")?;
-validator.value(&"192.168.0.0/24", "cidr")?;
-validator.value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4")?;
+validator.value(&"team@example.com", "required,email").await?;
+validator.value(&"192.168.0.0/24", "cidr").await?;
+validator.value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4").await?;
 ```
 
 规则表达式支持逗号分隔、参数和 alternative：
@@ -165,7 +165,7 @@ required,email|url
 ## 7. 错误处理
 
 ```rust
-match Validator::new().validate(&user) {
+match Validator::new().validate(&user).await {
     Ok(()) => println!("valid"),
     Err(Error::Failed(fields)) => {
         for field in fields {
@@ -236,7 +236,7 @@ validator.validate(&user)?;
 struct Slug;
 
 impl Rule for Slug {
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field.value().string().is_some_and(|value| {
             value.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
         }))
