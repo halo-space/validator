@@ -18,12 +18,13 @@ enum Relation {
 #[derive(Debug)]
 struct Compare(Relation);
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Compare {
     fn signature(&self) -> Signature {
         Signature::field("compare")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let Some(name) = field.params().text("compare") else {
             return Ok(false);
         };

@@ -10,12 +10,12 @@ struct Account {
     email: String,
 }
 
-#[test]
-fn zh_cn_renders_messages_and_keeps_context() {
+#[tokio::test]
+async fn zh_cn_renders_messages_and_keeps_context() {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
 
     let messages = halo::validator::i18n::zh_cn().render(&fields);
 
@@ -28,24 +28,24 @@ fn zh_cn_renders_messages_and_keeps_context() {
     assert_eq!(messages[0].kind, Kind::String);
 }
 
-#[test]
-fn en_renders_messages() {
+#[tokio::test]
+async fn en_renders_messages() {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
 
     let messages = halo::validator::i18n::en().render(&fields);
 
     assert_eq!(messages[0].text, "email must be a valid email address");
 }
 
-#[test]
-fn dynamic_locale_selection_uses_fallback() {
+#[tokio::test]
+async fn dynamic_locale_selection_uses_fallback() {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
     let i18n = halo::validator::i18n::new().zh_cn().en().fallback("zh-CN");
 
     let en = i18n.locale("en").render(&fields);
@@ -55,12 +55,12 @@ fn dynamic_locale_selection_uses_fallback() {
     assert_eq!(fr[0].text, "email格式不正确");
 }
 
-#[test]
-fn missing_locale_and_fallback_still_render_default_text() {
+#[tokio::test]
+async fn missing_locale_and_fallback_still_render_default_text() {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
     let i18n = halo::validator::i18n::new().fallback("zh-CN");
 
     let messages = i18n.locale("fr").render(&fields);
@@ -68,12 +68,12 @@ fn missing_locale_and_fallback_still_render_default_text() {
     assert_eq!(messages[0].text, "Account.email failed email");
 }
 
-#[test]
-fn user_locale_overrides_rule_and_field_label() {
+#[tokio::test]
+async fn user_locale_overrides_rule_and_field_label() {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
     let zh = halo::validator::i18n::Locale::new("zh-CN")
         .rule("email", "请输入正确的{field}")
         .field("email", "邮箱");
@@ -88,12 +88,12 @@ fn user_locale_overrides_rule_and_field_label() {
     assert_eq!(messages[0].text, "请输入正确的邮箱");
 }
 
-#[test]
-fn yaml_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn yaml_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
     let zh = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
@@ -115,12 +115,12 @@ fields:
     Ok(())
 }
 
-#[test]
-fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
     let en = halo::validator::i18n::Locale::from_json(
         r#"{
   "locale": "en",
@@ -144,8 +144,8 @@ fn json_locale_renders_messages() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[test]
-fn locale_loader_rejects_name_alias() {
+#[tokio::test]
+async fn locale_loader_rejects_name_alias() {
     let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 name: zh-CN
@@ -164,12 +164,12 @@ rules:
     ));
 }
 
-#[test]
-fn loaded_locale_overrides_builtin_locale() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn loaded_locale_overrides_builtin_locale() -> Result<(), Box<dyn std::error::Error>> {
     let account = Account {
         email: "not-email".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&account).unwrap_err());
+    let fields = fields(Validator::new().validate(&account).await.unwrap_err());
     let zh = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
@@ -189,8 +189,8 @@ rules:
     Ok(())
 }
 
-#[test]
-fn locale_loader_requires_locale_name() {
+#[tokio::test]
+async fn locale_loader_requires_locale_name() {
     let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 rules:
@@ -208,8 +208,8 @@ rules:
     ));
 }
 
-#[test]
-fn locale_loader_rejects_invalid_rule_template() {
+#[tokio::test]
+async fn locale_loader_rejects_invalid_rule_template() {
     let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
@@ -228,8 +228,8 @@ rules:
     ));
 }
 
-#[test]
-fn locale_loader_rejects_unknown_key() {
+#[tokio::test]
+async fn locale_loader_rejects_unknown_key() {
     let Err(error) = halo::validator::i18n::Locale::from_yaml(
         r#"
 locale: zh-CN
@@ -253,8 +253,9 @@ struct Profile {
     name: String,
 }
 
-#[test]
-fn alias_template_is_checked_before_reason_template() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn alias_template_is_checked_before_reason_template() -> Result<(), Box<dyn std::error::Error>>
+{
     let profile = Profile {
         name: "ab".to_owned(),
     };
@@ -262,6 +263,7 @@ fn alias_template_is_checked_before_reason_template() -> Result<(), Box<dyn std:
         Validator::new()
             .alias("username", "required,length(min=3,max=20)")?
             .validate(&profile)
+            .await
             .unwrap_err(),
     );
     let zh = halo::validator::i18n::Locale::new("zh-CN")
@@ -280,8 +282,8 @@ fn alias_template_is_checked_before_reason_template() -> Result<(), Box<dyn std:
     Ok(())
 }
 
-#[test]
-fn alias_falls_back_to_reason_template() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn alias_falls_back_to_reason_template() -> Result<(), Box<dyn std::error::Error>> {
     let profile = Profile {
         name: "ab".to_owned(),
     };
@@ -289,6 +291,7 @@ fn alias_falls_back_to_reason_template() -> Result<(), Box<dyn std::error::Error
         Validator::new()
             .alias("username", "required,length(min=3,max=20)")?
             .validate(&profile)
+            .await
             .unwrap_err(),
     );
 
@@ -299,13 +302,15 @@ fn alias_falls_back_to_reason_template() -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
-#[test]
-fn nested_alias_uses_outer_template_and_actual_reason() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn nested_alias_uses_outer_template_and_actual_reason()
+-> Result<(), Box<dyn std::error::Error>> {
     let fields = fields(
         Validator::new()
             .alias("inner", "email")?
             .alias("outer", "inner")?
             .value(&"invalid", "outer")
+            .await
             .unwrap_err(),
     );
     let locale = halo::validator::i18n::Locale::new("en").rule("outer", "outer failed {reason}");
@@ -326,12 +331,12 @@ struct ColorAlias {
     color: String,
 }
 
-#[test]
-fn built_in_locales_render_iscolor_alias_message() {
+#[tokio::test]
+async fn built_in_locales_render_iscolor_alias_message() {
     let value = ColorAlias {
         color: "#000-".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&value).unwrap_err());
+    let fields = fields(Validator::new().validate(&value).await.unwrap_err());
 
     let zh = halo::validator::i18n::zh_cn().render(&fields);
     let en = halo::validator::i18n::en().render(&fields);
@@ -348,12 +353,12 @@ struct Bounds {
     name: String,
 }
 
-#[test]
-fn function_template_can_read_param_and_kind() {
+#[tokio::test]
+async fn function_template_can_read_param_and_kind() {
     let bounds = Bounds {
         name: "ab".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&bounds).unwrap_err());
+    let fields = fields(Validator::new().validate(&bounds).await.unwrap_err());
     let en = halo::validator::i18n::Locale::new("en").rule_fn("min", |ctx| {
         assert_eq!(ctx.kind(), Kind::String);
         format!("{} needs {} chars", ctx.field(), ctx.param("min").unwrap())
@@ -379,8 +384,8 @@ struct LocalizedTeam {
     members: Vec<LocalizedMember>,
 }
 
-#[test]
-fn function_template_can_read_compound_unique_fields() {
+#[tokio::test]
+async fn function_template_can_read_compound_unique_fields() {
     let fields = fields(
         Validator::new()
             .validate(&LocalizedTeam {
@@ -395,6 +400,7 @@ fn function_template_can_read_compound_unique_fields() {
                     },
                 ],
             })
+            .await
             .unwrap_err(),
     );
     let en = halo::validator::i18n::Locale::new("en").rule_fn("unique", |ctx| {
@@ -416,11 +422,12 @@ fn function_template_can_read_compound_unique_fields() {
     );
 }
 
-#[test]
-fn template_substitutions_are_not_rendered_twice() {
+#[tokio::test]
+async fn template_substitutions_are_not_rendered_twice() {
     let fields = fields(
         Validator::new()
             .value(&"actual", r#"eq(value="{field}")"#)
+            .await
             .unwrap_err(),
     );
     let locale = halo::validator::i18n::Locale::new("en")
@@ -465,8 +472,8 @@ struct NewRuleMessages {
     username: String,
 }
 
-#[test]
-fn i18n_renders_new_rule_messages() {
+#[tokio::test]
+async fn i18n_renders_new_rule_messages() {
     let value = NewRuleMessages {
         state: "draft".to_owned(),
         source_url: "http://example.com".to_owned(),
@@ -478,7 +485,7 @@ fn i18n_renders_new_rule_messages() {
         password: "hello".to_owned(),
         username: "root".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&value).unwrap_err());
+    let fields = fields(Validator::new().validate(&value).await.unwrap_err());
 
     let messages = halo::validator::i18n::en().render(&fields);
 
@@ -504,13 +511,13 @@ struct CrossFieldMessages {
     confirm_password: String,
 }
 
-#[test]
-fn i18n_renders_cross_field_messages() {
+#[tokio::test]
+async fn i18n_renders_cross_field_messages() {
     let value = CrossFieldMessages {
         password: "secret".to_owned(),
         confirm_password: "different".to_owned(),
     };
-    let fields = fields(Validator::new().validate(&value).unwrap_err());
+    let fields = fields(Validator::new().validate(&value).await.unwrap_err());
 
     let zh = halo::validator::i18n::zh_cn().render(&fields);
     let en = halo::validator::i18n::en().render(&fields);

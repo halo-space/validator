@@ -54,7 +54,7 @@ use halo::validator::prelude::*;
 struct Slug;
 
 impl Rule for Slug {
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field
             .value()
             .string()
@@ -109,7 +109,7 @@ impl Rule for StartsWith {
         Ok(())
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let Some(prefix) = field.params().text("prefix") else {
             return Ok(false);
         };
@@ -135,7 +135,7 @@ impl Rule for SameField {
         Signature::field("compare")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let target = field.params().text("compare").unwrap();
         Ok(field.sibling(target).and_then(Value::string) == field.value().string())
     }
@@ -165,5 +165,5 @@ struct Pair {
 默认目标参数名是 `compare`；如果规则使用其他参数名，可以写
 `param = "other"`。
 
-Rule 也可以覆盖 `check_async`，并通过 `Validator::value_async(...)` 执行
-异步单值规则；未覆盖时会自动委托到同步 `check`。
+Rule 统一通过异步 `check` 执行，并使用 `Validator::value(...)` 进入单值
+校验。所有校验路径都采用默认异步执行模型。

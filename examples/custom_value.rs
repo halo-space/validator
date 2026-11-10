@@ -33,8 +33,11 @@ struct Contact {
     email: Email,
 }
 
-fn main() -> Result<(), Error> {
-    Validator::new().validate(&Contact {
-        email: Email("alice@example.com".to_owned()),
-    })
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    Validator::new()
+        .validate(&Contact {
+            email: Email("alice@example.com".to_owned()),
+        })
+        .await
 }

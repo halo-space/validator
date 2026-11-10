@@ -11,23 +11,23 @@ struct Priority {
     level: u8,
 }
 
-#[test]
-fn oneof_passes_for_allowed_value() {
+#[tokio::test]
+async fn oneof_passes_for_allowed_value() {
     let value = PublishState {
         status: "draft".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn oneof_reports_values() {
+#[tokio::test]
+async fn oneof_reports_values() {
     let value = PublishState {
         status: "archived".to_owned(),
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -37,11 +37,11 @@ fn oneof_reports_values() {
     assert_eq!(param_list(&fields[0], "values"), vec!["draft", "published"]);
 }
 
-#[test]
-fn oneof_dispatches_integer_candidates_by_field_type() {
+#[tokio::test]
+async fn oneof_dispatches_integer_candidates_by_field_type() {
     let value = Priority { level: 2 };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
 #[derive(Debug, Validate)]
@@ -56,23 +56,23 @@ struct ForbiddenLevel {
     level: i32,
 }
 
-#[test]
-fn noneof_passes_for_unlisted_value() {
+#[tokio::test]
+async fn noneof_passes_for_unlisted_value() {
     let value = ReservedUsername {
         username: "alice".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn noneof_reports_values() {
+#[tokio::test]
+async fn noneof_reports_values() {
     let value = ReservedUsername {
         username: "root".to_owned(),
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -82,15 +82,15 @@ fn noneof_reports_values() {
     assert_eq!(param_list(&fields[0], "values"), vec!["root", "admin"]);
 }
 
-#[test]
-fn noneof_dispatches_integer_candidates_by_field_type() {
+#[tokio::test]
+async fn noneof_dispatches_integer_candidates_by_field_type() {
     let value = ForbiddenLevel { level: 4 };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 
     let value = ForbiddenLevel { level: 2 };
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -100,18 +100,18 @@ fn noneof_dispatches_integer_candidates_by_field_type() {
     assert_eq!(param_list(&fields[0], "values"), vec!["1", "2", "3"]);
 }
 
-#[test]
-fn case_insensitive_choice_rules_work_for_strings() {
+#[tokio::test]
+async fn case_insensitive_choice_rules_work_for_strings() {
     let validator = Validator::new();
 
-    validator.value(&"ReD", "oneofci(red,green)").unwrap();
+    validator.value(&"ReD", "oneofci(red,green)").await.unwrap();
     validator
-        .value(&"BLUE", "oneofci('red green',blue)")
+        .value(&"BLUE", "oneofci('red green',blue)").await
         .unwrap();
-    validator.value(&"yellow", "noneofci(red,green)").unwrap();
+    validator.value(&"yellow", "noneofci(red,green)").await.unwrap();
 
     let fields = validator
-        .value(&"RED", "noneofci(red,green)")
+        .value(&"RED", "noneofci(red,green)").await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -129,15 +129,15 @@ struct ChoiceCaseRules {
     username: String,
 }
 
-#[test]
-fn derive_case_insensitive_choice_rules_work() {
+#[tokio::test]
+async fn derive_case_insensitive_choice_rules_work() {
     let value = ChoiceCaseRules {
         state: "PUBLISHED".to_owned(),
         username: "ADMIN".to_owned(),
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -152,15 +152,15 @@ struct AliasState {
     status: String,
 }
 
-#[test]
-fn oneof_works_inside_alias_expression() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn oneof_works_inside_alias_expression() -> Result<(), Box<dyn std::error::Error>> {
     let value = AliasState {
         status: "archived".to_owned(),
     };
 
     let fields = Validator::new()
         .alias("publish_state", r#"oneof("draft","published")"#)?
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();

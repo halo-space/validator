@@ -19,7 +19,8 @@ struct Member {
     email: String,
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let team = Team {
         tags: vec!["rust".to_owned(), "validator".to_owned()],
         labels: HashMap::from([("source".to_owned(), "example".to_owned())]),
@@ -33,5 +34,5 @@ fn main() -> Result<(), Error> {
         ],
     };
 
-    Validator::new().validate(&team)
+    Validator::new().validate(&team).await
 }

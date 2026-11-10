@@ -11,19 +11,19 @@ struct OptionalFormats {
     score: u32,
 }
 
-#[test]
-fn omitempty_skips_following_rules_for_empty_values() {
+#[tokio::test]
+async fn omitempty_skips_following_rules_for_empty_values() {
     let value = OptionalFormats {
         email: String::new(),
         nickname: String::new(),
         score: 0,
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn omitempty_validates_following_rules_for_non_empty_values() {
+#[tokio::test]
+async fn omitempty_validates_following_rules_for_non_empty_values() {
     let value = OptionalFormats {
         email: "not-email".to_owned(),
         nickname: "rs".to_owned(),
@@ -31,7 +31,7 @@ fn omitempty_validates_following_rules_for_non_empty_values() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -46,21 +46,21 @@ struct AliasOptionalEmail {
     email: String,
 }
 
-#[test]
-fn omitempty_works_inside_alias_expression() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn omitempty_works_inside_alias_expression() -> Result<(), Box<dyn std::error::Error>> {
     let empty = AliasOptionalEmail {
         email: String::new(),
     };
     Validator::new()
         .alias("optional_email", "omitempty,email")?
-        .validate(&empty)?;
+        .validate(&empty).await?;
 
     let invalid = AliasOptionalEmail {
         email: "not-email".to_owned(),
     };
     let fields = Validator::new()
         .alias("optional_email", "omitempty,email")?
-        .validate(&invalid)
+        .validate(&invalid).await
         .unwrap_err()
         .into_fields()
         .unwrap();

@@ -7,8 +7,9 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Numeric;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Numeric {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         if field.value().number().is_some() {
             return Ok(true);
         }

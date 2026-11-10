@@ -32,8 +32,8 @@ struct TextHelpers {
     filename: String,
 }
 
-#[test]
-fn string_helpers_pass() {
+#[tokio::test]
+async fn string_helpers_pass() {
     let value = TextHelpers {
         body: "hello rust".to_owned(),
         password: "hello!".to_owned(),
@@ -47,11 +47,11 @@ fn string_helpers_pass() {
         filename: "report.txt".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn string_helpers_fail() {
+#[tokio::test]
+async fn string_helpers_fail() {
     let value = TextHelpers {
         body: "hello go".to_owned(),
         password: "hello".to_owned(),
@@ -66,7 +66,7 @@ fn string_helpers_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -124,8 +124,8 @@ struct CharacterClasses {
     boolean: String,
 }
 
-#[test]
-fn character_classes_pass() {
+#[tokio::test]
+async fn character_classes_pass() {
     let value = CharacterClasses {
         ascii: "abc-123".to_owned(),
         printascii: "Hello, Rust!".to_owned(),
@@ -139,11 +139,11 @@ fn character_classes_pass() {
         boolean: "true".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn character_classes_fail() {
+#[tokio::test]
+async fn character_classes_fail() {
     let value = CharacterClasses {
         ascii: "你好".to_owned(),
         printascii: "hello\n".to_owned(),
@@ -158,7 +158,7 @@ fn character_classes_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -197,8 +197,8 @@ struct ExtendedCharacterClasses {
     username: String,
 }
 
-#[test]
-fn extended_character_classes_pass() {
+#[tokio::test]
+async fn extended_character_classes_pass() {
     let value = ExtendedCharacterClasses {
         alphaspace: "Hello Rust".to_owned(),
         alphanumspace: "Rust 2024".to_owned(),
@@ -208,11 +208,11 @@ fn extended_character_classes_pass() {
         username: "alice".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn extended_character_classes_fail() {
+#[tokio::test]
+async fn extended_character_classes_fail() {
     let value = ExtendedCharacterClasses {
         alphaspace: "Hello 2024".to_owned(),
         alphanumspace: "Rust-2024".to_owned(),
@@ -223,7 +223,7 @@ fn extended_character_classes_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();

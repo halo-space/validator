@@ -1,7 +1,7 @@
-#[test]
-fn validate_map_without_schema_returns_error() {
+#[tokio::test]
+async fn check_map_without_schema_returns_error() {
     let error = Validator::new()
-        .validate_map(&json!({ "title": "Rust" }))
+        .check_map(&json!({ "title": "Rust" })).await
         .unwrap_err();
 
     assert!(matches!(&error, halo::validator::Error::MissingSchema));
@@ -11,8 +11,8 @@ fn validate_map_without_schema_returns_error() {
     );
 }
 
-#[test]
-fn schema_numeric_rules_follow_declared_families() {
+#[tokio::test]
+async fn schema_numeric_rules_follow_declared_families() {
     let unsigned = Schema::from_yaml(
         r#"
 fields:
@@ -24,7 +24,7 @@ fields:
     )
     .unwrap();
     let error = Validator::with_schema(unsigned)
-        .validate_map(&json!({}))
+        .check_map(&json!({})).await
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 
@@ -39,10 +39,10 @@ fields:
     )
     .unwrap();
     let validator = Validator::with_schema(floating);
-    validator.validate_map(&json!({ "ratio": 2.0 })).unwrap();
+    validator.check_map(&json!({ "ratio": 2.0 })).await.unwrap();
 
     let fields = validator
-        .validate_map(&json!({ "ratio": 2 }))
+        .check_map(&json!({ "ratio": 2 })).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -58,7 +58,7 @@ fields:
     )
     .unwrap();
     let fields = Validator::with_schema(signed)
-        .validate_map(&json!({ "count": 2.0 }))
+        .check_map(&json!({ "count": 2.0 })).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -66,8 +66,8 @@ fields:
     assert_eq!(fields[0].params().text("expected"), Some("int"));
 }
 
-#[test]
-fn schema_uint_cross_field_comparison_preserves_u64_range() {
+#[tokio::test]
+async fn schema_uint_cross_field_comparison_preserves_u64_range() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -84,12 +84,12 @@ fields:
     let upper = lower + 1;
 
     Validator::with_schema(schema)
-        .validate_map(&json!({ "lower": lower, "upper": upper }))
+        .check_map(&json!({ "lower": lower, "upper": upper })).await
         .unwrap();
 }
 
-#[test]
-fn schema_null_required_field_reports_required_only() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_null_required_field_reports_required_only() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -102,7 +102,7 @@ fields:
     )?;
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({ "email": null }))
+            .check_map(&json!({ "email": null })).await
             .unwrap_err(),
     );
 
@@ -113,8 +113,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_type_mismatch_skips_rule_group_and_nested_fields()
+#[tokio::test]
+async fn schema_type_mismatch_skips_rule_group_and_nested_fields()
 -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
@@ -133,7 +133,7 @@ fields:
     )?;
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({ "profile": "not-object" }))
+            .check_map(&json!({ "profile": "not-object" })).await
             .unwrap_err(),
     );
 
@@ -151,8 +151,8 @@ struct SerdeUser {
     email: String,
 }
 
-#[test]
-fn validate_serde_validates_serializable_struct() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn check_serde_validates_serializable_struct() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -173,13 +173,13 @@ fields:
         email: "alice@example.com".to_owned(),
     };
 
-    Validator::with_schema(schema).validate_serde(&user)?;
+    Validator::with_schema(schema).check_serde(&user).await?;
 
     Ok(())
 }
 
-#[test]
-fn validate_serde_uses_serialized_field_names() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn check_serde_uses_serialized_field_names() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -196,7 +196,7 @@ fields:
     };
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_serde(&user)
+            .check_serde(&user).await
             .unwrap_err(),
     );
 
@@ -215,8 +215,8 @@ struct SkippedTitle {
     title: Option<String>,
 }
 
-#[test]
-fn validate_serde_skipped_required_field_fails() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn check_serde_skipped_required_field_fails() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -229,7 +229,7 @@ fields:
     let data = SkippedTitle { title: None };
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_serde(&data)
+            .check_serde(&data).await
             .unwrap_err(),
     );
 
@@ -252,8 +252,8 @@ struct FlattenedUser {
     profile: SerdeProfile,
 }
 
-#[test]
-fn validate_serde_validates_flattened_fields() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn check_serde_validates_flattened_fields() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -275,7 +275,7 @@ fields:
     };
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_serde(&user)
+            .check_serde(&user).await
             .unwrap_err(),
     );
 
@@ -286,8 +286,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn validate_serde_non_object_root_reports_type_error() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn check_serde_non_object_root_reports_type_error() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -297,7 +297,7 @@ fields:
     )?;
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_serde("not-object")
+            .check_serde("not-object").await
             .unwrap_err(),
     );
 
@@ -321,8 +321,8 @@ impl serde::Serialize for BrokenSerde {
     }
 }
 
-#[test]
-fn validate_serde_reports_serialization_error() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn check_serde_reports_serialization_error() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -331,7 +331,7 @@ fields:
 "#,
     )?;
     let error = Validator::with_schema(schema)
-        .validate_serde(&BrokenSerde)
+        .check_serde(&BrokenSerde).await
         .unwrap_err();
 
     assert!(matches!(
@@ -342,15 +342,15 @@ fields:
     Ok(())
 }
 
-#[test]
-fn validate_serde_without_schema_returns_error() {
-    let error = Validator::new().validate_serde(&BrokenSerde).unwrap_err();
+#[tokio::test]
+async fn check_serde_without_schema_returns_error() {
+    let error = Validator::new().check_serde(&BrokenSerde).await.unwrap_err();
 
     assert!(matches!(error, halo::validator::Error::MissingSchema));
 }
 
-#[test]
-fn validate_serde_compiles_schema_before_serialization() {
+#[tokio::test]
+async fn check_serde_compiles_schema_before_serialization() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -361,68 +361,68 @@ fields:
     )
     .unwrap();
     let error = Validator::with_schema(schema)
-        .validate_serde(&BrokenSerde)
+        .check_serde(&BrokenSerde).await
         .unwrap_err();
 
     assert!(matches!(error, Error::UnknownRule { name } if name == "missing_rule"));
 }
 
-#[test]
-fn direct_value_uses_new_common_rules() {
+#[tokio::test]
+async fn direct_value_uses_new_common_rules() {
     Validator::new()
-        .value(&"https://example.com", "required,http,https")
+        .value(&"https://example.com", "required,http,https").await
         .unwrap();
     Validator::new()
-        .value(&"urn:isbn:0451450523", "uri")
+        .value(&"urn:isbn:0451450523", "uri").await
         .unwrap();
-    Validator::new().value(&"127.0.0.1", "ip,ipv4").unwrap();
+    Validator::new().value(&"127.0.0.1", "ip,ipv4").await.unwrap();
     Validator::new()
-        .value(&"192.168.0.0/24", "cidr,cidrv4")
-        .unwrap();
-    Validator::new()
-        .value(&"2001:db8::/32", "cidr,cidrv6")
+        .value(&"192.168.0.0/24", "cidr,cidrv4").await
         .unwrap();
     Validator::new()
-        .value(&"api.example.com", "hostname,fqdn")
+        .value(&"2001:db8::/32", "cidr,cidrv6").await
         .unwrap();
     Validator::new()
-        .value(&"1.foo.com", "hostname_rfc1123")
-        .unwrap();
-    Validator::new().value(&"443", "port").unwrap();
-    Validator::new()
-        .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid")
+        .value(&"api.example.com", "hostname,fqdn").await
         .unwrap();
     Validator::new()
-        .value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4")
+        .value(&"1.foo.com", "hostname_rfc1123").await
+        .unwrap();
+    Validator::new().value(&"443", "port").await.unwrap();
+    Validator::new()
+        .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid").await
         .unwrap();
     Validator::new()
-        .value(&"01bx5zzkbkactav9wevgemmvrz", "ulid")
-        .unwrap();
-    Validator::new().value(&r#"{"ok":true}"#, "json").unwrap();
-    Validator::new()
-        .value(&"2026-07-08T12:30:00+08:00", "datetime")
+        .value(&"550e8400-e29b-41d4-a716-446655440000", "uuid4").await
         .unwrap();
     Validator::new()
-        .value(&42_u32, "eq(value=42),ne(value=0)")
+        .value(&"01bx5zzkbkactav9wevgemmvrz", "ulid").await
+        .unwrap();
+    Validator::new().value(&r#"{"ok":true}"#, "json").await.unwrap();
+    Validator::new()
+        .value(&"2026-07-08T12:30:00+08:00", "datetime").await
+        .unwrap();
+    Validator::new()
+        .value(&42_u32, "eq(value=42),ne(value=0)").await
         .unwrap();
     Validator::new()
         .value(
             &"hello!",
             r#"ascii,containsany(value="!@#?"),noneof("root","admin")"#,
-        )
+        ).await
         .unwrap();
-    Validator::new().value(&2_u8, "oneof(1,2,3)").unwrap();
-    Validator::new().value(&4_i32, "noneof(1,2,3)").unwrap();
+    Validator::new().value(&2_u8, "oneof(1,2,3)").await.unwrap();
+    Validator::new().value(&4_i32, "noneof(1,2,3)").await.unwrap();
 }
 
-#[test]
-fn direct_value_reports_new_string_choice_rules() {
+#[tokio::test]
+async fn direct_value_reports_new_string_choice_rules() {
     let fields = fields(
         Validator::new()
             .value(
                 &"root",
                 r#"containsany(value="!@#?"),noneof("root","admin")"#,
-            )
+            ).await
             .unwrap_err(),
     );
 
@@ -433,8 +433,8 @@ fn direct_value_reports_new_string_choice_rules() {
     assert_eq!(param_list(&fields[1], "values"), vec!["root", "admin"]);
 }
 
-#[test]
-fn schema_uses_new_common_rules() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_uses_new_common_rules() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -537,7 +537,7 @@ fields:
     });
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&data)
+            .check_map(&data).await
             .unwrap_err(),
     );
     let failures = fields

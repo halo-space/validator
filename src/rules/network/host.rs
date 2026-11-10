@@ -3,8 +3,9 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Hostname;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Hostname {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -15,8 +16,9 @@ impl Rule for Hostname {
 #[derive(Debug)]
 pub(crate) struct Fqdn;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Fqdn {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()

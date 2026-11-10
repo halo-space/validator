@@ -98,7 +98,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
             if context.active() {
                 let error_start = errors.len();
                 let mut valid = validator.__valid(#type_name, &mut errors, &field_kind);
-                #check(self, &mut valid);
+                #check(self, &mut valid).await;
                 valid.finish()?;
                 validator.__retain_selected_struct_errors(
                     &mut errors,
@@ -190,7 +190,7 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
 
     Ok(quote! {
         impl #impl_generics #crate_path::Validate for #name #ty_generics #where_clause {
-            fn validate(
+            async fn validate(
                 &self,
                 validator: &#crate_path::Validator,
             ) -> std::result::Result<(), #crate_path::Error> {
@@ -199,12 +199,12 @@ fn expand_validate(input: DeriveInput) -> syn::Result<proc_macro2::TokenStream> 
                     self,
                     validator,
                     &context,
-                )
+                ).await
             }
         }
 
         impl #impl_generics #crate_path::__private::Selective for #name #ty_generics #where_clause {
-            fn __validate_with_context(
+            async fn __validate_with_context(
                 &self,
                 validator: &#crate_path::Validator,
                 context: &#crate_path::__private::Context<'_>,

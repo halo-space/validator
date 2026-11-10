@@ -14,7 +14,7 @@ cargo package --manifest-path derive/Cargo.toml --allow-dirty
 ```
 
 benchmark 使用等价的 derive 和 Schema 模型，覆盖 derive、direct value、
-Schema map 和 `validate_serde` 的成功/失败路径、选择性校验、冷/热编译路径，
+Schema map 和 `check_serde` 的成功/失败路径、选择性校验、冷/热编译路径，
 以及 10、100、1,000 个元素下的集合 dive 和 compound unique 投影。
 本地快速检查可以运行 `cargo bench --bench validation -- --quick`。
 

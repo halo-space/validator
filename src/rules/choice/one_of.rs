@@ -3,6 +3,7 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct OneOf;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for OneOf {
     fn signature(&self) -> Signature {
         Signature::list("values")
@@ -12,7 +13,7 @@ impl Rule for OneOf {
         super::validate(field, "oneof")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(super::contains(field, "oneof")?.unwrap_or(false))
     }
 }

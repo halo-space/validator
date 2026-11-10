@@ -18,6 +18,7 @@ impl Default for Regex {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Regex {
     fn signature(&self) -> Signature {
         Signature::text("pattern")
@@ -35,7 +36,7 @@ impl Rule for Regex {
         self.pattern(pattern).map(|_| ())
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         let Some(pattern) = field.params().text("pattern") else {
             return Ok(false);
         };

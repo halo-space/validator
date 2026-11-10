@@ -3,6 +3,7 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Ne;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Ne {
     fn signature(&self) -> Signature {
         Signature::optional_text("value")
@@ -12,7 +13,7 @@ impl Rule for Ne {
         super::validate_equality(field, "ne")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         super::not_equals(field)
     }
 }

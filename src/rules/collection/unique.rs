@@ -5,6 +5,7 @@ use crate::{Error, Field, Kind, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Unique;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Unique {
     fn signature(&self) -> Signature {
         Signature::optional_field_list("fields")
@@ -39,7 +40,7 @@ impl Rule for Unique {
         }
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         if let Some(fields) = field.params().list("fields") {
             if !matches!(field.value().kind(), Kind::Vec | Kind::Array | Kind::Slice) {
                 return Err(invalid_kind(field.value().kind(), true));

@@ -7,8 +7,9 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct DnsRfc1035Label;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for DnsRfc1035Label {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field.value().string().is_some_and(|value| {
             let value = value.as_ref();
             value.len() <= 63 && pattern().is_match(value)

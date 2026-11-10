@@ -12,12 +12,13 @@ struct Basket {
     items: Vec<Item>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let basket = Basket {
         items: vec![Item {
             name: "validator".to_owned(),
         }],
     };
 
-    Validator::new().validate(&basket).unwrap();
+    Validator::new().validate(&basket).await.unwrap();
 }

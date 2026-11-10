@@ -33,7 +33,7 @@ fields:
         "confirm_password": "secret"
     });
 
-    Validator::with_schema(schema).validate_map(&data)?;
+    Validator::with_schema(schema).check_map(&data).await?;
     Ok(())
 }
 ```
@@ -83,9 +83,9 @@ fields:
 
 元素字段错误使用 `users[0].email` namespace；包括 `null` 在内的非对象元素使用 `users[0]` namespace 返回 `type` 错误。`unique: email` 是单字段列表简写。如果单字段或复合字段投影到的输入不符合子字段类型，unique 会跳过该元素的完整键，由子字段返回带索引的 `type` 错误；错误输入不会被误判成规则配置错误。
 
-如果数据已经实现了 `serde::Serialize`，可以直接使用 `validate_serde(...)`。
+如果数据已经实现了 `serde::Serialize`，可以直接使用 `check_serde(...)`。
 Schema 字段名跟随序列化后的数据结构，包括 `serde(rename)`、`serde(rename_all)`、`serde(skip_serializing_if)` 和 `serde(flatten)`。
-`validate_serde` 会先取得并编译 Schema，再调用用户的序列化实现，因此 `MissingSchema` 或非法 Schema 配置不会被自定义 serializer 错误遮住。
+`check_serde` 会先取得并编译 Schema，再调用用户的序列化实现，因此 `MissingSchema` 或非法 Schema 配置不会被自定义 serializer 错误遮住。
 
 ```rust
 use serde::Serialize;
@@ -117,7 +117,7 @@ fields:
         email: "alice@example.com".to_owned(),
     };
 
-    Validator::with_schema(schema).validate_serde(&user)?;
+    Validator::with_schema(schema).check_serde(&user).await?;
     Ok(())
 }
 ```

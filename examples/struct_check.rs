@@ -15,7 +15,7 @@ struct Draft {
     title: String,
 }
 
-fn check_draft(draft: &Draft, valid: &mut halo::validator::valid::Valid<'_>) {
+async fn check_draft(draft: &Draft, valid: &mut halo::validator::valid::Valid<'_>) {
     if draft.name.is_empty() && draft.title.is_empty() {
         valid
             .field("name")
@@ -25,18 +25,22 @@ fn check_draft(draft: &Draft, valid: &mut halo::validator::valid::Valid<'_>) {
     }
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let validator = Validator::new();
-    validator.validate(&Event {
-        start_at: 10,
-        end_at: 20,
-    })?;
+    validator
+        .validate(&Event {
+            start_at: 10,
+            end_at: 20,
+        })
+        .await?;
 
     let error = validator
         .validate(&Draft {
             name: String::new(),
             title: String::new(),
         })
+        .await
         .unwrap_err();
     let fields = error
         .fields()

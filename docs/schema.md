@@ -34,7 +34,7 @@ fields:
         "confirm_password": "secret"
     });
 
-    Validator::with_schema(schema).validate_map(&data)?;
+    Validator::with_schema(schema).check_map(&data).await?;
     Ok(())
 }
 ```
@@ -122,7 +122,7 @@ projected by a single or compound unique rule violates a child field type,
 unique skips that complete item key and the child reports its indexed `type`
 error; malformed input is not reclassified as invalid rule configuration.
 
-If the data already implements `serde::Serialize`, use `validate_serde(...)`.
+If the data already implements `serde::Serialize`, use `check_serde(...)`.
 Schema field names follow the serialized data shape, including
 `serde(rename)`, `serde(rename_all)`, `serde(skip_serializing_if)`, and
 `serde(flatten)`.
@@ -160,7 +160,7 @@ fields:
         email: "alice@example.com".to_owned(),
     };
 
-    Validator::with_schema(schema).validate_serde(&user)?;
+    Validator::with_schema(schema).check_serde(&user).await?;
     Ok(())
 }
 ```

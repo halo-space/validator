@@ -21,6 +21,7 @@ enum Condition {
 #[derive(Debug)]
 struct Check(Condition);
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Check {
     fn signature(&self) -> Signature {
         match self.0 {
@@ -58,7 +59,7 @@ impl Rule for Check {
         Ok(())
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let required = field.value().required();
         let any_satisfies_required =
             || fields(field).any(|value| value.is_some_and(Value::required));

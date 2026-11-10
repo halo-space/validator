@@ -3,11 +3,12 @@ use halo::validator::{Error, Validate, Validator};
 struct Manual;
 
 impl Validate for Manual {
-    fn validate(&self, _validator: &Validator) -> Result<(), Error> {
+    async fn validate(&self, _validator: &Validator) -> Result<(), Error> {
         Ok(())
     }
 }
 
-fn main() {
-    Validator::new().partial(&Manual, ["field"]).unwrap();
+#[tokio::main]
+async fn main() {
+    Validator::new().partial(&Manual, ["field"]).await.unwrap();
 }

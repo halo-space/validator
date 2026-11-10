@@ -9,7 +9,8 @@ struct User {
     email: String,
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -23,14 +24,18 @@ fields:
     )?;
     let validator = Validator::with_schema(schema);
 
-    validator.validate_serde(&User {
-        name: "alice".to_owned(),
-        email: "alice@example.com".to_owned(),
-    })?;
-    validator.validate_map(&json!({
-        "user_name": "alice",
-        "email": "alice@example.com"
-    }))?;
+    validator
+        .check_serde(&User {
+            name: "alice".to_owned(),
+            email: "alice@example.com".to_owned(),
+        })
+        .await?;
+    validator
+        .check_map(&json!({
+            "user_name": "alice",
+            "email": "alice@example.com"
+        }))
+        .await?;
 
     Ok(())
 }

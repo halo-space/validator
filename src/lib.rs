@@ -4,6 +4,7 @@
 //! [`Schema`] for YAML/JSON-driven validation, [`Rule`] for custom rules, and
 //! [`Value`] for custom value types.
 #![warn(missing_docs)]
+#![allow(async_fn_in_trait)]
 
 extern crate self as halo;
 

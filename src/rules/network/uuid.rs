@@ -3,8 +3,9 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Uuid;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Uuid {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -15,8 +16,9 @@ impl Rule for Uuid {
 #[derive(Debug)]
 pub(crate) struct Uuid3;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Uuid3 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -27,8 +29,9 @@ impl Rule for Uuid3 {
 #[derive(Debug)]
 pub(crate) struct Uuid4;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Uuid4 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -51,8 +54,9 @@ pub(crate) struct Uuid4Rfc4122;
 #[derive(Debug)]
 pub(crate) struct Uuid5Rfc4122;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Uuid5 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -60,8 +64,9 @@ impl Rule for Uuid5 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for UuidRfc4122 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -69,8 +74,9 @@ impl Rule for UuidRfc4122 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Uuid3Rfc4122 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -78,8 +84,9 @@ impl Rule for Uuid3Rfc4122 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Uuid4Rfc4122 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -87,8 +94,9 @@ impl Rule for Uuid4Rfc4122 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Uuid5Rfc4122 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()

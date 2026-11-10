@@ -1,8 +1,5 @@
 use halo::validator::prelude::*;
 use serde_json::json;
-use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
 
 #[derive(Debug)]
 struct Slug;
@@ -17,33 +14,16 @@ impl Provider for SlugProvider {
 
 struct AsyncPass;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for AsyncPass {
-    fn check(&self, _field: &Field<'_>) -> Result<bool, Error> {
-        Ok(false)
-    }
-
-    fn check_async<'a>(
-        &'a self,
-        _field: &'a Field<'a>,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>> {
-        Box::pin(async { Ok(true) })
+    async fn check(&self, _field: &Field<'_>) -> Result<bool, Error> {
+        Ok(true)
     }
 }
 
-fn block_on<F: Future>(future: F) -> F::Output {
-    let waker = Waker::noop();
-    let mut context = Context::from_waker(waker);
-    let mut future = Box::pin(future);
-    loop {
-        match future.as_mut().poll(&mut context) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => std::thread::yield_now(),
-        }
-    }
-}
-
+#[async_trait::async_trait(?Send)]
 impl Rule for Slug {
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field.value().string().is_some_and(|value| {
             !value.is_empty()
                 && value
@@ -62,12 +42,13 @@ struct Post {
 #[derive(Debug)]
 struct StartsWith;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for StartsWith {
     fn signature(&self) -> Signature {
         Signature::text("prefix")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let Some(prefix) = field.params().text("prefix") else {
             return Ok(false);
         };
@@ -93,12 +74,13 @@ struct InvalidLength {
 #[derive(Debug)]
 struct SameField;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for SameField {
     fn signature(&self) -> Signature {
         Signature::field("compare")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let target = field.params().text("compare").unwrap();
         Ok(field.sibling(target).and_then(Value::string) == field.value().string())
     }
@@ -167,6 +149,7 @@ struct InvalidEmptyMapDive {
 #[derive(Debug)]
 struct RejectParams;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for RejectParams {
     fn validate_params(&self, _field: &Field<'_>) -> Result<(), Error> {
         Err(Error::InvalidRuleExpression {
@@ -175,7 +158,7 @@ impl Rule for RejectParams {
         })
     }
 
-    fn check(&self, _field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, _field: &Field<'_>) -> Result<bool, Error> {
         panic!("check must not run after parameter preflight fails")
     }
 }
@@ -186,14 +169,15 @@ struct InvalidCustomParams {
     value: String,
 }
 
-#[test]
-fn custom_marker_rule_uses_the_same_contract_in_every_entry() {
+#[tokio::test]
+async fn custom_marker_rule_uses_the_same_contract_in_every_entry() {
     let derive = Validator::new()
         .rule("slug", Slug)
         .unwrap()
         .validate(&Post {
             slug: "Hello World".to_owned(),
         })
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -202,6 +186,7 @@ fn custom_marker_rule_uses_the_same_contract_in_every_entry() {
         .rule("slug", Slug)
         .unwrap()
         .value(&"Hello World", "slug")
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -218,7 +203,8 @@ fields:
     let schema = Validator::with_schema(schema)
         .rule("slug", Slug)
         .unwrap()
-        .validate_map(&json!({ "slug": "Hello World" }))
+        .check_map(&json!({ "slug": "Hello World" }))
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -231,14 +217,15 @@ fields:
     }
 }
 
-#[test]
-fn custom_parameter_rule_uses_the_same_contract_in_every_entry() {
+#[tokio::test]
+async fn custom_parameter_rule_uses_the_same_contract_in_every_entry() {
     let derive = Validator::new()
         .rule("starts_with", StartsWith)
         .unwrap()
         .validate(&Article {
             slug: "entry-1".to_owned(),
         })
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -247,6 +234,7 @@ fn custom_parameter_rule_uses_the_same_contract_in_every_entry() {
         .rule("starts_with", StartsWith)
         .unwrap()
         .value(&"entry-1", "starts_with=post-")
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -264,7 +252,8 @@ fields:
     let schema = Validator::with_schema(schema)
         .rule("starts_with", StartsWith)
         .unwrap()
-        .validate_map(&json!({ "slug": "entry-1" }))
+        .check_map(&json!({ "slug": "entry-1" }))
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -277,8 +266,8 @@ fields:
     }
 }
 
-#[test]
-fn custom_field_rule_uses_explicit_derive_field_access() {
+#[tokio::test]
+async fn custom_field_rule_uses_explicit_derive_field_access() {
     Validator::new()
         .rule("same_field", SameField)
         .unwrap()
@@ -286,6 +275,7 @@ fn custom_field_rule_uses_explicit_derive_field_access() {
             left: "same".to_owned(),
             right: "same".to_owned(),
         })
+        .await
         .unwrap();
 
     let schema = Schema::from_yaml(
@@ -303,19 +293,21 @@ fields:
     Validator::with_schema(schema)
         .rule("same_field", SameField)
         .unwrap()
-        .validate_map(&json!({ "left": "same", "right": "same" }))
+        .check_map(&json!({ "left": "same", "right": "same" }))
+        .await
         .unwrap();
 
     let error = Validator::new()
         .rule("same_field", SameField)
         .unwrap()
         .value(&"same", "same_field=left")
+        .await
         .unwrap_err();
     assert!(matches!(error, Error::MissingFieldContext { .. }));
 }
 
-#[test]
-fn derive_alias_cannot_hide_field_access() {
+#[tokio::test]
+async fn derive_alias_cannot_hide_field_access() {
     let error = Validator::new()
         .alias("same", "eq_field=left")
         .unwrap()
@@ -323,15 +315,19 @@ fn derive_alias_cannot_hide_field_access() {
             left: "same".to_owned(),
             right: "same".to_owned(),
         })
+        .await
         .unwrap_err();
 
     assert!(matches!(error, Error::MissingFieldContext { name } if name == "eq_field"));
 }
 
-#[test]
-fn signatures_reject_unknown_missing_and_extra_parameters() {
+#[tokio::test]
+async fn signatures_reject_unknown_missing_and_extra_parameters() {
     for expression in ["min(mian=3)", "min", "email(foo=bar)"] {
-        let error = Validator::new().value(&"rust", expression).unwrap_err();
+        let error = Validator::new()
+            .value(&"rust", expression)
+            .await
+            .unwrap_err();
         assert!(matches!(error, Error::InvalidRuleExpression { .. }));
     }
 
@@ -339,6 +335,7 @@ fn signatures_reject_unknown_missing_and_extra_parameters() {
         .validate(&InvalidLength {
             value: "rust".to_owned(),
         })
+        .await
         .unwrap_err();
     assert!(matches!(derive, Error::InvalidRuleExpression { .. }));
 
@@ -354,18 +351,23 @@ fields:
     )
     .unwrap();
     let schema = Validator::with_schema(schema)
-        .validate_map(&json!({ "value": "rust" }))
+        .check_map(&json!({ "value": "rust" }))
+        .await
         .unwrap_err();
     assert!(matches!(schema, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn semantic_parameter_errors_remain_configuration_errors() {
-    let direct = Validator::new().value(&5_i32, "min=invalid").unwrap_err();
+#[tokio::test]
+async fn semantic_parameter_errors_remain_configuration_errors() {
+    let direct = Validator::new()
+        .value(&5_i32, "min=invalid")
+        .await
+        .unwrap_err();
     assert!(matches!(direct, Error::InvalidRuleExpression { .. }));
 
     let derive = Validator::new()
         .validate(&InvalidNumericParameter { value: 5 })
+        .await
         .unwrap_err();
     assert!(matches!(derive, Error::InvalidRuleExpression { .. }));
 
@@ -380,7 +382,8 @@ fields:
     )
     .unwrap();
     let schema = Validator::with_schema(schema)
-        .validate_map(&json!({ "value": 5 }))
+        .check_map(&json!({ "value": 5 }))
+        .await
         .unwrap_err();
     assert!(matches!(schema, Error::InvalidRuleExpression { .. }));
 
@@ -388,29 +391,40 @@ fields:
     for _ in 0..2 {
         let regex = validator
             .value(&"value", r#"regex(pattern="[")"#)
+            .await
             .unwrap_err();
         assert!(matches!(regex, Error::InvalidRuleExpression { .. }));
     }
 }
 
-#[test]
-fn parameter_preflight_runs_before_every_data_short_circuit() {
+#[tokio::test]
+async fn parameter_preflight_runs_before_every_data_short_circuit() {
     let validator = Validator::new();
 
     for error in [
         validator
             .value(&Option::<i32>::None, "min=invalid")
+            .await
             .unwrap_err(),
         validator
             .value(&String::new(), r#"omitempty,regex(pattern="[")"#)
+            .await
             .unwrap_err(),
-        validator.value(&"ok", r#"eq=ok|regex("[")"#).unwrap_err(),
+        validator
+            .value(&"ok", r#"eq=ok|regex("[")"#)
+            .await
+            .unwrap_err(),
         validator
             .value(&5_i32, "range(min=10,max=invalid)")
+            .await
             .unwrap_err(),
-        validator.value(&1_i32, "oneof(1,invalid)").unwrap_err(),
+        validator
+            .value(&1_i32, "oneof(1,invalid)")
+            .await
+            .unwrap_err(),
         validator
             .value(&serde_json::Value::Null, "omitempty,range(min=10,max=1)")
+            .await
             .unwrap_err(),
     ] {
         assert!(matches!(error, Error::InvalidRuleExpression { .. }));
@@ -420,6 +434,7 @@ fn parameter_preflight_runs_before_every_data_short_circuit() {
         .validate(&InvalidSkippedRegex {
             value: String::new(),
         })
+        .await
         .unwrap_err();
     assert!(matches!(derive, Error::InvalidRuleExpression { .. }));
 
@@ -428,6 +443,7 @@ fn parameter_preflight_runs_before_every_data_short_circuit() {
             age: 1,
             name: String::new(),
         })
+        .await
         .unwrap_err();
     assert!(matches!(condition, Error::InvalidRuleExpression { .. }));
 
@@ -435,6 +451,7 @@ fn parameter_preflight_runs_before_every_data_short_circuit() {
         .validate(&InvalidLengthBounds {
             value: String::new(),
         })
+        .await
         .unwrap_err();
     assert!(matches!(bounds, Error::InvalidRuleExpression { .. }));
 
@@ -452,13 +469,14 @@ fields:
     )
     .unwrap();
     let schema = Validator::with_schema(schema)
-        .validate_map(&json!({}))
+        .check_map(&json!({}))
+        .await
         .unwrap_err();
     assert!(matches!(schema, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn unique_kind_preflight_runs_in_schema_before_omitempty() {
+#[tokio::test]
+async fn unique_kind_preflight_runs_in_schema_before_omitempty() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -469,17 +487,19 @@ fields:
     )
     .unwrap();
     let error = Validator::with_schema(schema)
-        .validate_map(&json!({}))
+        .check_map(&json!({}))
+        .await
         .unwrap_err();
 
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn empty_dive_still_preflights_element_rules() {
+#[tokio::test]
+async fn empty_dive_still_preflights_element_rules() {
     let validator = Validator::new();
     let error = validator
         .validate(&InvalidEmptyDive { values: Vec::new() })
+        .await
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 
@@ -487,18 +507,20 @@ fn empty_dive_still_preflights_element_rules() {
         .validate(&InvalidEmptyMapDive {
             values: std::collections::HashMap::new(),
         })
+        .await
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn custom_parameter_preflight_runs_in_every_entry() {
+#[tokio::test]
+async fn custom_parameter_preflight_runs_in_every_entry() {
     let derive = Validator::new()
         .rule("reject_params", RejectParams)
         .unwrap()
         .validate(&InvalidCustomParams {
             value: "value".to_owned(),
         })
+        .await
         .unwrap_err();
     assert!(
         matches!(derive, Error::InvalidRuleExpression { reason, .. } if reason == "custom parameter rejection")
@@ -508,6 +530,7 @@ fn custom_parameter_preflight_runs_in_every_entry() {
         .rule("reject_params", RejectParams)
         .unwrap()
         .value(&"value", "reject_params")
+        .await
         .unwrap_err();
     assert!(
         matches!(direct, Error::InvalidRuleExpression { reason, .. } if reason == "custom parameter rejection")
@@ -525,15 +548,16 @@ fields:
     let schema = Validator::with_schema(schema)
         .rule("reject_params", RejectParams)
         .unwrap()
-        .validate_map(&json!({ "value": "value" }))
+        .check_map(&json!({ "value": "value" }))
+        .await
         .unwrap_err();
     assert!(
         matches!(schema, Error::InvalidRuleExpression { reason, .. } if reason == "custom parameter rejection")
     );
 }
 
-#[test]
-fn schema_parameter_preflight_precedes_root_and_field_type_checks() {
+#[tokio::test]
+async fn schema_parameter_preflight_precedes_root_and_field_type_checks() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -547,22 +571,25 @@ fields:
     let validator = Validator::with_schema(schema);
 
     for data in [json!("not-an-object"), json!({ "value": 42 })] {
-        let error = validator.validate_map(&data).unwrap_err();
+        let error = validator.check_map(&data).await.unwrap_err();
         assert!(matches!(error, Error::InvalidRuleExpression { .. }));
     }
 }
 
-#[test]
-fn choice_values_keep_delimiter_characters() {
+#[tokio::test]
+async fn choice_values_keep_delimiter_characters() {
     Validator::new()
         .value(&"a,b", r#"oneof("a,b","c")"#)
+        .await
         .unwrap();
     Validator::new()
         .value(&"a=b", r#"oneof("a=b","c")"#)
+        .await
         .unwrap();
 
     let fields = Validator::new()
         .value(&"other", r#"oneof("a,b","c")"#)
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -572,13 +599,17 @@ fn choice_values_keep_delimiter_characters() {
 
     Validator::new()
         .value(&"a\"b", r#"oneof("a\"b","c\\d")"#)
+        .await
         .unwrap();
 }
 
-#[test]
-fn empty_alias_and_malformed_expressions_are_rejected() {
+#[tokio::test]
+async fn empty_alias_and_malformed_expressions_are_rejected() {
     for expression in ["", "email,", "email||url", r#"oneof("value)"#] {
-        let error = Validator::new().value(&"value", expression).unwrap_err();
+        let error = Validator::new()
+            .value(&"value", expression)
+            .await
+            .unwrap_err();
         assert!(matches!(error, Error::InvalidRuleExpression { .. }));
     }
 
@@ -588,10 +619,11 @@ fn empty_alias_and_malformed_expressions_are_rejected() {
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn field_rule_requires_field_context() {
+#[tokio::test]
+async fn field_rule_requires_field_context() {
     let error = Validator::new()
         .value(&"value", "eq_field=other")
+        .await
         .unwrap_err();
 
     assert!(matches!(
@@ -600,12 +632,13 @@ fn field_rule_requires_field_context() {
     ));
 }
 
-#[test]
-fn recursive_aliases_are_rejected() {
+#[tokio::test]
+async fn recursive_aliases_are_rejected() {
     let direct = Validator::new()
         .alias("cycle", "cycle")
         .unwrap()
         .value(&"value", "cycle")
+        .await
         .unwrap_err();
     assert!(matches!(
         direct,
@@ -618,6 +651,7 @@ fn recursive_aliases_are_rejected() {
         .alias("second", "first")
         .unwrap()
         .value(&"value", "first")
+        .await
         .unwrap_err();
     assert!(matches!(
         indirect,
@@ -625,14 +659,15 @@ fn recursive_aliases_are_rejected() {
     ));
 }
 
-#[test]
-fn nested_alias_preserves_outer_rule() {
+#[tokio::test]
+async fn nested_alias_preserves_outer_rule() {
     let fields = Validator::new()
         .alias("inner", "email")
         .unwrap()
         .alias("outer", "inner")
         .unwrap()
         .value(&"invalid", "outer")
+        .await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -641,8 +676,8 @@ fn nested_alias_preserves_outer_rule() {
     assert_eq!(fields[0].reason(), "email");
 }
 
-#[test]
-fn built_in_and_control_names_cannot_be_overridden() {
+#[tokio::test]
+async fn built_in_and_control_names_cannot_be_overridden() {
     for name in [
         "required",
         "alias",
@@ -665,18 +700,19 @@ fn built_in_and_control_names_cannot_be_overridden() {
     }
 }
 
-#[test]
-fn provider_extends_config_before_validator_creation() {
+#[tokio::test]
+async fn provider_extends_config_before_validator_creation() {
     let validator = Validator::from(Config::default().provider(SlugProvider).unwrap());
     validator
         .validate(&Post {
             slug: "valid-slug".to_owned(),
         })
+        .await
         .unwrap();
 }
 
-#[test]
-fn explicit_field_rule_syntax_supports_custom_rule_names() {
+#[tokio::test]
+async fn explicit_field_rule_syntax_supports_custom_rule_names() {
     let value = ExplicitMatchingFields {
         left: "same".to_owned(),
         right: "same".to_owned(),
@@ -686,20 +722,27 @@ fn explicit_field_rule_syntax_supports_custom_rule_names() {
         .rule("same", SameField)
         .unwrap()
         .validate(&value)
+        .await
         .unwrap();
 }
 
-#[test]
-fn async_rule_runs_through_async_value_entry_point() {
+#[tokio::test]
+async fn rule_runs_through_value_entry_point() {
     let validator = Validator::new().rule("async_pass", AsyncPass).unwrap();
-    block_on(validator.value_async(&"value", "async_pass")).unwrap();
+    validator.value(&"value", "async_pass").await.unwrap();
 }
 
-#[test]
-fn cache_stats_report_hits_and_misses() {
+#[tokio::test]
+async fn cache_stats_report_hits_and_misses() {
     let validator = Validator::new();
-    validator.value(&"valid@example.com", "email").unwrap();
-    validator.value(&"valid@example.com", "email").unwrap();
+    validator
+        .value(&"valid@example.com", "email")
+        .await
+        .unwrap();
+    validator
+        .value(&"valid@example.com", "email")
+        .await
+        .unwrap();
 
     let stats = validator.stats();
     assert!(stats.expression_misses >= 1);

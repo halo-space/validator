@@ -10,7 +10,8 @@ use super::items::Collection;
 use super::path::namespace;
 use super::{Fields, TYPE_FAILURE, Type};
 
-pub(super) fn validate_fields<'a>(
+#[async_recursion::async_recursion(?Send)]
+pub(super) async fn validate_fields<'a>(
     context: &Context<'_>,
     errors: &mut Vec<FieldError>,
     parent: &str,
@@ -27,7 +28,8 @@ pub(super) fn validate_fields<'a>(
         if value.is_none() {
             field
                 .group
-                .execute_with_fields(errors, target, value, context, &access)?;
+                .execute_with_fields(errors, target, value, context, &access)
+                .await?;
             continue;
         }
 
@@ -54,37 +56,38 @@ pub(super) fn validate_fields<'a>(
                 .expect("array type is checked before rule execution");
             match &field.children {
                 Fields::Absent => {
-                    field.group.execute_with_fields(
-                        errors,
-                        target.clone(),
-                        value,
-                        context,
-                        &access,
-                    )?;
+                    field
+                        .group
+                        .execute_with_fields(errors, target.clone(), value, context, &access)
+                        .await?;
                 }
                 Fields::Declared(children) => {
                     let items = Collection::new(values, children);
-                    field.group.execute_with_fields_and_items(
-                        errors,
-                        target.clone(),
-                        value,
-                        context,
-                        &access,
-                        &items,
-                    )?;
-                    validate_array_fields(context, errors, parent, name, children, values)?;
+                    field
+                        .group
+                        .execute_with_fields_and_items(
+                            errors,
+                            target.clone(),
+                            value,
+                            context,
+                            &access,
+                            &items,
+                        )
+                        .await?;
+                    validate_array_fields(context, errors, parent, name, children, values).await?;
                 }
             }
         } else {
             field
                 .group
-                .execute_with_fields(errors, target.clone(), value, context, &access)?;
+                .execute_with_fields(errors, target.clone(), value, context, &access)
+                .await?;
 
             if let Fields::Declared(children) = &field.children
                 && let Some(object) = raw.as_object()
             {
                 let parent = namespace(parent, name);
-                validate_fields(context, errors, &parent, children, object)?;
+                validate_fields(context, errors, &parent, children, object).await?;
             }
         }
     }
@@ -117,7 +120,8 @@ pub(super) fn preflight_fields(
     Ok(())
 }
 
-fn validate_array_fields(
+#[async_recursion::async_recursion(?Send)]
+async fn validate_array_fields(
     context: &Context<'_>,
     errors: &mut Vec<FieldError>,
     parent: &str,
@@ -140,7 +144,7 @@ fn validate_array_fields(
             continue;
         };
 
-        validate_fields(context, errors, &format!("{array}[{index}]"), scope, object)?;
+        validate_fields(context, errors, &format!("{array}[{index}]"), scope, object).await?;
     }
 
     Ok(())

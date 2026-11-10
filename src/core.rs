@@ -1,3 +1,5 @@
+use async_trait::async_trait;
+
 mod access;
 mod cache;
 mod context;
@@ -12,9 +14,6 @@ mod selection;
 mod signature;
 mod spec;
 mod value;
-
-use std::future::Future;
-use std::pin::Pin;
 
 pub use access::{Access, FieldRef};
 #[doc(hidden)]
@@ -42,6 +41,7 @@ pub use spec::Spec;
 pub(crate) use spec::{Expr, parse_expression};
 
 /// A validation rule that can inspect one [`Field`] and its bound parameters.
+#[async_trait(?Send)]
 pub trait Rule: Send + Sync {
     /// Declares the parameters and field context accepted by this rule.
     fn signature(&self) -> Signature {
@@ -59,13 +59,5 @@ pub trait Rule: Send + Sync {
     }
 
     /// Returns whether the field satisfies this rule.
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
-
-    /// Asynchronously checks a field. The default delegates to [`Rule::check`].
-    fn check_async<'a>(
-        &'a self,
-        field: &'a Field<'a>,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>> {
-        Box::pin(std::future::ready(self.check(field)))
-    }
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
 }

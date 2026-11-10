@@ -14,7 +14,7 @@ halo = { package = "halo-validator", version = "0.1" }
 也可以固定精确版本：
 
 ```toml
-halo = { package = "halo-validator", version = "=0.1.7" }
+halo = { package = "halo-validator", version = "=0.2.0" }
 ```
 
 要求 Rust edition 2024，最低 rustc 版本为 1.97。
@@ -209,13 +209,13 @@ let data = json!({
     "age": 30
 });
 
-Validator::with_schema(schema).validate_map(&data)?;
+Validator::with_schema(schema).check_map(&data).await?;
 ```
 
 如果数据实现了 `serde::Serialize`，可以直接调用：
 
 ```rust
-Validator::with_schema(schema).validate_serde(&user)?;
+Validator::with_schema(schema).check_serde(&user).await?;
 ```
 
 Schema 类型支持 `string`、`boolean`、`int`、`uint`、`float`、`array` 和 `object`。

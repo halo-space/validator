@@ -17,8 +17,8 @@ struct UniqueCollections<'a> {
     metadata: BTreeMap<String, u8>,
 }
 
-#[test]
-fn unique_collections_pass() {
+#[tokio::test]
+async fn unique_collections_pass() {
     let aliases = ["validator", "rules"];
     let value = UniqueCollections {
         tags: vec!["rust".to_owned(), "validator".to_owned()],
@@ -31,11 +31,11 @@ fn unique_collections_pass() {
         metadata: BTreeMap::from([("a".to_owned(), 1), ("b".to_owned(), 2)]),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn unique_collections_fail_on_field_namespace() {
+#[tokio::test]
+async fn unique_collections_fail_on_field_namespace() {
     let aliases = ["validator", "validator"];
     let value = UniqueCollections {
         tags: vec!["rust".to_owned(), "rust".to_owned()],
@@ -49,7 +49,7 @@ fn unique_collections_fail_on_field_namespace() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -70,14 +70,14 @@ fn unique_collections_fail_on_field_namespace() {
     );
 }
 
-#[test]
-fn direct_json_array_unique_rule_works() {
+#[tokio::test]
+async fn direct_json_array_unique_rule_works() {
     Validator::new()
-        .value(&serde_json::json!(["rust", "validator"]), "unique")
+        .value(&serde_json::json!(["rust", "validator"]), "unique").await
         .unwrap();
 
     let fields = Validator::new()
-        .value(&serde_json::json!(["rust", "rust"]), "unique")
+        .value(&serde_json::json!(["rust", "rust"]), "unique").await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -86,12 +86,12 @@ fn direct_json_array_unique_rule_works() {
     assert_eq!(fields[0].rule(), "unique");
 }
 
-#[test]
-fn direct_json_unique_preserves_scalar_families_and_float_zero() {
+#[tokio::test]
+async fn direct_json_unique_preserves_scalar_families_and_float_zero() {
     let validator = Validator::new();
 
     validator
-        .value(&serde_json::json!([1, "1", true, null]), "unique")
+        .value(&serde_json::json!([1, "1", true, null]), "unique").await
         .unwrap();
 
     for value in [
@@ -100,7 +100,7 @@ fn direct_json_unique_preserves_scalar_families_and_float_zero() {
         serde_json::json!([null, null]),
     ] {
         let fields = validator
-            .value(&value, "unique")
+            .value(&value, "unique").await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -109,17 +109,17 @@ fn direct_json_unique_preserves_scalar_families_and_float_zero() {
     }
 }
 
-#[test]
-fn direct_json_object_unique_rule_checks_values() {
+#[tokio::test]
+async fn direct_json_object_unique_rule_checks_values() {
     Validator::new()
         .value(
             &serde_json::json!({ "a": "rust", "b": "validator" }),
             "unique",
-        )
+        ).await
         .unwrap();
 
     let fields = Validator::new()
-        .value(&serde_json::json!({ "a": "rust", "b": "rust" }), "unique")
+        .value(&serde_json::json!({ "a": "rust", "b": "rust" }), "unique").await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -128,8 +128,8 @@ fn direct_json_object_unique_rule_checks_values() {
     assert_eq!(fields[0].rule(), "unique");
 }
 
-#[test]
-fn direct_native_collections_unique_rule_works() {
+#[tokio::test]
+async fn direct_native_collections_unique_rule_works() {
     let validator = Validator::new();
     let array = ["rust", "validator"];
     let slice = &array[..];
@@ -137,26 +137,26 @@ fn direct_native_collections_unique_rule_works() {
     let btree_map = BTreeMap::from([("a", 1_u8), ("b", 2_u8)]);
 
     validator
-        .value(&vec!["rust", "validator"], "unique")
+        .value(&vec!["rust", "validator"], "unique").await
         .unwrap();
-    validator.value(&array, "unique").unwrap();
-    validator.value(&slice, "unique").unwrap();
-    validator.value(&hash_map, "unique").unwrap();
-    validator.value(&btree_map, "unique").unwrap();
+    validator.value(&array, "unique").await.unwrap();
+    validator.value(&slice, "unique").await.unwrap();
+    validator.value(&hash_map, "unique").await.unwrap();
+    validator.value(&btree_map, "unique").await.unwrap();
 
     for fields in [
         validator
-            .value(&vec!["rust", "rust"], "unique")
+            .value(&vec!["rust", "rust"], "unique").await
             .unwrap_err()
             .into_fields()
             .unwrap(),
         validator
-            .value(&[1_u8, 1_u8], "unique")
+            .value(&[1_u8, 1_u8], "unique").await
             .unwrap_err()
             .into_fields()
             .unwrap(),
         validator
-            .value(&HashMap::from([("a", 1_u8), ("b", 1_u8)]), "unique")
+            .value(&HashMap::from([("a", 1_u8), ("b", 1_u8)]), "unique").await
             .unwrap_err()
             .into_fields()
             .unwrap(),
@@ -166,28 +166,28 @@ fn direct_native_collections_unique_rule_works() {
     }
 }
 
-#[test]
-fn unique_rejects_unsupported_json_array_elements() {
+#[tokio::test]
+async fn unique_rejects_unsupported_json_array_elements() {
     let error = Validator::new()
-        .value(&serde_json::json!([{ "id": 1 }]), "unique")
+        .value(&serde_json::json!([{ "id": 1 }]), "unique").await
         .unwrap_err();
 
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn unique_preflight_rejects_scalar_behind_omitempty() {
+#[tokio::test]
+async fn unique_preflight_rejects_scalar_behind_omitempty() {
     let error = Validator::new()
-        .value(&0_i32, "omitempty,unique")
+        .value(&0_i32, "omitempty,unique").await
         .unwrap_err();
 
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn unique_treats_nan_values_as_distinct() {
+#[tokio::test]
+async fn unique_treats_nan_values_as_distinct() {
     Validator::new()
-        .value(&vec![f64::NAN, f64::NAN, 1.0], "unique")
+        .value(&vec![f64::NAN, f64::NAN, 1.0], "unique").await
         .unwrap();
 }
 
@@ -346,15 +346,15 @@ fn compound_item(
     }
 }
 
-#[test]
-fn unique_field_supports_vec_array_and_slice() {
+#[tokio::test]
+async fn unique_field_supports_vec_array_and_slice() {
     Validator::new()
         .validate(&UniqueAccountVec {
             users: vec![
                 unique_account("first@example.com", 1, Some("first"), 1),
                 unique_account("second@example.com", 2, Some("second"), 2),
             ],
-        })
+        }).await
         .unwrap();
 
     Validator::new()
@@ -363,7 +363,7 @@ fn unique_field_supports_vec_array_and_slice() {
                 unique_account("same@example.com", 1, Some("first"), 1),
                 unique_account("same@example.com", 2, Some("second"), 2),
             ],
-        })
+        }).await
         .unwrap();
 
     let users = [
@@ -371,12 +371,12 @@ fn unique_field_supports_vec_array_and_slice() {
         unique_account("same@example.com", 1, Some("second"), 2),
     ];
     Validator::new()
-        .validate(&UniqueAccountSlice { users: &users })
+        .validate(&UniqueAccountSlice { users: &users }).await
         .unwrap();
 }
 
-#[test]
-fn unique_field_supports_raw_identifier_members() {
+#[tokio::test]
+async fn unique_field_supports_raw_identifier_members() {
     let fields = Validator::new()
         .validate(&RawUniqueItems {
             items: vec![
@@ -387,7 +387,7 @@ fn unique_field_supports_raw_identifier_members() {
                     r#type: "same".to_owned(),
                 },
             ],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -396,15 +396,15 @@ fn unique_field_supports_raw_identifier_members() {
     assert_eq!(param_list(&fields[0], "fields"), vec!["type"]);
 }
 
-#[test]
-fn unique_compound_fields_compare_complete_nested_keys() {
+#[tokio::test]
+async fn unique_compound_fields_compare_complete_nested_keys() {
     Validator::new()
         .validate(&UniqueCompoundFields {
             users: vec![
                 compound_item(1, Some("same@example.com"), 1.0, 1),
                 compound_item(2, Some("same@example.com"), 1.0, 2),
             ],
-        })
+        }).await
         .unwrap();
 
     let fields = Validator::new()
@@ -413,7 +413,7 @@ fn unique_compound_fields_compare_complete_nested_keys() {
                 compound_item(1, Some("same@example.com"), 1.0, 1),
                 compound_item(1, Some("same@example.com"), 2.0, 2),
             ],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -428,8 +428,8 @@ fn unique_compound_fields_compare_complete_nested_keys() {
     assert_eq!(fields[0].params().text("field"), None);
 }
 
-#[test]
-fn unique_compound_fields_support_more_than_inline_capacity() {
+#[tokio::test]
+async fn unique_compound_fields_support_more_than_inline_capacity() {
     let item = |fifth| WideUniqueItem {
         first: 1,
         second: 2,
@@ -441,13 +441,13 @@ fn unique_compound_fields_support_more_than_inline_capacity() {
     Validator::new()
         .validate(&WideUniqueFields {
             items: vec![item(5), item(6)],
-        })
+        }).await
         .unwrap();
 
     let fields = Validator::new()
         .validate(&WideUniqueFields {
             items: vec![item(5), item(5)],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -460,15 +460,15 @@ fn unique_compound_fields_support_more_than_inline_capacity() {
     );
 }
 
-#[test]
-fn unique_compound_fields_preserve_none_time_and_nan_semantics() {
+#[tokio::test]
+async fn unique_compound_fields_preserve_none_time_and_nan_semantics() {
     Validator::new()
         .validate(&UniqueCompoundFields {
             users: vec![
                 compound_item(1, None, 0.0, 1),
                 compound_item(2, None, 0.0, 2),
             ],
-        })
+        }).await
         .unwrap();
 
     let none = Validator::new()
@@ -477,7 +477,7 @@ fn unique_compound_fields_preserve_none_time_and_nan_semantics() {
                 compound_item(1, None, 0.0, 1),
                 compound_item(1, None, 0.0, 2),
             ],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -492,7 +492,7 @@ fn unique_compound_fields_preserve_none_time_and_nan_semantics() {
                 compound_item(1, Some("first@example.com"), 1.0, 1),
                 compound_item(1, Some("second@example.com"), 2.0, 2),
             ],
-        })
+        }).await
         .unwrap();
     let time = Validator::new()
         .validate(&UniqueCompoundTime {
@@ -500,7 +500,7 @@ fn unique_compound_fields_preserve_none_time_and_nan_semantics() {
                 compound_item(1, Some("first@example.com"), 1.0, 1),
                 compound_item(1, Some("second@example.com"), 2.0, 1),
             ],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -515,19 +515,19 @@ fn unique_compound_fields_preserve_none_time_and_nan_semantics() {
                 compound_item(1, Some("first@example.com"), f64::NAN, 1),
                 compound_item(1, Some("second@example.com"), f64::NAN, 2),
             ],
-        })
+        }).await
         .unwrap();
 }
 
-#[test]
-fn unique_field_reports_collection_error_and_params() {
+#[tokio::test]
+async fn unique_field_reports_collection_error_and_params() {
     let fields = Validator::new()
         .validate(&UniqueAccountVec {
             users: vec![
                 unique_account("same@example.com", 1, Some("first"), 1),
                 unique_account("same@example.com", 2, Some("second"), 2),
             ],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -539,15 +539,15 @@ fn unique_field_reports_collection_error_and_params() {
     assert_eq!(param_list(&fields[0], "fields"), vec!["email"]);
 }
 
-#[test]
-fn unique_field_treats_none_as_one_key() {
+#[tokio::test]
+async fn unique_field_treats_none_as_one_key() {
     Validator::new()
         .validate(&UniqueOptionalField {
             users: vec![
                 unique_account("first@example.com", 1, None, 1),
                 unique_account("second@example.com", 2, Some("name"), 2),
             ],
-        })
+        }).await
         .unwrap();
 
     let fields = Validator::new()
@@ -556,7 +556,7 @@ fn unique_field_treats_none_as_one_key() {
                 unique_account("first@example.com", 1, None, 1),
                 unique_account("second@example.com", 2, None, 2),
             ],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -564,15 +564,15 @@ fn unique_field_treats_none_as_one_key() {
     assert_eq!(param_list(&fields[0], "fields"), vec!["nickname"]);
 }
 
-#[test]
-fn unique_field_rejects_duplicate_numeric_and_time_keys() {
+#[tokio::test]
+async fn unique_field_rejects_duplicate_numeric_and_time_keys() {
     let numeric = Validator::new()
         .validate(&UniqueAccountArray {
             users: [
                 unique_account("first@example.com", 1, Some("first"), 1),
                 unique_account("second@example.com", 1, Some("second"), 2),
             ],
-        })
+        }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -583,15 +583,15 @@ fn unique_field_rejects_duplicate_numeric_and_time_keys() {
         unique_account("second@example.com", 2, Some("second"), 1),
     ];
     let time = Validator::new()
-        .validate(&UniqueAccountSlice { users: &users })
+        .validate(&UniqueAccountSlice { users: &users }).await
         .unwrap_err()
         .into_fields()
         .unwrap();
     assert_eq!(param_list(&time[0], "fields"), vec!["created_at"]);
 }
 
-#[test]
-fn unique_field_supports_bool_signed_integer_and_float_keys() {
+#[tokio::test]
+async fn unique_field_supports_bool_signed_integer_and_float_keys() {
     let error = Validator::new()
         .validate(&UniqueScalarFields {
             bools: vec![
@@ -630,7 +630,7 @@ fn unique_field_supports_bool_signed_integer_and_float_keys() {
                     ratio: 0.0,
                 },
             ],
-        })
+        }).await
         .unwrap_err();
     let fields = error.into_fields().unwrap();
 
@@ -640,14 +640,14 @@ fn unique_field_supports_bool_signed_integer_and_float_keys() {
     assert_eq!(param_list(&fields[2], "fields"), vec!["ratio"]);
 }
 
-#[test]
-fn direct_unique_field_requires_field_context() {
+#[tokio::test]
+async fn direct_unique_field_requires_field_context() {
     for expression in ["unique=email", "unique=tenant_id profile.email"] {
         let error = Validator::new()
             .value(
                 &vec![serde_json::json!({ "email": "team@example.com" })],
                 expression,
-            )
+            ).await
             .unwrap_err();
 
         assert!(matches!(
@@ -657,14 +657,14 @@ fn direct_unique_field_requires_field_context() {
     }
 }
 
-#[test]
-fn unique_field_rejects_unsupported_key_kind_as_configuration_error() {
+#[tokio::test]
+async fn unique_field_rejects_unsupported_key_kind_as_configuration_error() {
     let error = Validator::new()
         .validate(&UniqueUnsupportedField {
             items: vec![UniqueUnsupportedItem {
                 value: UnsupportedUniqueKey,
             }],
-        })
+        }).await
         .unwrap_err();
 
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));

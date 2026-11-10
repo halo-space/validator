@@ -12,8 +12,9 @@ pub(crate) struct Isbn13;
 #[derive(Debug)]
 pub(crate) struct Issn;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Isbn {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field.value().string().is_some_and(|value| {
             let value = value.as_ref();
             valid_isbn10(value) || valid_isbn13(value)
@@ -21,8 +22,9 @@ impl Rule for Isbn {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Isbn10 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -30,8 +32,9 @@ impl Rule for Isbn10 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Isbn13 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -39,8 +42,9 @@ impl Rule for Isbn13 {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Issn {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()

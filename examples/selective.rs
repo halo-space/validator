@@ -18,7 +18,8 @@ struct Profile {
     display_name: String,
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let validator = Validator::new();
     let user = User {
         name: "alice".to_owned(),
@@ -28,7 +29,7 @@ fn main() -> Result<(), Error> {
         },
     };
 
-    let error = validator.partial(&user, ["email"]).unwrap_err();
+    let error = validator.partial(&user, ["email"]).await.unwrap_err();
     let fields = error
         .fields()
         .expect("validation errors must contain fields");
@@ -37,8 +38,10 @@ fn main() -> Result<(), Error> {
     assert_eq!(fields[0].rule(), "required");
     assert_eq!(fields[1].rule(), "email");
 
-    validator.except(&user, ["email"])?;
-    validator.filter(&user, |namespace| namespace.as_str().starts_with("profile"))?;
+    validator.except(&user, ["email"]).await?;
+    validator
+        .filter(&user, |namespace| namespace.as_str().starts_with("profile"))
+        .await?;
 
     Ok(())
 }

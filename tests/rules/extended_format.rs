@@ -44,8 +44,8 @@ struct DocumentFormats {
     semver: String,
 }
 
-#[test]
-fn json_datetime_rules_pass() {
+#[tokio::test]
+async fn json_datetime_rules_pass() {
     let value = DocumentFormats {
         json: r#"{"ok":true}"#.to_owned(),
         datetime: "2026-07-08T12:30:00Z".to_owned(),
@@ -63,11 +63,11 @@ fn json_datetime_rules_pass() {
         semver: "1.2.3-alpha.1+build.5".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn json_datetime_rules_fail() {
+#[tokio::test]
+async fn json_datetime_rules_fail() {
     let value = DocumentFormats {
         json: "{not-json}".to_owned(),
         datetime: "2026-13-08T12:30:00Z".to_owned(),
@@ -86,7 +86,7 @@ fn json_datetime_rules_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -113,10 +113,10 @@ fn json_datetime_rules_fail() {
     );
 }
 
-#[test]
-fn datetime_rejects_empty_fractional_seconds() {
+#[tokio::test]
+async fn datetime_rejects_empty_fractional_seconds() {
     let fields = Validator::new()
-        .value(&"2026-07-08T12:30:00.Z", "datetime")
+        .value(&"2026-07-08T12:30:00.Z", "datetime").await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -124,13 +124,13 @@ fn datetime_rejects_empty_fractional_seconds() {
     assert_eq!(fields[0].rule(), "datetime");
 }
 
-#[test]
-fn mac_accepts_common_notations() {
+#[tokio::test]
+async fn mac_accepts_common_notations() {
     let validator = Validator::new();
 
-    validator.value(&"01:23:45:67:89:ab", "mac").unwrap();
-    validator.value(&"01-23-45-67-89-ab", "mac").unwrap();
-    validator.value(&"0123.4567.89ab", "mac").unwrap();
+    validator.value(&"01:23:45:67:89:ab", "mac").await.unwrap();
+    validator.value(&"01-23-45-67-89-ab", "mac").await.unwrap();
+    validator.value(&"0123.4567.89ab", "mac").await.unwrap();
 
     for value in [
         "02:00:5e:10:00:00:00:01",
@@ -140,12 +140,12 @@ fn mac_accepts_common_notations() {
         "00-00-00-00-fe-80-00-00-00-00-00-00-02-00-5e-10-00-00-00-01",
         "0000.0000.fe80.0000.0000.0000.0200.5e10.0000.0001",
     ] {
-        validator.value(&value, "mac").unwrap();
+        validator.value(&value, "mac").await.unwrap();
     }
 }
 
-#[test]
-fn extended_format_rules_pass() {
+#[tokio::test]
+async fn extended_format_rules_pass() {
     let validator = Validator::new();
 
     for (value, rule) in [
@@ -170,14 +170,14 @@ fn extended_format_rules_pass() {
         ("4624 7482 3324 9780", "credit_card"),
         ("586824160825533338", "luhn_checksum"),
     ] {
-        validator.value(&value, rule).unwrap();
+        validator.value(&value, rule).await.unwrap();
     }
 
-    validator.value(&90_i32, "latitude").unwrap();
-    validator.value(&180_u32, "longitude").unwrap();
-    validator.value(&10000000116_i64, "luhn_checksum").unwrap();
+    validator.value(&90_i32, "latitude").await.unwrap();
+    validator.value(&180_u32, "longitude").await.unwrap();
+    validator.value(&10000000116_i64, "luhn_checksum").await.unwrap();
     validator
-        .value(&586824160825533338_u64, "luhn_checksum")
+        .value(&586824160825533338_u64, "luhn_checksum").await
         .unwrap();
 
     for (value, rule) in [
@@ -192,12 +192,12 @@ fn extended_format_rules_pass() {
         ("a".repeat(40), "tiger160"),
         ("a".repeat(48), "tiger192"),
     ] {
-        validator.value(&value, rule).unwrap();
+        validator.value(&value, rule).await.unwrap();
     }
 }
 
-#[test]
-fn extended_format_rules_fail() {
+#[tokio::test]
+async fn extended_format_rules_fail() {
     let validator = Validator::new();
 
     for (value, rule) in [
@@ -226,7 +226,7 @@ fn extended_format_rules_fail() {
         ("586824160825533328", "luhn_checksum"),
     ] {
         let fields = validator
-            .value(&value, rule)
+            .value(&value, rule).await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -240,7 +240,7 @@ fn extended_format_rules_fail() {
         ("g".repeat(40), "ripemd160"),
     ] {
         let fields = validator
-            .value(&value, rule)
+            .value(&value, rule).await
             .unwrap_err()
             .into_fields()
             .unwrap();

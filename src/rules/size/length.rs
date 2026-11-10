@@ -3,6 +3,7 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Length;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Length {
     fn signature(&self) -> Signature {
         Signature::named(&["min", "max", "exact"], &[])
@@ -37,7 +38,7 @@ impl Rule for Length {
         Ok(())
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         if field.params().text("exact").is_some() {
             return super::satisfies(field, "exact", super::Relation::Eq);
         }

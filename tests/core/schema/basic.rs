@@ -1,5 +1,5 @@
-#[test]
-fn schema_yaml_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_yaml_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -22,13 +22,13 @@ fields:
         "title": "Validator"
     });
 
-    Validator::with_schema(schema).validate_map(&data)?;
+    Validator::with_schema(schema).check_map(&data).await?;
 
     Ok(())
 }
 
-#[test]
-fn schema_json_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_json_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_json(
         r#"
 {
@@ -47,13 +47,13 @@ fn schema_json_validates_map_data() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let data = json!({ "age": 42 });
 
-    Validator::with_schema(schema).validate_map(&data)?;
+    Validator::with_schema(schema).check_map(&data).await?;
 
     Ok(())
 }
 
-#[test]
-fn schema_missing_required_field_reports_required() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_missing_required_field_reports_required() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -67,7 +67,7 @@ fields:
     let data = json!({});
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&data)
+            .check_map(&data).await
             .unwrap_err(),
     );
 
@@ -78,8 +78,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_missing_optional_field_is_skipped() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_missing_optional_field_is_skipped() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -91,13 +91,13 @@ fields:
     )?;
     let data = json!({});
 
-    Validator::with_schema(schema).validate_map(&data)?;
+    Validator::with_schema(schema).check_map(&data).await?;
 
     Ok(())
 }
 
-#[test]
-fn schema_nested_object_reports_dotted_namespace() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_nested_object_reports_dotted_namespace() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -115,7 +115,7 @@ fields:
     });
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&data)
+            .check_map(&data).await
             .unwrap_err(),
     );
 
@@ -127,8 +127,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_type_mismatch_reports_type_rule() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_type_mismatch_reports_type_rule() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -143,7 +143,7 @@ fields:
     });
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&data)
+            .check_map(&data).await
             .unwrap_err(),
     );
 
@@ -156,8 +156,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_unknown_rule_returns_config_error() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_unknown_rule_returns_config_error() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -168,7 +168,7 @@ fields:
 "#,
     )?;
     let error = Validator::with_schema(schema)
-        .validate_map(&json!({ "title": "Rust" }))
+        .check_map(&json!({ "title": "Rust" })).await
         .unwrap_err();
 
     assert!(matches!(
@@ -179,8 +179,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn repeated_schema_validation_preserves_errors() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn repeated_schema_validation_preserves_errors() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -195,16 +195,16 @@ fields:
     let validator = Validator::with_schema(schema);
     let data = json!({ "title": "rs" });
 
-    let first = fields(validator.validate_map(&data).unwrap_err());
-    let second = fields(validator.validate_map(&data).unwrap_err());
+    let first = fields(validator.check_map(&data).await.unwrap_err());
+    let second = fields(validator.check_map(&data).await.unwrap_err());
 
     assert_eq!(first, second);
 
     Ok(())
 }
 
-#[test]
-fn schema_rejects_alias_rule_name_collision() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_rejects_alias_rule_name_collision() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -215,7 +215,7 @@ fields:
 "#,
     )?;
     let validator = Validator::with_schema(schema).alias("slug", "required")?;
-    let first = fields(validator.validate_map(&json!({ "slug": "" })).unwrap_err());
+    let first = fields(validator.check_map(&json!({ "slug": "" })).await.unwrap_err());
 
     assert_eq!(first.len(), 1);
     assert_eq!(first[0].rule(), "slug");
@@ -229,8 +229,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_rejects_duplicate_alias_name() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_rejects_duplicate_alias_name() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -241,7 +241,7 @@ fields:
 "#,
     )?;
     let validator = Validator::with_schema(schema).alias("contact", "required,email")?;
-    let first = fields(validator.validate_map(&json!({ "email": "" })).unwrap_err());
+    let first = fields(validator.check_map(&json!({ "email": "" })).await.unwrap_err());
 
     assert_eq!(first.len(), 2);
     assert!(first.iter().all(|field| field.rule() == "contact"));
@@ -256,8 +256,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_does_not_accept_types_alias() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_does_not_accept_types_alias() -> Result<(), Box<dyn std::error::Error>> {
     let error = Schema::from_yaml(
         r#"
 fields:
@@ -278,8 +278,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_rejects_unsupported_type_names() {
+#[tokio::test]
+async fn schema_rejects_unsupported_type_names() {
     for ty in ["bool", "integer", "number", "map"] {
         let error = Schema::from_yaml(format!("fields:\n  value:\n    type: {ty}\n")).unwrap_err();
 
@@ -291,8 +291,8 @@ fn schema_rejects_unsupported_type_names() {
     }
 }
 
-#[test]
-fn schema_rejects_unknown_field_key() {
+#[tokio::test]
+async fn schema_rejects_unknown_field_key() {
     let error = Schema::from_yaml(
         r#"
 fields:
@@ -311,8 +311,8 @@ fields:
     ));
 }
 
-#[test]
-fn schema_rejects_unknown_top_level_key() {
+#[tokio::test]
+async fn schema_rejects_unknown_top_level_key() {
     let error = Schema::from_json(
         r#"{
   "fields": {},
@@ -327,8 +327,8 @@ fn schema_rejects_unknown_top_level_key() {
     ));
 }
 
-#[test]
-fn schema_preserves_explicit_empty_fields_structure() {
+#[tokio::test]
+async fn schema_preserves_explicit_empty_fields_structure() {
     let scalar = Schema::from_yaml(
         r#"
 fields:
@@ -350,7 +350,7 @@ fields:
     .unwrap();
     let fields = fields(
         Validator::with_schema(inferred)
-            .validate_map(&json!({ "metadata": "not-an-object" }))
+            .check_map(&json!({ "metadata": "not-an-object" })).await
             .unwrap_err(),
     );
     assert_eq!(fields.len(), 1);
@@ -359,8 +359,8 @@ fields:
     assert_eq!(fields[0].params().text("expected"), Some("object"));
 }
 
-#[test]
-fn schema_empty_array_fields_require_object_items_only_when_declared() {
+#[tokio::test]
+async fn schema_empty_array_fields_require_object_items_only_when_declared() {
     let object_items = Schema::from_yaml(
         r#"
 fields:
@@ -372,7 +372,7 @@ fields:
     .unwrap();
     let fields = fields(
         Validator::with_schema(object_items)
-            .validate_map(&json!({ "items": ["scalar", null] }))
+            .check_map(&json!({ "items": ["scalar", null] })).await
             .unwrap_err(),
     );
     assert_eq!(fields.len(), 2);
@@ -389,12 +389,12 @@ fields:
     )
     .unwrap();
     Validator::with_schema(unconstrained)
-        .validate_map(&json!({ "items": ["scalar", null] }))
+        .check_map(&json!({ "items": ["scalar", null] })).await
         .unwrap();
 }
 
-#[test]
-fn schema_choice_shorthand_uses_values_param() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_choice_shorthand_uses_values_param() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -414,11 +414,11 @@ fields:
     )?;
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "role": "root",
                 "state": "archived",
                 "username": "ADMIN"
-            }))
+            })).await
             .unwrap_err(),
     );
 

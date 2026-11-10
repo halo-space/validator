@@ -63,7 +63,7 @@ use halo::validator::prelude::*;
 struct Slug;
 
 impl Rule for Slug {
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field
             .value()
             .string()
@@ -126,7 +126,7 @@ impl Rule for StartsWith {
         Ok(())
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let Some(prefix) = field.params().text("prefix") else {
             return Ok(false);
         };
@@ -159,7 +159,7 @@ impl Rule for SameField {
         Signature::field("compare")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let target = field.params().text("compare").unwrap();
         Ok(field.sibling(target).and_then(Value::string) == field.value().string())
     }
@@ -192,6 +192,6 @@ struct Pair {
 The target parameter defaults to `compare`; use `param = "other"` when the
 custom rule declares a different field parameter name.
 
-Rules may override `check_async` and run through
-`Validator::value_async(...)`. Rules that do not override it delegate to the
-synchronous `check` implementation.
+Rules use the asynchronous `check` entry point and run through
+`Validator::value(...)`. The asynchronous execution model is the default for
+all validation paths.

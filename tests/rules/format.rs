@@ -14,8 +14,8 @@ struct Formats {
     slug: String,
 }
 
-#[test]
-fn email_url_regex_pass() {
+#[tokio::test]
+async fn email_url_regex_pass() {
     let value = Formats {
         email: "team@example.com".to_owned(),
         source_url: "https://example.com/posts/1".to_owned(),
@@ -23,11 +23,11 @@ fn email_url_regex_pass() {
         slug: "hello-rust-2024".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn email_url_regex_fail() {
+#[tokio::test]
+async fn email_url_regex_fail() {
     let value = Formats {
         email: "not-email".to_owned(),
         source_url: "example.com/posts/1".to_owned(),
@@ -36,7 +36,7 @@ fn email_url_regex_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -49,15 +49,15 @@ fn email_url_regex_fail() {
     assert_eq!(fields[3].params().text("pattern"), Some("^[a-z0-9-]+$"));
 }
 
-#[test]
-fn email_rejects_local_dot_and_domain_label_boundaries() {
+#[tokio::test]
+async fn email_rejects_local_dot_and_domain_label_boundaries() {
     for email in [
         ".user@example.com",
         "user..name@example.com",
         "user@-example.com",
     ] {
         let fields = Validator::new()
-            .value(&email, "email")
+            .value(&email, "email").await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -66,19 +66,19 @@ fn email_rejects_local_dot_and_domain_label_boundaries() {
     }
 }
 
-#[test]
-fn repeated_dynamic_regex_validation_preserves_errors() {
+#[tokio::test]
+async fn repeated_dynamic_regex_validation_preserves_errors() {
     let validator = Validator::new();
     let expression = r#"regex(pattern="^[a-z0-9-]+$")"#;
 
-    validator.value(&"hello-rust", expression).unwrap();
+    validator.value(&"hello-rust", expression).await.unwrap();
     let first = validator
-        .value(&"Hello Rust", expression)
+        .value(&"Hello Rust", expression).await
         .unwrap_err()
         .into_fields()
         .unwrap();
     let second = validator
-        .value(&"Hello Rust", expression)
+        .value(&"Hello Rust", expression).await
         .unwrap_err()
         .into_fields()
         .unwrap();

@@ -58,7 +58,7 @@ pub(super) fn build_checks(
                             #spec.clone(),
                             context,
                             self,
-                        )? {
+                        ).await? {
                             skip_rest = true;
                         }
                     }
@@ -84,7 +84,7 @@ pub(super) fn build_checks(
                             #spec.clone(),
                             context,
                             self,
-                        )? {
+                        ).await? {
                             skip_rest = true;
                         }
                     }
@@ -112,7 +112,7 @@ pub(super) fn build_checks(
                             #spec.clone(),
                             context,
                             self,
-                        )? {
+                        ).await? {
                             skip_rest = true;
                         }
                     }
@@ -184,7 +184,7 @@ pub(super) fn build_checks(
                         context,
                         self,
                         &#projection,
-                    )?;
+                    ).await?;
                 });
                 checks.execute.push(quote! {{
                     if !skip_rest {
@@ -195,7 +195,7 @@ pub(super) fn build_checks(
                             context,
                             self,
                             &#projection,
-                        )? {
+                        ).await? {
                             skip_rest = true;
                         }
                     }
@@ -225,7 +225,7 @@ pub(super) fn build_checks(
                                 #target,
                                 #value,
                                 context,
-                            )?;
+                            ).await?;
                         }
                     });
                 } else {
@@ -236,7 +236,7 @@ pub(super) fn build_checks(
                                 #target,
                                 #value,
                                 context,
-                            )?;
+                            ).await?;
                         }
                     });
                 }
@@ -352,7 +352,7 @@ fn build_preflight(
                 #spec.clone(),
                 context,
                 self,
-            )?;
+            ).await?;
         }
     } else {
         quote! {
@@ -362,7 +362,7 @@ fn build_preflight(
                 #spec.clone(),
                 context,
                 self,
-            )?;
+            ).await?;
         }
     }
 }

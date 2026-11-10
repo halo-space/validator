@@ -372,22 +372,22 @@ regex = "1"
 
 ```rust
 let schema = Schema::from_yaml(yaml)?;
-Validator::with_schema(schema).validate_map(&payload)?;
+Validator::with_schema(schema).check_map(&payload)?;
 ```
 
 对应 JSON：
 
 ```rust
 let schema = Schema::from_json(json)?;
-Validator::with_schema(schema).validate_map(&payload)?;
+Validator::with_schema(schema).check_map(&payload)?;
 ```
 
 说明：
 
 - `Schema::from_yaml` / `Schema::from_json` 负责加载配置
 - `Validator::with_schema` 负责绑定 schema，校验时按 `SchemaId` 编译并缓存 Schema `Tree`
-- `validate_map` 当前接收 `serde_json::Value` object
-- `validate_serde` 已支持 `serde::Serialize` 对象校验；它先取得并编译 Schema Tree，再序列化成 `serde_json::Value`，最后与 `validate_map` 复用同一个内部数据校验函数
+- `check_map` 当前接收 `serde_json::Value` object
+- `check_serde` 已支持 `serde::Serialize` 对象校验；它先取得并编译 Schema Tree，再序列化成 `serde_json::Value`，最后与 `check_map` 复用同一个内部数据校验函数
 - `serde_yaml::Value` 直传可以作为后续增强，但不新增第二套 Schema 执行模型
 
 ## Roadmap
@@ -901,11 +901,11 @@ V2 已完成：
 - `Schema::from_yaml`
 - `Schema::from_json`
 - `Validator::with_schema`
-- `validate_map`
+- `check_map`
 
 V2 已完成增强：
 
-- `validate_serde`
+- `check_serde`
 - derive 选择性校验：`partial` / `except` / `filter`
 
 ## 性能缓存
@@ -916,25 +916,25 @@ V2 已完成增强：
 
 - direct value 的规则表达式解析和执行编译：`Validator::new().value(&value, "required,email")?` 多次使用同一个表达式时，会复用解析后的 `Vec<Expr>` 和编译后的 `Group`。
 - derive Spec 按完整 `Spec` 和 item access 模式复用编译后的 `Group`，热路径查询不重复克隆参数。
-- dynamic Schema 的执行树：`Validator::with_schema(schema).validate_map(&data)?` 多次复用同一个 validator / schema 时，会按 `SchemaId` 复用编译后的 `Tree`，其中每个字段节点持有对应的执行 `Group`。
+- dynamic Schema 的执行树：`Validator::with_schema(schema).check_map(&data).await?` 多次复用同一个 validator / schema 时，会按 `SchemaId` 复用编译后的 `Tree`，其中每个字段节点持有对应的执行 `Group`。
 - Rule 与 Alias 只能新增、不能覆盖；失败的编译结果不写入缓存，因此注册新名称不会使已有成功缓存失效，也不需要额外缓存版本字段。
 - dynamic `regex` 规则：用户传入的 `regex(pattern="...")` 会在同一个 `RegexRule` 实例内缓存编译结果，包括非法 pattern 的失败结果。
 
 性能 benchmark 作为长期维护的工程能力保留，覆盖 derive、direct value
-冷/热路径、Schema 冷/热路径、`validate_serde`、nested/dive 和 compound
+冷/热路径、Schema 冷/热路径、`check_serde`、nested/dive 和 compound
 unique。benchmark 不使用固定耗时阈值作为正确性判断。
 
 设计约束：
 
 - 缓存是内部实现细节，不新增公开 cache 类型。
-- 不改 `Validator::new().validate(&value)?`、`value(...)`、`with_schema(...)`、`validate_map(...)` 的公开写法。
+- 不改 `Validator::new().validate(&value)?`、`value(...)`、`with_schema(...)`、`check_map(...)` 的公开写法。
 - 不改 `Rule`、`Field`、`Value`、`Error`、`FieldError`、`Namespace`、`Params`。
 - 不改变 `rule` / `reason` / `Params` 的错误语义。
 - 不引入新的校验执行引擎。
 
 和相关功能的关系：
 
-- `validate_serde` 已单独实现；它把 `Serialize` 数据转成 `serde_json::Value` 后复用 `validate_map` 的同一套 Schema `Tree`。
+- `check_serde` 已单独实现；它把 `Serialize` 数据转成 `serde_json::Value` 后复用 `check_map` 的同一套 Schema `Tree`。
 - 不提供兼容别名，避免公开 API 出现双命名。
 - i18n 加载已单独实现；`Locale::from_yaml` / `Locale::from_json` 从字符串资源构造 `Locale`，Redis / DB / 配置中心等来源由业务层读取后再传入。
 - i18n 不做框架接入抽象；业务层解析 locale 字符串后调用 `i18n.locale(locale).render(fields)`。
@@ -963,8 +963,8 @@ unique。benchmark 不使用固定耗时阈值作为正确性判断。
 - `nested` / `dive` / `value(...)` 的 namespace 规则设计
 - `Schema::from_yaml`
 - `Schema::from_json`
-- `Validator::with_schema(schema).validate_map(&data)`
-- `Validator::with_schema(schema).validate_serde(&value)`
+- `Validator::with_schema(schema).check_map(&data)`
+- `Validator::with_schema(schema).check_serde(&value)`
 - `examples/` 下按使用场景拆分的独立示例
 - 公开规则参数统一为结构化 `Param` / `Params`，通过 `text(...)`、`list(...)`、`pairs(...)` 读取；parser 内部未绑定参数使用 `RawParam` / `RawParams`。
 - Rule 与 Alias 使用单一 Registry 名称空间，重复注册返回 `Error::DuplicateName`，Alias 循环返回 `Error::RecursiveAlias`。

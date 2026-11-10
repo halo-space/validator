@@ -1,5 +1,5 @@
-#[test]
-fn system_time_compares_with_captured_now() {
+#[tokio::test]
+async fn system_time_compares_with_captured_now() {
     let now = SystemTime::now();
 
     Validator::new()
@@ -8,7 +8,7 @@ fn system_time_compares_with_captured_now() {
                 .checked_sub(Duration::from_secs(60))
                 .expect("current time should support subtracting one minute"),
             expires_at: now + Duration::from_secs(60),
-        })
+        }).await
         .unwrap();
 
     let fields = fields(
@@ -18,7 +18,7 @@ fn system_time_compares_with_captured_now() {
                 expires_at: now
                     .checked_sub(Duration::from_secs(60))
                     .expect("current time should support subtracting one minute"),
-            })
+            }).await
             .unwrap_err(),
     );
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
@@ -28,16 +28,16 @@ fn system_time_compares_with_captured_now() {
     assert_eq!(fields[1].kind(), Kind::Time);
 }
 
-#[test]
-fn direct_system_time_value_uses_now_rules() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn direct_system_time_value_uses_now_rules() -> Result<(), Box<dyn std::error::Error>> {
     let now = SystemTime::now();
     let past = now
         .checked_sub(Duration::from_secs(60))
         .expect("current time should support subtracting one minute");
     let future = now + Duration::from_secs(60);
 
-    Validator::new().value(&past, "lte")?;
-    Validator::new().value(&future, "gt")?;
+    Validator::new().value(&past, "lte").await?;
+    Validator::new().value(&future, "gt").await?;
 
     Ok(())
 }
@@ -53,8 +53,8 @@ struct TimeWindow {
     copied_at: SystemTime,
 }
 
-#[test]
-fn system_time_cross_field_rules_compare_time_values() {
+#[tokio::test]
+async fn system_time_cross_field_rules_compare_time_values() {
     let created_at = SystemTime::now();
 
     Validator::new()
@@ -62,7 +62,7 @@ fn system_time_cross_field_rules_compare_time_values() {
             created_at,
             updated_at: created_at + Duration::from_secs(60),
             copied_at: created_at,
-        })
+        }).await
         .unwrap();
 
     let fields = fields(
@@ -71,7 +71,7 @@ fn system_time_cross_field_rules_compare_time_values() {
                 created_at,
                 updated_at: created_at,
                 copied_at: created_at + Duration::from_secs(1),
-            })
+            }).await
             .unwrap_err(),
     );
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
@@ -87,14 +87,14 @@ struct TimeStrictKind {
     updated_at: SystemTime,
 }
 
-#[test]
-fn system_time_cross_field_requires_time_kind() {
+#[tokio::test]
+async fn system_time_cross_field_requires_time_kind() {
     let fields = fields(
         Validator::new()
             .validate(&TimeStrictKind {
                 created_at_text: "2026-07-08T00:00:00Z".to_owned(),
                 updated_at: SystemTime::now(),
-            })
+            }).await
             .unwrap_err(),
     );
 
@@ -108,12 +108,12 @@ struct ParameterizedTime {
     at: SystemTime,
 }
 
-#[test]
-fn parameterized_system_time_comparison_returns_config_error() {
+#[tokio::test]
+async fn parameterized_system_time_comparison_returns_config_error() {
     let error = Validator::new()
         .validate(&ParameterizedTime {
             at: SystemTime::now(),
-        })
+        }).await
         .unwrap_err();
 
     assert!(matches!(
@@ -129,12 +129,12 @@ struct EqualNowTime {
     at: SystemTime,
 }
 
-#[test]
-fn system_time_eq_now_returns_config_error() {
+#[tokio::test]
+async fn system_time_eq_now_returns_config_error() {
     let error = Validator::new()
         .validate(&EqualNowTime {
             at: SystemTime::now(),
-        })
+        }).await
         .unwrap_err();
 
     assert!(matches!(
@@ -144,10 +144,10 @@ fn system_time_eq_now_returns_config_error() {
     ));
 }
 
-#[test]
-fn direct_system_time_parameter_returns_config_error() {
+#[tokio::test]
+async fn direct_system_time_parameter_returns_config_error() {
     let error = Validator::new()
-        .value(&SystemTime::now(), r#"gt(value="2026-07-08T00:00:00Z")"#)
+        .value(&SystemTime::now(), r#"gt(value="2026-07-08T00:00:00Z")"#).await
         .unwrap_err();
 
     assert!(matches!(
@@ -157,13 +157,13 @@ fn direct_system_time_parameter_returns_config_error() {
     ));
 }
 
-#[test]
-fn direct_alternative_system_time_config_error_is_not_swallowed() {
+#[tokio::test]
+async fn direct_alternative_system_time_config_error_is_not_swallowed() {
     let error = Validator::new()
         .value(
             &SystemTime::now(),
             r#"gt(value="2026-07-08T00:00:00Z")|lte"#,
-        )
+        ).await
         .unwrap_err();
 
     assert!(matches!(
@@ -173,8 +173,8 @@ fn direct_alternative_system_time_config_error_is_not_swallowed() {
     ));
 }
 
-#[test]
-fn schema_rejects_native_time_type() {
+#[tokio::test]
+async fn schema_rejects_native_time_type() {
     let error = Schema::from_yaml(
         r#"
 fields:

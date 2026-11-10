@@ -1,5 +1,5 @@
-#[test]
-fn schema_cross_field_rules_compare_sibling_fields() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_cross_field_rules_compare_sibling_fields() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -19,12 +19,12 @@ fields:
     )?;
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "password": "secret",
                 "confirm_password": "different",
                 "start_at": 10,
                 "end_at": 10
-            }))
+            })).await
             .unwrap_err(),
     );
 
@@ -39,8 +39,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_cross_field_rule_passes() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_cross_field_rule_passes() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -57,13 +57,13 @@ fields:
         "end_at": 11
     });
 
-    Validator::with_schema(schema).validate_map(&data)?;
+    Validator::with_schema(schema).check_map(&data).await?;
 
     Ok(())
 }
 
-#[test]
-fn schema_field_string_rules_compare_sibling_fields() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_field_string_rules_compare_sibling_fields() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -80,11 +80,11 @@ fields:
     )?;
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "needle": "rust",
                 "forbidden": "go",
                 "body": "hello go"
-            }))
+            })).await
             .unwrap_err(),
     );
     let rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
@@ -96,8 +96,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_conditional_field_rules_validate_sibling_fields() -> Result<(), Box<dyn std::error::Error>>
+#[tokio::test]
+async fn schema_conditional_field_rules_validate_sibling_fields() -> Result<(), Box<dyn std::error::Error>>
 {
     let schema = Schema::from_yaml(
         r#"
@@ -134,18 +134,18 @@ fields:
 "#,
     )?;
 
-    Validator::with_schema(schema.clone()).validate_map(&json!({
+    Validator::with_schema(schema.clone()).check_map(&json!({
         "status": "draft",
         "email": "",
         "fallback_contact": "support"
-    }))?;
+    })).await?;
 
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "status": "published",
                 "email": "editor@example.com"
-            }))
+            })).await
             .unwrap_err(),
     );
     let mut rules = fields.iter().map(|field| field.rule()).collect::<Vec<_>>();
@@ -193,8 +193,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_conditional_all_and_excluded_rules_validate_sibling_fields()
+#[tokio::test]
+async fn schema_conditional_all_and_excluded_rules_validate_sibling_fields()
 -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
@@ -253,7 +253,7 @@ fields:
 "#,
     )?;
 
-    Validator::with_schema(schema.clone()).validate_map(&json!({
+    Validator::with_schema(schema.clone()).check_map(&json!({
         "status": "draft",
         "mode": "public",
         "email": "editor@example.com",
@@ -267,11 +267,11 @@ fields:
         "backup_missing_override": "",
         "backup_all_missing_override": "",
         "private_note": ""
-    }))?;
+    })).await?;
 
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "status": "archived",
                 "mode": "private",
                 "email": "editor@example.com",
@@ -286,7 +286,7 @@ fields:
                 "backup_missing_override": "missing",
                 "backup_all_missing_override": "all missing",
                 "private_note": "secret"
-            }))
+            })).await
             .unwrap_err(),
     );
     let mut failures = fields
@@ -330,8 +330,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_conditional_field_rule_undeclared_target_returns_config_error()
+#[tokio::test]
+async fn schema_conditional_field_rule_undeclared_target_returns_config_error()
 -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
@@ -343,9 +343,9 @@ fields:
 "#,
     )?;
     let error = Validator::with_schema(schema)
-        .validate_map(&json!({
+        .check_map(&json!({
             "title": ""
-        }))
+        })).await
         .unwrap_err();
 
     assert!(matches!(
@@ -357,8 +357,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_fieldexcludes_missing_target_value_passes() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_fieldexcludes_missing_target_value_passes() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -371,15 +371,15 @@ fields:
 "#,
     )?;
 
-    Validator::with_schema(schema).validate_map(&json!({
+    Validator::with_schema(schema).check_map(&json!({
         "body": "hello go"
-    }))?;
+    })).await?;
 
     Ok(())
 }
 
-#[test]
-fn schema_cross_field_undeclared_target_returns_config_error()
+#[tokio::test]
+async fn schema_cross_field_undeclared_target_returns_config_error()
 -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
@@ -391,9 +391,9 @@ fields:
 "#,
     )?;
     let error = Validator::with_schema(schema)
-        .validate_map(&json!({
+        .check_map(&json!({
             "confirm_password": "secret"
-        }))
+        })).await
         .unwrap_err();
 
     assert!(matches!(
@@ -405,8 +405,8 @@ fields:
     Ok(())
 }
 
-#[test]
-fn schema_cross_field_missing_target_value_fails_validation()
+#[tokio::test]
+async fn schema_cross_field_missing_target_value_fails_validation()
 -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
@@ -421,9 +421,9 @@ fields:
     )?;
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "confirm_password": "secret"
-            }))
+            })).await
             .unwrap_err(),
     );
 

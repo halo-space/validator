@@ -3,6 +3,7 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Eq;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Eq {
     fn signature(&self) -> Signature {
         Signature::optional_text("value")
@@ -12,7 +13,7 @@ impl Rule for Eq {
         super::validate_equality(field, "eq")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         super::equals(field)
     }
 }

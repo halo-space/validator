@@ -4,8 +4,9 @@ use url::Url as ParsedUrl;
 #[derive(Debug)]
 pub(crate) struct Url;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Url {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()

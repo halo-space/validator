@@ -7,11 +7,13 @@ struct User {
     email: String,
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let error = Validator::new()
         .validate(&User {
             email: String::new(),
         })
+        .await
         .unwrap_err();
     let fields = error
         .fields()

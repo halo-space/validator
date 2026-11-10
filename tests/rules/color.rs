@@ -20,8 +20,8 @@ struct ColorFormats {
     cmyk: String,
 }
 
-#[test]
-fn color_rules_pass() {
+#[tokio::test]
+async fn color_rules_pass() {
     let value = ColorFormats {
         hex: "#00ffaa".to_owned(),
         rgb: "rgb(255, 0, 120)".to_owned(),
@@ -31,11 +31,11 @@ fn color_rules_pass() {
         cmyk: "cmyk(0%, 10%, 20%, 100%)".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn color_rules_fail() {
+#[tokio::test]
+async fn color_rules_fail() {
     let value = ColorFormats {
         hex: "#000-".to_owned(),
         rgb: "rgb(256, 0, 0)".to_owned(),
@@ -46,7 +46,7 @@ fn color_rules_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -64,8 +64,8 @@ struct FavoriteColor {
     color: String,
 }
 
-#[test]
-fn default_iscolor_alias_accepts_any_color_format() {
+#[tokio::test]
+async fn default_iscolor_alias_accepts_any_color_format() {
     let hex = FavoriteColor {
         color: "#fff".to_owned(),
     };
@@ -73,18 +73,18 @@ fn default_iscolor_alias_accepts_any_color_format() {
         color: "rgb(255, 255, 255)".to_owned(),
     };
 
-    Validator::new().validate(&hex).unwrap();
-    Validator::new().validate(&rgb).unwrap();
+    Validator::new().validate(&hex).await.unwrap();
+    Validator::new().validate(&rgb).await.unwrap();
 }
 
-#[test]
-fn default_iscolor_alias_reports_alias_failure() {
+#[tokio::test]
+async fn default_iscolor_alias_reports_alias_failure() {
     let value = FavoriteColor {
         color: "#000-".to_owned(),
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();

@@ -38,8 +38,8 @@ struct NetworkFormats {
     ulid: String,
 }
 
-#[test]
-fn expanded_network_rules_pass() {
+#[tokio::test]
+async fn expanded_network_rules_pass() {
     let value = NetworkFormats {
         cidr: "192.168.0.0/24".to_owned(),
         cidrv4: "10.0.0.0/8".to_owned(),
@@ -55,11 +55,11 @@ fn expanded_network_rules_pass() {
         ulid: "01BX5ZZKBKACTAV9WEVGEMMVRZ".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn expanded_network_rules_fail() {
+#[tokio::test]
+async fn expanded_network_rules_fail() {
     let value = NetworkFormats {
         cidr: "192.168.0.0/33".to_owned(),
         cidrv4: "2001:db8::/32".to_owned(),
@@ -76,7 +76,7 @@ fn expanded_network_rules_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -101,15 +101,15 @@ fn expanded_network_rules_fail() {
     );
 }
 
-#[test]
-fn hostname_port_matches_go_split_host_port_semantics() {
+#[tokio::test]
+async fn hostname_port_matches_go_split_host_port_semantics() {
     let validator = Validator::new();
 
-    validator.value(&":8080", "hostname_port").unwrap();
+    validator.value(&":8080", "hostname_port").await.unwrap();
     validator
-        .value(&"api.example.com:443", "hostname_port")
+        .value(&"api.example.com:443", "hostname_port").await
         .unwrap();
-    validator.value(&"127.0.0.1:443", "hostname_port").unwrap();
+    validator.value(&"127.0.0.1:443", "hostname_port").await.unwrap();
 
     for value in [
         "api.example.com",
@@ -119,7 +119,7 @@ fn hostname_port_matches_go_split_host_port_semantics() {
         "[::1]:443",
     ] {
         let fields = validator
-            .value(&value, "hostname_port")
+            .value(&value, "hostname_port").await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -128,12 +128,12 @@ fn hostname_port_matches_go_split_host_port_semantics() {
     }
 }
 
-#[test]
-fn hostname_rfc1123_accepts_digit_prefix_and_rejects_invalid_boundaries() {
+#[tokio::test]
+async fn hostname_rfc1123_accepts_digit_prefix_and_rejects_invalid_boundaries() {
     let validator = Validator::new();
 
-    validator.value(&"1.foo.com", "hostname_rfc1123").unwrap();
-    validator.value(&"192.168.0.1", "hostname_rfc1123").unwrap();
+    validator.value(&"1.foo.com", "hostname_rfc1123").await.unwrap();
+    validator.value(&"192.168.0.1", "hostname_rfc1123").await.unwrap();
 
     for value in [
         "test_example",
@@ -145,7 +145,7 @@ fn hostname_rfc1123_accepts_digit_prefix_and_rejects_invalid_boundaries() {
         "this-is-a-deliberately-overlong-subdomain-used-for-boundary-test.example.com",
     ] {
         let fields = validator
-            .value(&value, "hostname_rfc1123")
+            .value(&value, "hostname_rfc1123").await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -154,8 +154,8 @@ fn hostname_rfc1123_accepts_digit_prefix_and_rejects_invalid_boundaries() {
     }
 }
 
-#[test]
-fn url_uri_and_hostname_rules_match_go_boundaries() {
+#[tokio::test]
+async fn url_uri_and_hostname_rules_match_go_boundaries() {
     let validator = Validator::new();
 
     for value in [
@@ -169,10 +169,10 @@ fn url_uri_and_hostname_rules_match_go_boundaries() {
         "file:///c:/Windows/file.txt",
         "file:////remotehost/path/file.txt",
     ] {
-        validator.value(&value, "url").unwrap();
+        validator.value(&value, "url").await.unwrap();
     }
     for value in ["/abs/test/dir", "1://example.com", "file:", "file:/"] {
-        assert!(validator.value(&value, "url").is_err());
+        assert!(validator.value(&value, "url").await.is_err());
     }
 
     for value in [
@@ -183,23 +183,23 @@ fn url_uri_and_hostname_rules_match_go_boundaries() {
         "irc://#channel@network",
         "/abs/test/dir",
     ] {
-        validator.value(&value, "uri").unwrap();
+        validator.value(&value, "uri").await.unwrap();
     }
     for value in ["foobar.com", "./rel/test/dir", ""] {
-        assert!(validator.value(&value, "uri").is_err());
+        assert!(validator.value(&value, "uri").await.is_err());
     }
 
-    assert!(validator.value(&"1.foo.com", "hostname").is_err());
-    validator.value(&"abc1234", "hostname").unwrap();
-    validator.value(&"1.foo.com", "hostname_rfc1123").unwrap();
-    validator.value(&"api.example.com.", "fqdn").unwrap();
-    validator.value(&"test-site.test-site", "fqdn").unwrap();
-    assert!(validator.value(&"api.example.123", "fqdn").is_err());
-    assert!(validator.value(&"example", "fqdn").is_err());
+    assert!(validator.value(&"1.foo.com", "hostname").await.is_err());
+    validator.value(&"abc1234", "hostname").await.unwrap();
+    validator.value(&"1.foo.com", "hostname_rfc1123").await.unwrap();
+    validator.value(&"api.example.com.", "fqdn").await.unwrap();
+    validator.value(&"test-site.test-site", "fqdn").await.unwrap();
+    assert!(validator.value(&"api.example.123", "fqdn").await.is_err());
+    assert!(validator.value(&"example", "fqdn").await.is_err());
 }
 
-#[test]
-fn ulid_rejects_ambiguous_characters_and_wrong_length() {
+#[tokio::test]
+async fn ulid_rejects_ambiguous_characters_and_wrong_length() {
     let validator = Validator::new();
 
     for value in [
@@ -210,7 +210,7 @@ fn ulid_rejects_ambiguous_characters_and_wrong_length() {
         "01BX5ZZKBKACTAV9WEVGEMMVRZABC",
     ] {
         let fields = validator
-            .value(&value, "ulid")
+            .value(&value, "ulid").await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -219,21 +219,21 @@ fn ulid_rejects_ambiguous_characters_and_wrong_length() {
     }
 }
 
-#[test]
-fn rfc4122_uuid_rules_accept_uppercase_and_version_boundaries() {
+#[tokio::test]
+async fn rfc4122_uuid_rules_accept_uppercase_and_version_boundaries() {
     let validator = Validator::new();
 
     validator
-        .value(&"a987Fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid_rfc4122")
+        .value(&"a987Fbc9-4bed-3078-cf07-9141ba07c9f3", "uuid_rfc4122").await
         .unwrap();
     validator
-        .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9F3", "uuid3_rfc4122")
+        .value(&"a987fbc9-4bed-3078-cf07-9141ba07c9F3", "uuid3_rfc4122").await
         .unwrap();
     validator
-        .value(&"57b73598-8764-4ad0-a76A-679bb6640eb1", "uuid4_rfc4122")
+        .value(&"57b73598-8764-4ad0-a76A-679bb6640eb1", "uuid4_rfc4122").await
         .unwrap();
     validator
-        .value(&"987Fbc97-4bed-5078-9f07-9141ba07c9f3", "uuid5_rfc4122")
+        .value(&"987Fbc97-4bed-5078-9f07-9141ba07c9f3", "uuid5_rfc4122").await
         .unwrap();
 
     for (value, rule) in [
@@ -242,7 +242,7 @@ fn rfc4122_uuid_rules_accept_uppercase_and_version_boundaries() {
         ("aaaaaaaa-1111-1111-aaaG-111111111111", "uuid_rfc4122"),
     ] {
         let fields = validator
-            .value(&value, rule)
+            .value(&value, rule).await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -251,8 +251,8 @@ fn rfc4122_uuid_rules_accept_uppercase_and_version_boundaries() {
     }
 }
 
-#[test]
-fn lowercase_uuid4_and_uuid5_require_rfc_variant() {
+#[tokio::test]
+async fn lowercase_uuid4_and_uuid5_require_rfc_variant() {
     let validator = Validator::new();
 
     for (value, rule) in [
@@ -260,7 +260,7 @@ fn lowercase_uuid4_and_uuid5_require_rfc_variant() {
         ("987fbc97-4bed-5078-0f07-9141ba07c9f3", "uuid5"),
     ] {
         let fields = validator
-            .value(&value, rule)
+            .value(&value, rule).await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -268,33 +268,33 @@ fn lowercase_uuid4_and_uuid5_require_rfc_variant() {
     }
 }
 
-#[test]
-fn cidr_rules_preserve_address_prefix_and_network_semantics() {
+#[tokio::test]
+async fn cidr_rules_preserve_address_prefix_and_network_semantics() {
     let validator = Validator::new();
 
-    validator.value(&"192.168.0.1/24", "cidr").unwrap();
-    validator.value(&"2001:db8::1/32", "cidr,cidrv6").unwrap();
+    validator.value(&"192.168.0.1/24", "cidr").await.unwrap();
+    validator.value(&"2001:db8::1/32", "cidr,cidrv6").await.unwrap();
     let fields = validator
-        .value(&"192.168.0.1/24", "cidrv4")
+        .value(&"192.168.0.1/24", "cidrv4").await
         .unwrap_err()
         .into_fields()
         .unwrap();
     assert_eq!(fields[0].rule(), "cidrv4");
 }
 
-#[test]
-fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
+#[tokio::test]
+async fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
     let validator = Validator::new();
 
-    validator.value(&"127.0.0.1", "ipv4").unwrap();
-    validator.value(&"::1", "ipv6").unwrap();
-    validator.value(&"::1", "ip").unwrap();
-    validator.value(&"127.0.0.1:80", "tcp4").unwrap();
-    validator.value(&"[::1]:80", "tcp6").unwrap();
-    validator.value(&"127.0.0.1:80", "tcp").unwrap();
-    validator.value(&"[::1]:80", "udp").unwrap();
-    validator.value(&"127.0.0.1:80", "udp4").unwrap();
-    validator.value(&"[::1]:80", "udp6").unwrap();
+    validator.value(&"127.0.0.1", "ipv4").await.unwrap();
+    validator.value(&"::1", "ipv6").await.unwrap();
+    validator.value(&"::1", "ip").await.unwrap();
+    validator.value(&"127.0.0.1:80", "tcp4").await.unwrap();
+    validator.value(&"[::1]:80", "tcp6").await.unwrap();
+    validator.value(&"127.0.0.1:80", "tcp").await.unwrap();
+    validator.value(&"[::1]:80", "udp").await.unwrap();
+    validator.value(&"127.0.0.1:80", "udp4").await.unwrap();
+    validator.value(&"[::1]:80", "udp6").await.unwrap();
 
     for (value, rule) in [
         ("127.0.0.1:80", "ipv4"),
@@ -304,7 +304,7 @@ fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
         ("localhost:80", "tcp"),
     ] {
         let fields = validator
-            .value(&value, rule)
+            .value(&value, rule).await
             .unwrap_err()
             .into_fields()
             .unwrap();
@@ -325,7 +325,7 @@ fn canonical_ip_and_socket_rules_keep_distinct_semantics() {
         "udp4_addr",
         "udp6_addr",
     ] {
-        let error = validator.value(&"127.0.0.1", rule).unwrap_err();
+        let error = validator.value(&"127.0.0.1", rule).await.unwrap_err();
         assert!(matches!(error, Error::UnknownRule { name } if name == rule));
     }
 }

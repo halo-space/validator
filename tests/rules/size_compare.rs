@@ -24,19 +24,19 @@ struct Bounds {
     score: u32,
 }
 
-#[test]
-fn min_max_range_pass() {
+#[tokio::test]
+async fn min_max_range_pass() {
     let value = Bounds {
         name: "rust".to_owned(),
         tags: vec!["a".to_owned(), "b".to_owned()],
         score: 15,
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn min_max_range_fail() {
+#[tokio::test]
+async fn min_max_range_fail() {
     let value = Bounds {
         name: "rs".to_owned(),
         tags: vec!["a".to_owned(), "b".to_owned(), "c".to_owned()],
@@ -44,7 +44,7 @@ fn min_max_range_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -59,19 +59,19 @@ fn min_max_range_fail() {
     assert_eq!(fields[2].params().text("max"), Some("20"));
 }
 
-#[test]
-fn size_rules_reject_conflicting_or_reversed_bounds() {
+#[tokio::test]
+async fn size_rules_reject_conflicting_or_reversed_bounds() {
     let validator = Validator::new();
 
     for error in [
-        validator.value(&"", "length").unwrap_err(),
+        validator.value(&"", "length").await.unwrap_err(),
         validator
-            .value(&"", "omitempty,length(exact=3,min=1)")
+            .value(&"", "omitempty,length(exact=3,min=1)").await
             .unwrap_err(),
         validator
-            .value(&"", "omitempty,length(min=3,max=1)")
+            .value(&"", "omitempty,length(min=3,max=1)").await
             .unwrap_err(),
-        validator.value(&5_i32, "range(min=10,max=1)").unwrap_err(),
+        validator.value(&5_i32, "range(min=10,max=1)").await.unwrap_err(),
     ] {
         assert!(matches!(error, Error::InvalidRuleExpression { .. }));
     }
@@ -95,8 +95,8 @@ struct Comparisons {
     tags: Vec<String>,
 }
 
-#[test]
-fn comparison_rules_dispatch_by_field_type() {
+#[tokio::test]
+async fn comparison_rules_dispatch_by_field_type() {
     let value = Comparisons {
         age: 42,
         name: "rust".to_owned(),
@@ -105,11 +105,11 @@ fn comparison_rules_dispatch_by_field_type() {
         tags: vec!["a".to_owned(), "b".to_owned()],
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn comparison_rules_report_type_specific_failures() {
+#[tokio::test]
+async fn comparison_rules_report_type_specific_failures() {
     let value = Comparisons {
         age: 131,
         name: "rs".to_owned(),
@@ -119,7 +119,7 @@ fn comparison_rules_report_type_specific_failures() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -146,8 +146,8 @@ struct Defaults {
     tags: Vec<String>,
 }
 
-#[test]
-fn isdefault_accepts_default_values() {
+#[tokio::test]
+async fn isdefault_accepts_default_values() {
     let value = Defaults {
         name: String::new(),
         count: 0,
@@ -155,12 +155,12 @@ fn isdefault_accepts_default_values() {
         tags: Vec::new(),
     };
 
-    Validator::new().validate(&value).unwrap();
-    Validator::new().value(&0_u32, "isdefault").unwrap();
+    Validator::new().validate(&value).await.unwrap();
+    Validator::new().value(&0_u32, "isdefault").await.unwrap();
 }
 
-#[test]
-fn isdefault_rejects_non_default_values() {
+#[tokio::test]
+async fn isdefault_rejects_non_default_values() {
     let value = Defaults {
         name: "rust".to_owned(),
         count: 1,
@@ -169,7 +169,7 @@ fn isdefault_rejects_non_default_values() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -187,15 +187,15 @@ struct RequiredBoolean {
     enabled: bool,
 }
 
-#[test]
-fn required_accepts_false_boolean_values() {
+#[tokio::test]
+async fn required_accepts_false_boolean_values() {
     Validator::new()
-        .validate(&RequiredBoolean { enabled: false })
+        .validate(&RequiredBoolean { enabled: false }).await
         .unwrap();
 }
 
-#[test]
-fn isdefault_still_accepts_false_boolean_values() {
+#[tokio::test]
+async fn isdefault_still_accepts_false_boolean_values() {
     #[derive(Debug, Validate)]
     struct DefaultBoolean {
         #[validate(isdefault)]
@@ -203,6 +203,6 @@ fn isdefault_still_accepts_false_boolean_values() {
     }
 
     Validator::new()
-        .validate(&DefaultBoolean { enabled: false })
+        .validate(&DefaultBoolean { enabled: false }).await
         .unwrap();
 }

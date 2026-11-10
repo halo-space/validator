@@ -10,299 +10,7 @@ use crate::target::FieldTarget;
 use super::model::{Check, CheckOutput, Execution, FieldMeta, Flow, Group, Scope, Step};
 
 impl Group {
-    pub(crate) fn execute<V: Value>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        context: &Context<'_>,
-    ) -> Result<(), Error> {
-        let scope = Scope::default();
-        let target = FieldMeta::new(target);
-        self.declared_params::<V>(&target, Some(value), context, scope)?;
-        self.run(errors, &target, value, context, None, scope)
-            .map(|_| ())
-    }
-
-    pub(crate) fn execute_spec<V, A>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        context: &Context<'_>,
-        access: &A,
-    ) -> Result<Flow, Error>
-    where
-        V: Value,
-        A: Access,
-    {
-        let target = FieldMeta::new(target);
-        self.run(
-            errors,
-            &target,
-            value,
-            context,
-            None,
-            Scope {
-                access: Some(access),
-                items: None,
-            },
-        )
-    }
-
-    pub(crate) fn execute_spec_with_items<V, A, I>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        context: &Context<'_>,
-        access: &A,
-        items: &I,
-    ) -> Result<Flow, Error>
-    where
-        V: Value,
-        A: Access,
-        I: Items,
-    {
-        let target = FieldMeta::new(target);
-        self.run(
-            errors,
-            &target,
-            value,
-            context,
-            None,
-            Scope {
-                access: Some(access),
-                items: Some(items),
-            },
-        )
-    }
-
-    pub(crate) fn execute_with_fields<V, A>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        context: &Context<'_>,
-        access: &A,
-    ) -> Result<(), Error>
-    where
-        V: Value,
-        A: Access,
-    {
-        let target = FieldMeta::new(target);
-        self.run(
-            errors,
-            &target,
-            value,
-            context,
-            None,
-            Scope {
-                access: Some(access),
-                items: None,
-            },
-        )
-        .map(|_| ())
-    }
-
-    pub(crate) fn execute_with_fields_and_items<V, A, I>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: FieldTarget<'_>,
-        value: &V,
-        context: &Context<'_>,
-        access: &A,
-        items: &I,
-    ) -> Result<(), Error>
-    where
-        V: Value,
-        A: Access,
-        I: Items,
-    {
-        let target = FieldMeta::new(target);
-        self.run(
-            errors,
-            &target,
-            value,
-            context,
-            None,
-            Scope {
-                access: Some(access),
-                items: Some(items),
-            },
-        )
-        .map(|_| ())
-    }
-
-    fn run<V: Value>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: &FieldMeta<'_>,
-        value: &V,
-        context: &Context<'_>,
-        display_rule: Option<&str>,
-        scope: Scope<'_>,
-    ) -> Result<Flow, Error> {
-        let exec = Execution {
-            context,
-            display_rule,
-            scope,
-        };
-
-        for step in &self.steps {
-            match step {
-                Step::Check(check) => {
-                    if self.execute_check(errors, target, value, check, &exec)? == Flow::Stop {
-                        return Ok(Flow::Stop);
-                    }
-                }
-                Step::Any { checks, reason } => {
-                    let mut passes = false;
-                    for check in checks {
-                        match self.evaluate(target, value, check, &exec)? {
-                            CheckOutput::Pass => {
-                                passes = true;
-                                break;
-                            }
-                            CheckOutput::Fail => {}
-                            CheckOutput::Stop => return Ok(Flow::Stop),
-                        }
-                    }
-
-                    if !passes {
-                        let rule = exec.display_rule.unwrap_or(reason);
-                        errors.push(field_error(
-                            target.target.clone(),
-                            value.kind(),
-                            rule,
-                            reason,
-                            Params::new(),
-                        ));
-                    }
-                }
-            }
-        }
-
-        Ok(Flow::Continue)
-    }
-
-    fn execute_check<V: Value>(
-        &self,
-        errors: &mut Vec<FieldError>,
-        target: &FieldMeta<'_>,
-        value: &V,
-        check: &Check,
-        exec: &Execution<'_, '_, '_>,
-    ) -> Result<Flow, Error> {
-        match check {
-            Check::OmitEmpty => {
-                if value.is_empty_value() {
-                    return Ok(Flow::Stop);
-                }
-            }
-            Check::Rule {
-                name,
-                params,
-                handler,
-            } => {
-                if !self.rule_passes(
-                    target,
-                    value,
-                    exec.context,
-                    params,
-                    handler.as_ref(),
-                    exec.scope,
-                )? {
-                    errors.push(field_error(
-                        target.target.clone(),
-                        value.kind(),
-                        exec.display_rule.unwrap_or(name),
-                        name,
-                        params.clone(),
-                    ));
-                }
-            }
-            Check::Alias { name, group } => {
-                return group.run(
-                    errors,
-                    target,
-                    value,
-                    exec.context,
-                    Some(exec.display_rule.unwrap_or(name)),
-                    exec.scope,
-                );
-            }
-        }
-
-        Ok(Flow::Continue)
-    }
-
-    fn evaluate<V: Value>(
-        &self,
-        target: &FieldMeta<'_>,
-        value: &V,
-        check: &Check,
-        exec: &Execution<'_, '_, '_>,
-    ) -> Result<CheckOutput, Error> {
-        match check {
-            Check::OmitEmpty => Ok(if value.is_empty_value() {
-                CheckOutput::Stop
-            } else {
-                CheckOutput::Pass
-            }),
-            Check::Rule {
-                name: _,
-                params,
-                handler,
-            } => self
-                .rule_passes(
-                    target,
-                    value,
-                    exec.context,
-                    params,
-                    handler.as_ref(),
-                    exec.scope,
-                )
-                .map(|passes| {
-                    if passes {
-                        CheckOutput::Pass
-                    } else {
-                        CheckOutput::Fail
-                    }
-                }),
-            Check::Alias { name: _, group } => {
-                let mut errors = Vec::new();
-                let flow = group.run(&mut errors, target, value, exec.context, None, exec.scope)?;
-                if flow == Flow::Stop && errors.is_empty() {
-                    Ok(CheckOutput::Stop)
-                } else if errors.is_empty() {
-                    Ok(CheckOutput::Pass)
-                } else {
-                    Ok(CheckOutput::Fail)
-                }
-            }
-        }
-    }
-
-    fn rule_passes<V: Value>(
-        &self,
-        target: &FieldMeta<'_>,
-        value: &V,
-        context: &Context<'_>,
-        params: &Params,
-        handler: &dyn Rule,
-        scope: Scope<'_>,
-    ) -> Result<bool, Error> {
-        if value.is_none() && !handler.validates_none() {
-            return Ok(true);
-        }
-
-        Self::with_field(target, value, context, params, scope, |field| {
-            handler.check(field)
-        })
-    }
-
-    pub(crate) async fn execute_async<V: Value>(
+    pub(crate) async fn execute<V: Value>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
@@ -310,12 +18,87 @@ impl Group {
         context: &Context<'_>,
     ) -> Result<(), Error> {
         let target = FieldMeta::new(target);
-        self.run_async(errors, &target, value, context, None, Scope::default())
+        self.declared_params::<V>(&target, Some(value), context, Scope::default())?;
+        self.run(errors, &target, value, context, None, Scope::default())
             .await
             .map(|_| ())
     }
 
-    fn run_async<'a, V: Value + 'a>(
+    pub(crate) async fn execute_spec<V: Value, A: Access>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context<'_>,
+        access: &A,
+    ) -> Result<Flow, Error> {
+        let target = FieldMeta::new(target);
+        self.run(
+            errors,
+            &target,
+            value,
+            context,
+            None,
+            Scope {
+                access: Some(access),
+                items: None,
+            },
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_spec_with_items<V: Value, A: Access, I: Items>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context<'_>,
+        access: &A,
+        items: &I,
+    ) -> Result<Flow, Error> {
+        let target = FieldMeta::new(target);
+        self.run(
+            errors,
+            &target,
+            value,
+            context,
+            None,
+            Scope {
+                access: Some(access),
+                items: Some(items),
+            },
+        )
+        .await
+    }
+
+    pub(crate) async fn execute_with_fields<V: Value, A: Access>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context<'_>,
+        access: &A,
+    ) -> Result<(), Error> {
+        self.execute_spec(errors, target, value, context, access)
+            .await
+            .map(|_| ())
+    }
+
+    pub(crate) async fn execute_with_fields_and_items<V: Value, A: Access, I: Items>(
+        &self,
+        errors: &mut Vec<FieldError>,
+        target: FieldTarget<'_>,
+        value: &V,
+        context: &Context<'_>,
+        access: &A,
+        items: &I,
+    ) -> Result<(), Error> {
+        self.execute_spec_with_items(errors, target, value, context, access, items)
+            .await
+            .map(|_| ())
+    }
+
+    fn run<'a, V: Value + 'a>(
         &'a self,
         errors: &'a mut Vec<FieldError>,
         target: &'a FieldMeta<'a>,
@@ -335,7 +118,7 @@ impl Group {
                 match step {
                     Step::Check(check) => {
                         if self
-                            .execute_check_async(errors, target, value, check, &exec)
+                            .execute_check(errors, target, value, check, &exec)
                             .await?
                             == Flow::Stop
                         {
@@ -345,7 +128,7 @@ impl Group {
                     Step::Any { checks, reason } => {
                         let mut passes = false;
                         for check in checks {
-                            match self.evaluate_async(target, value, check, &exec).await? {
+                            match self.evaluate(target, value, check, &exec).await? {
                                 CheckOutput::Pass => {
                                     passes = true;
                                     break;
@@ -373,7 +156,7 @@ impl Group {
         })
     }
 
-    async fn execute_check_async<V: Value>(
+    async fn execute_check<V: Value>(
         &self,
         errors: &mut Vec<FieldError>,
         target: &FieldMeta<'_>,
@@ -393,7 +176,7 @@ impl Group {
                 handler,
             } => {
                 if !self
-                    .rule_passes_async(
+                    .rule_passes(
                         target,
                         value,
                         exec.context,
@@ -414,7 +197,7 @@ impl Group {
             }
             Check::Alias { name, group } => {
                 return group
-                    .run_async(
+                    .run(
                         errors,
                         target,
                         value,
@@ -429,7 +212,7 @@ impl Group {
         Ok(Flow::Continue)
     }
 
-    async fn evaluate_async<V: Value>(
+    async fn evaluate<V: Value>(
         &self,
         target: &FieldMeta<'_>,
         value: &V,
@@ -448,7 +231,7 @@ impl Group {
                 handler,
             } => Ok(
                 if self
-                    .rule_passes_async(
+                    .rule_passes(
                         target,
                         value,
                         exec.context,
@@ -466,7 +249,7 @@ impl Group {
             Check::Alias { name: _, group } => {
                 let mut errors = Vec::new();
                 let flow = group
-                    .run_async(&mut errors, target, value, exec.context, None, exec.scope)
+                    .run(&mut errors, target, value, exec.context, None, exec.scope)
                     .await?;
                 if flow == Flow::Stop && errors.is_empty() {
                     Ok(CheckOutput::Stop)
@@ -479,7 +262,7 @@ impl Group {
         }
     }
 
-    async fn rule_passes_async<V: Value>(
+    async fn rule_passes<V: Value>(
         &self,
         target: &FieldMeta<'_>,
         value: &V,
@@ -505,7 +288,7 @@ impl Group {
             scope.access,
             scope.items,
         );
-        handler.check_async(&field).await
+        handler.check(&field).await
     }
 
     pub(super) fn with_field<V, T>(

@@ -12,13 +12,16 @@ struct User {
     age: u8,
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let validator = Validator::new();
-    validator.validate(&User {
-        name: "alice".to_owned(),
-        email: "alice@example.com".to_owned(),
-        age: 42,
-    })?;
+    validator
+        .validate(&User {
+            name: "alice".to_owned(),
+            email: "alice@example.com".to_owned(),
+            age: 42,
+        })
+        .await?;
 
     let error = validator
         .validate(&User {
@@ -26,6 +29,7 @@ fn main() -> Result<(), Error> {
             email: "not-email".to_owned(),
             age: 42,
         })
+        .await
         .unwrap_err();
     let fields = error
         .fields()

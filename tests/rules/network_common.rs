@@ -20,8 +20,8 @@ struct NetworkRules {
     uuid: String,
 }
 
-#[test]
-fn network_rules_pass() {
+#[tokio::test]
+async fn network_rules_pass() {
     let value = NetworkRules {
         http_url: "http://example.com".to_owned(),
         https_url: "https://example.com".to_owned(),
@@ -31,11 +31,11 @@ fn network_rules_pass() {
         uuid: "a987fbc9-4bed-3078-cf07-9141ba07c9f3".to_owned(),
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn network_rules_fail() {
+#[tokio::test]
+async fn network_rules_fail() {
     let value = NetworkRules {
         http_url: "ftp://example.com".to_owned(),
         https_url: "http://example.com".to_owned(),
@@ -46,7 +46,7 @@ fn network_rules_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();

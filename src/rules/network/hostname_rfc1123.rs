@@ -3,8 +3,9 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct HostnameRfc1123;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for HostnameRfc1123 {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()

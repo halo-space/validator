@@ -73,13 +73,16 @@ struct CheckedNestedPath {
     profile: Profile,
 }
 
-fn check_pair(value: &CheckedPair, valid: &mut halo::validator::valid::Valid<'_>) {
+async fn check_pair(value: &CheckedPair, valid: &mut halo::validator::valid::Valid<'_>) {
     let _equal = value.left == value.right;
     valid.field("left").rule("pair").push();
     valid.field("right").rule("pair").push();
 }
 
-fn check_nested_path(value: &CheckedNestedPath, valid: &mut halo::validator::valid::Valid<'_>) {
+async fn check_nested_path(
+    value: &CheckedNestedPath,
+    valid: &mut halo::validator::valid::Valid<'_>,
+) {
     let _ = &value.profile;
     valid.field("profile.email").rule("nested_pair").push();
 }
@@ -93,8 +96,8 @@ fn namespaces(error: Error) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn partial_and_except_select_top_level_fields() {
+#[tokio::test]
+async fn partial_and_except_select_top_level_fields() {
     let value = FlatUser {
         name: String::new(),
         email: String::new(),
@@ -102,17 +105,19 @@ fn partial_and_except_select_top_level_fields() {
 
     let partial = Validator::new()
         .partial(&value, ["email"])
+        .await
         .expect_err("selected email must fail");
     assert_eq!(namespaces(partial), ["FlatUser.email"]);
 
     let except = Validator::new()
         .except(&value, ["email"])
+        .await
         .expect_err("non-excluded name must fail");
     assert_eq!(namespaces(except), ["FlatUser.name"]);
 }
 
-#[test]
-fn partial_selects_nested_field_or_complete_subtree() {
+#[tokio::test]
+async fn partial_selects_nested_field_or_complete_subtree() {
     let value = NestedUser {
         name: String::new(),
         profile: Profile {
@@ -123,11 +128,13 @@ fn partial_selects_nested_field_or_complete_subtree() {
 
     let field = Validator::new()
         .partial(&value, ["profile.email"])
+        .await
         .expect_err("selected nested email must fail");
     assert_eq!(namespaces(field), ["NestedUser.profile.email"]);
 
     let subtree = Validator::new()
         .partial(&value, ["profile"])
+        .await
         .expect_err("selected profile subtree must fail");
     assert_eq!(
         namespaces(subtree),
@@ -138,8 +145,8 @@ fn partial_selects_nested_field_or_complete_subtree() {
     );
 }
 
-#[test]
-fn except_skips_only_selected_nested_subtree() {
+#[tokio::test]
+async fn except_skips_only_selected_nested_subtree() {
     let value = NestedUser {
         name: String::new(),
         profile: Profile {
@@ -150,6 +157,7 @@ fn except_skips_only_selected_nested_subtree() {
 
     let error = Validator::new()
         .except(&value, ["profile.email"])
+        .await
         .expect_err("remaining fields must fail");
     assert_eq!(
         namespaces(error),
@@ -157,8 +165,8 @@ fn except_skips_only_selected_nested_subtree() {
     );
 }
 
-#[test]
-fn partial_selects_one_dive_index() {
+#[tokio::test]
+async fn partial_selects_one_dive_index() {
     let value = Team {
         members: vec![
             Member {
@@ -174,12 +182,13 @@ fn partial_selects_one_dive_index() {
 
     let error = Validator::new()
         .partial(&value, ["members[0].email"])
+        .await
         .expect_err("selected collection field must fail");
     assert_eq!(namespaces(error), ["Team.members[0].email"]);
 }
 
-#[test]
-fn except_one_dive_field_keeps_other_indices() {
+#[tokio::test]
+async fn except_one_dive_field_keeps_other_indices() {
     let value = Team {
         members: vec![
             Member {
@@ -195,6 +204,7 @@ fn except_one_dive_field_keeps_other_indices() {
 
     let error = Validator::new()
         .except(&value, ["members[0].email"])
+        .await
         .expect_err("remaining collection fields must fail");
     assert_eq!(
         namespaces(error),
@@ -206,8 +216,8 @@ fn except_one_dive_field_keeps_other_indices() {
     );
 }
 
-#[test]
-fn partial_matches_map_entry_namespace() {
+#[tokio::test]
+async fn partial_matches_map_entry_namespace() {
     let value = Labels {
         values: BTreeMap::from([
             ("other".to_owned(), String::new()),
@@ -217,12 +227,13 @@ fn partial_matches_map_entry_namespace() {
 
     let error = Validator::new()
         .partial(&value, [r#"values["source"]"#])
+        .await
         .expect_err("selected map value must fail");
     assert_eq!(namespaces(error), [r#"Labels.values["source"]"#]);
 }
 
-#[test]
-fn filter_uses_positive_relative_namespace_semantics() {
+#[tokio::test]
+async fn filter_uses_positive_relative_namespace_semantics() {
     let value = NestedUser {
         name: String::new(),
         profile: Profile {
@@ -237,6 +248,7 @@ fn filter_uses_positive_relative_namespace_semantics() {
             visited.borrow_mut().push(namespace.as_str().to_owned());
             matches!(namespace.as_str(), "profile" | "profile.email")
         })
+        .await
         .expect_err("retained email must fail");
 
     assert_eq!(namespaces(error), ["NestedUser.profile.email"]);
@@ -244,8 +256,8 @@ fn filter_uses_positive_relative_namespace_semantics() {
     assert!(visited.borrow().contains(&"profile.email".to_owned()));
 }
 
-#[test]
-fn selective_validation_filters_struct_level_errors() {
+#[tokio::test]
+async fn selective_validation_filters_struct_level_errors() {
     let value = CheckedPair {
         left: String::new(),
         right: String::new(),
@@ -253,17 +265,19 @@ fn selective_validation_filters_struct_level_errors() {
 
     let partial = Validator::new()
         .partial(&value, ["right"])
+        .await
         .expect_err("selected struct error must remain");
     assert_eq!(namespaces(partial), ["CheckedPair.right"]);
 
     let except = Validator::new()
         .except(&value, ["right"])
+        .await
         .expect_err("non-excluded struct error must remain");
     assert_eq!(namespaces(except), ["CheckedPair.left"]);
 }
 
-#[test]
-fn unselected_field_does_not_preflight_runtime_alias() {
+#[tokio::test]
+async fn unselected_field_does_not_preflight_runtime_alias() {
     let value = RuntimeAlias {
         hidden: String::new(),
         visible: "visible".to_owned(),
@@ -271,12 +285,13 @@ fn unselected_field_does_not_preflight_runtime_alias() {
 
     Validator::new()
         .partial(&value, ["visible"])
+        .await
         .expect("unselected alias must not be resolved");
-    assert!(Validator::new().validate(&value).is_err());
+    assert!(Validator::new().validate(&value).await.is_err());
 }
 
-#[test]
-fn empty_selectors_have_stable_meaning() {
+#[tokio::test]
+async fn empty_selectors_have_stable_meaning() {
     let value = FlatUser {
         name: String::new(),
         email: String::new(),
@@ -284,33 +299,35 @@ fn empty_selectors_have_stable_meaning() {
 
     Validator::new()
         .partial(&value, std::iter::empty::<&str>())
+        .await
         .expect("empty partial selector validates nothing");
     assert!(
         Validator::new()
             .except(&value, std::iter::empty::<&str>())
+            .await
             .is_err()
     );
 }
 
-#[test]
-fn unknown_selectors_return_framework_errors() {
+#[tokio::test]
+async fn unknown_selectors_return_framework_errors() {
     let value = FlatUser {
         name: String::new(),
         email: String::new(),
     };
 
     assert!(matches!(
-        Validator::new().partial(&value, ["emali"]),
+        Validator::new().partial(&value, ["emali"]).await,
         Err(Error::UnknownField { field }) if field == "emali"
     ));
     assert!(matches!(
-        Validator::new().except(&value, ["profile.email"]),
+        Validator::new().except(&value, ["profile.email"]).await,
         Err(Error::UnknownField { field }) if field == "profile.email"
     ));
 }
 
-#[test]
-fn filter_rejecting_a_parent_skips_its_complete_subtree() {
+#[tokio::test]
+async fn filter_rejecting_a_parent_skips_its_complete_subtree() {
     let value = CheckedNestedPath {
         profile: Profile {
             email: String::new(),
@@ -320,5 +337,6 @@ fn filter_rejecting_a_parent_skips_its_complete_subtree() {
 
     Validator::new()
         .filter(&value, |namespace| namespace.as_str() == "profile.email")
+        .await
         .expect("a rejected parent must suppress descendant field and struct errors");
 }

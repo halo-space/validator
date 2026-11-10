@@ -6,8 +6,9 @@ pub(crate) struct CreditCard;
 #[derive(Debug)]
 pub(crate) struct LuhnChecksum;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for CreditCard {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -15,8 +16,9 @@ impl Rule for CreditCard {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl Rule for LuhnChecksum {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(luhn_value(field).is_some_and(|value| valid_luhn(value.as_bytes())))
     }
 }

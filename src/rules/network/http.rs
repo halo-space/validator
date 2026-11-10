@@ -3,8 +3,9 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Http;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Http {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()
@@ -15,8 +16,9 @@ impl Rule for Http {
 #[derive(Debug)]
 pub(crate) struct Https;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for Https {
-    fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
             .value()
             .string()

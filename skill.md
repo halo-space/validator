@@ -14,6 +14,7 @@
 - 新增公共 API 时，优先选择短、稳定、按模块归属可理解的名称。
 - 自定义字段关联规则优先使用显式 `field(name = "...", target = "...")` 语法，避免依赖规则名称后缀推断。
 - 内置规则按 `format` 和 `network` feature 分组；默认开启，精简构建使用 `--no-default-features`。
+- 异步是默认执行模型；公共 API 和内部执行方法不得使用 `sync`、`async` 或拼写变体作为命名后缀。使用 `Rule::check`、`Validator::value`、`Validator::validate` 等简洁名称。
 
 ## 架构约束
 

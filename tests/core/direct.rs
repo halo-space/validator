@@ -1,15 +1,15 @@
-#[test]
-fn direct_value_passes() -> Result<(), Box<dyn std::error::Error>> {
-    Validator::new().value(&"team@example.com", "required,email")?;
+#[tokio::test]
+async fn direct_value_passes() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new().value(&"team@example.com", "required,email").await?;
 
     Ok(())
 }
 
-#[test]
-fn direct_value_reports_value_namespace() {
+#[tokio::test]
+async fn direct_value_reports_value_namespace() {
     let fields = fields(
         Validator::new()
-            .value(&"not-email", "required,email")
+            .value(&"not-email", "required,email").await
             .unwrap_err(),
     );
 
@@ -19,48 +19,48 @@ fn direct_value_reports_value_namespace() {
     assert_eq!(fields[0].rule(), "email");
 }
 
-#[test]
-fn repeated_direct_value_validation_preserves_errors() {
+#[tokio::test]
+async fn repeated_direct_value_validation_preserves_errors() {
     let validator = Validator::new();
     validator
-        .value(&"team@example.com", "required,email")
+        .value(&"team@example.com", "required,email").await
         .unwrap();
 
-    let first = fields(validator.value(&"not-email", "required,email").unwrap_err());
-    let second = fields(validator.value(&"not-email", "required,email").unwrap_err());
+    let first = fields(validator.value(&"not-email", "required,email").await.unwrap_err());
+    let second = fields(validator.value(&"not-email", "required,email").await.unwrap_err());
 
     assert_eq!(first, second);
 }
 
-#[test]
-fn cached_groups_remain_valid_after_registry_extension() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn cached_groups_remain_valid_after_registry_extension() -> Result<(), Box<dyn std::error::Error>> {
     let validator = Validator::new();
-    validator.value(&"team@example.com", "required,email")?;
+    validator.value(&"team@example.com", "required,email").await?;
 
     let validator = validator
         .rule("slug", Slug)?
         .alias("mail", "required,email")?;
 
-    validator.value(&"team@example.com", "required,email")?;
-    validator.value(&"hello-rust", "slug")?;
-    validator.value(&"team@example.com", "mail")?;
+    validator.value(&"team@example.com", "required,email").await?;
+    validator.value(&"hello-rust", "slug").await?;
+    validator.value(&"team@example.com", "mail").await?;
 
     Ok(())
 }
 
-#[test]
-fn direct_value_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
-    Validator::new().value(&String::new(), "omitempty,email")?;
+#[tokio::test]
+async fn direct_value_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
+    Validator::new().value(&String::new(), "omitempty,email").await?;
 
     Ok(())
 }
 
-#[test]
-fn direct_value_alias_preserves_rule_and_reason() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn direct_value_alias_preserves_rule_and_reason() -> Result<(), Box<dyn std::error::Error>> {
     let fields = fields(
         Validator::new()
             .alias("username", "required,length(min=3,max=20)")?
-            .value(&"al", "username")
+            .value(&"al", "username").await
             .unwrap_err(),
     );
 
@@ -72,30 +72,30 @@ fn direct_value_alias_preserves_rule_and_reason() -> Result<(), Box<dyn std::err
     Ok(())
 }
 
-#[test]
-fn direct_value_alias_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn direct_value_alias_omitempty_skips_empty_value() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new()
         .alias("optional_email", "omitempty,email")?
-        .value(&String::new(), "optional_email")?;
+        .value(&String::new(), "optional_email").await?;
 
     Ok(())
 }
 
-#[test]
-fn direct_value_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn direct_value_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new()
         .alias("optional_email", "omitempty,email")?
-        .value(&String::new(), "optional_email,required")?;
+        .value(&String::new(), "optional_email,required").await?;
 
     Ok(())
 }
 
-#[test]
-fn alias_omitempty_in_alternative_skips_following_rules() -> Result<(), Box<dyn std::error::Error>>
+#[tokio::test]
+async fn alias_omitempty_in_alternative_skips_following_rules() -> Result<(), Box<dyn std::error::Error>>
 {
     Validator::new()
         .alias("optional_email", "omitempty,email")?
-        .value(&String::new(), "email|optional_email,required")?;
+        .value(&String::new(), "email|optional_email,required").await?;
 
     Ok(())
 }
@@ -106,19 +106,19 @@ struct OptionalAliasEmail {
     email: String,
 }
 
-#[test]
-fn derive_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn derive_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new()
         .alias("optional_email", "omitempty,email")?
         .validate(&OptionalAliasEmail {
             email: String::new(),
-        })?;
+        }).await?;
 
     Ok(())
 }
 
-#[test]
-fn schema_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn schema_alias_omitempty_skips_following_rules() -> Result<(), Box<dyn std::error::Error>> {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -132,16 +132,16 @@ fields:
 
     Validator::with_schema(schema)
         .alias("optional_email", "omitempty,email")?
-        .validate_map(&serde_json::json!({ "email": "" }))?;
+        .check_map(&serde_json::json!({ "email": "" })).await?;
 
     Ok(())
 }
 
-#[test]
-fn direct_value_alternatives_preserve_joined_reason() {
+#[tokio::test]
+async fn direct_value_alternatives_preserve_joined_reason() {
     let fields = fields(
         Validator::new()
-            .value(&"not-a-color", "hexcolor|rgb|rgba")
+            .value(&"not-a-color", "hexcolor|rgb|rgba").await
             .unwrap_err(),
     );
 
@@ -150,20 +150,20 @@ fn direct_value_alternatives_preserve_joined_reason() {
     assert_eq!(fields[0].reason(), "hexcolor|rgb|rgba");
 }
 
-#[test]
-fn direct_value_reuses_alias_and_custom_rule() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn direct_value_reuses_alias_and_custom_rule() -> Result<(), Box<dyn std::error::Error>> {
     Validator::new()
         .alias("slug_alias", "slug")?
         .rule("slug", Slug)?
-        .value(&"hello-rust", "slug_alias")?;
+        .value(&"hello-rust", "slug_alias").await?;
 
     Ok(())
 }
 
-#[test]
-fn direct_value_rejects_rule_alias_name_collision() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn direct_value_rejects_rule_alias_name_collision() -> Result<(), Box<dyn std::error::Error>> {
     let validator = Validator::new().alias("slug", "required")?;
-    assert!(validator.value(&String::new(), "slug").is_err());
+    assert!(validator.value(&String::new(), "slug").await.is_err());
 
     let Err(error) = validator.rule("slug", Slug) else {
         panic!("expected duplicate name error");
@@ -173,9 +173,9 @@ fn direct_value_rejects_rule_alias_name_collision() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-#[test]
-fn direct_value_invalid_expression_returns_error() {
-    let error = Validator::new().value(&"abc", "length(min=3").unwrap_err();
+#[tokio::test]
+async fn direct_value_invalid_expression_returns_error() {
+    let error = Validator::new().value(&"abc", "length(min=3").await.unwrap_err();
 
     assert!(matches!(
         error,
@@ -183,9 +183,9 @@ fn direct_value_invalid_expression_returns_error() {
     ));
 }
 
-#[test]
-fn direct_value_unknown_rule_returns_error() {
-    let error = Validator::new().value(&"abc", "missing_rule").unwrap_err();
+#[tokio::test]
+async fn direct_value_unknown_rule_returns_error() {
+    let error = Validator::new().value(&"abc", "missing_rule").await.unwrap_err();
 
     assert!(matches!(
         error,
@@ -193,11 +193,11 @@ fn direct_value_unknown_rule_returns_error() {
     ));
 }
 
-#[test]
-fn direct_value_alias_with_unknown_rule_returns_error() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::test]
+async fn direct_value_alias_with_unknown_rule_returns_error() -> Result<(), Box<dyn std::error::Error>> {
     let error = Validator::new()
         .alias("broken_alias", "missing_rule")?
-        .value(&"abc", "broken_alias")
+        .value(&"abc", "broken_alias").await
         .unwrap_err();
 
     assert!(matches!(

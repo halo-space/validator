@@ -25,8 +25,8 @@ struct NestedTarget {
     email: String,
 }
 
-#[test]
-fn derive_resolves_arbitrarily_deep_borrowed_targets() {
+#[tokio::test]
+async fn derive_resolves_arbitrarily_deep_borrowed_targets() {
     let user = NestedTarget {
         profile: Profile {
             contact: Contact {
@@ -36,7 +36,7 @@ fn derive_resolves_arbitrarily_deep_borrowed_targets() {
         email: "user@example.com".to_owned(),
     };
 
-    Validator::new().validate(&user).unwrap();
+    Validator::new().validate(&user).await.unwrap();
 
     let target = halo::validator::__private::Access::field(&user, "profile.contact.email")
         .expect("referenced path must be available");
@@ -45,8 +45,8 @@ fn derive_resolves_arbitrarily_deep_borrowed_targets() {
     assert!(halo::validator::__private::Access::field(&user, "profile").is_none());
 }
 
-#[test]
-fn derive_reports_the_full_target_path() {
+#[tokio::test]
+async fn derive_reports_the_full_target_path() {
     let error = Validator::new()
         .validate(&NestedTarget {
             profile: Profile {
@@ -56,6 +56,7 @@ fn derive_reports_the_full_target_path() {
             },
             email: "actual@example.com".to_owned(),
         })
+        .await
         .unwrap_err();
     let fields = fields(error);
 
@@ -86,20 +87,23 @@ struct OptionalTarget {
     email: String,
 }
 
-fn optional_target(profile: Option<OptionalProfile>) -> Result<(), Error> {
-    Validator::new().validate(&OptionalTarget {
-        profile,
-        email: "current@example.com".to_owned(),
-    })
+async fn optional_target(profile: Option<OptionalProfile>) -> Result<(), Error> {
+    Validator::new()
+        .validate(&OptionalTarget {
+            profile,
+            email: "current@example.com".to_owned(),
+        })
+        .await
 }
 
-#[test]
-fn derive_borrows_option_segments_and_treats_none_as_missing() {
+#[tokio::test]
+async fn derive_borrows_option_segments_and_treats_none_as_missing() {
     optional_target(Some(OptionalProfile {
         contact: Some(OptionalContact {
             email: Some("other@example.com".to_owned()),
         }),
     }))
+    .await
     .unwrap();
 
     for profile in [
@@ -109,7 +113,7 @@ fn derive_borrows_option_segments_and_treats_none_as_missing() {
             contact: Some(OptionalContact { email: None }),
         }),
     ] {
-        let fields = fields(optional_target(profile).unwrap_err());
+        let fields = fields(optional_target(profile).await.unwrap_err());
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].rule(), "ne_field");
         assert_eq!(
@@ -132,8 +136,8 @@ struct RawTarget {
     kind: String,
 }
 
-#[test]
-fn derive_uses_canonical_raw_identifier_segments() {
+#[tokio::test]
+async fn derive_uses_canonical_raw_identifier_segments() {
     Validator::new()
         .validate(&RawTarget {
             profile: RawProfile {
@@ -141,6 +145,7 @@ fn derive_uses_canonical_raw_identifier_segments() {
             },
             kind: "admin".to_owned(),
         })
+        .await
         .unwrap();
 }
 
@@ -157,8 +162,8 @@ struct BorrowedTarget<'a> {
     email: &'a str,
 }
 
-#[test]
-fn derive_resolves_borrowed_intermediate_and_terminal_fields() {
+#[tokio::test]
+async fn derive_resolves_borrowed_intermediate_and_terminal_fields() {
     let profile = BorrowedProfile {
         email: "user@example.com",
     };
@@ -168,6 +173,7 @@ fn derive_resolves_borrowed_intermediate_and_terminal_fields() {
             profile: &profile,
             email: "user@example.com",
         })
+        .await
         .unwrap();
 }
 
@@ -186,8 +192,8 @@ struct WithoutNested {
     email: String,
 }
 
-#[test]
-fn path_access_does_not_trigger_nested_validation() {
+#[tokio::test]
+async fn path_access_does_not_trigger_nested_validation() {
     Validator::new()
         .validate(&WithoutNested {
             profile: CheckedProfile {
@@ -196,6 +202,7 @@ fn path_access_does_not_trigger_nested_validation() {
             },
             email: "user@example.com".to_owned(),
         })
+        .await
         .unwrap();
 }
 
@@ -213,8 +220,8 @@ struct ScopedAccount {
     profile: ScopedProfile,
 }
 
-#[test]
-fn derive_path_is_relative_to_the_struct_that_declares_the_rule() {
+#[tokio::test]
+async fn derive_path_is_relative_to_the_struct_that_declares_the_rule() {
     Validator::new()
         .validate(&ScopedAccount {
             profile: ScopedProfile {
@@ -224,6 +231,7 @@ fn derive_path_is_relative_to_the_struct_that_declares_the_rule() {
                 email: "user@example.com".to_owned(),
             },
         })
+        .await
         .unwrap();
 }
 
@@ -240,14 +248,15 @@ struct StrictKindTarget {
     score: i32,
 }
 
-#[test]
-fn nested_target_keeps_strict_concrete_kind_matching() {
+#[tokio::test]
+async fn nested_target_keeps_strict_concrete_kind_matching() {
     let fields = fields(
         Validator::new()
             .validate(&StrictKindTarget {
                 profile: NumericProfile { score: 7 },
                 score: 7,
             })
+            .await
             .unwrap_err(),
     );
 
@@ -258,12 +267,13 @@ fn nested_target_keeps_strict_concrete_kind_matching() {
 #[derive(Debug)]
 struct SamePath;
 
+#[async_trait::async_trait(?Send)]
 impl Rule for SamePath {
     fn signature(&self) -> Signature {
         Signature::field("compare")
     }
 
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         let Some(target) = field.params().text("compare") else {
             return Ok(false);
         };
@@ -280,8 +290,8 @@ struct CustomTarget {
     email: String,
 }
 
-#[test]
-fn custom_field_rule_can_use_a_nested_target() {
+#[tokio::test]
+async fn custom_field_rule_can_use_a_nested_target() {
     Validator::new()
         .rule("same_field", SamePath)
         .unwrap()
@@ -293,6 +303,7 @@ fn custom_field_rule_can_use_a_nested_target() {
             },
             email: "user@example.com".to_owned(),
         })
+        .await
         .unwrap();
 }
 
@@ -314,26 +325,28 @@ fields:
     .unwrap()
 }
 
-#[test]
-fn schema_resolves_nested_targets_from_rules_and_aliases() {
+#[tokio::test]
+async fn schema_resolves_nested_targets_from_rules_and_aliases() {
     let schema = nested_schema("same_profile_email");
     let validator = Validator::with_schema(schema)
         .alias("same_profile_email", "eq_field=profile.email")
         .unwrap();
 
     validator
-        .validate_map(&json!({
+        .check_map(&json!({
             "profile": { "email": "user@example.com" },
             "email": "user@example.com"
         }))
+        .await
         .unwrap();
 
     let fields = fields(
         validator
-            .validate_map(&json!({
+            .check_map(&json!({
                 "profile": { "email": "expected@example.com" },
                 "email": "actual@example.com"
             }))
+            .await
             .unwrap_err(),
     );
     assert_eq!(fields.len(), 1);
@@ -342,20 +355,21 @@ fn schema_resolves_nested_targets_from_rules_and_aliases() {
     assert_eq!(fields[0].params().text("compare"), Some("profile.email"));
 }
 
-#[test]
-fn schema_custom_field_rule_can_use_a_nested_target() {
+#[tokio::test]
+async fn schema_custom_field_rule_can_use_a_nested_target() {
     Validator::with_schema(nested_schema("same_field: profile.email"))
         .rule("same_field", SamePath)
         .unwrap()
-        .validate_map(&json!({
+        .check_map(&json!({
             "profile": { "email": "user@example.com" },
             "email": "user@example.com"
         }))
+        .await
         .unwrap();
 }
 
-#[test]
-fn schema_rejects_literal_field_that_conflicts_with_nested_target() {
+#[tokio::test]
+async fn schema_rejects_literal_field_that_conflicts_with_nested_target() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -375,11 +389,12 @@ fields:
     .unwrap();
 
     let error = Validator::with_schema(schema)
-        .validate_map(&json!({
+        .check_map(&json!({
             "profile": { "email": "nested@example.com" },
             "profile.email": "literal@example.com",
             "email": "nested@example.com"
         }))
+        .await
         .unwrap_err();
 
     assert!(matches!(
@@ -389,8 +404,8 @@ fields:
     ));
 }
 
-#[test]
-fn schema_direct_target_accepts_serialized_field_name() {
+#[tokio::test]
+async fn schema_direct_target_accepts_serialized_field_name() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -405,15 +420,16 @@ fields:
     .unwrap();
 
     Validator::with_schema(schema)
-        .validate_map(&json!({
+        .check_map(&json!({
             "source-url": "https://example.com",
             "mirror": "https://example.com"
         }))
+        .await
         .unwrap();
 }
 
-#[test]
-fn schema_uses_canonical_raw_identifier_segments() {
+#[tokio::test]
+async fn schema_uses_canonical_raw_identifier_segments() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -431,12 +447,13 @@ fields:
     .unwrap();
 
     Validator::with_schema(schema)
-        .validate_map(&json!({ "profile": { "type": "admin" }, "kind": "admin" }))
+        .check_map(&json!({ "profile": { "type": "admin" }, "kind": "admin" }))
+        .await
         .unwrap();
 }
 
-#[test]
-fn schema_treats_missing_and_null_path_segments_as_missing_targets() {
+#[tokio::test]
+async fn schema_treats_missing_and_null_path_segments_as_missing_targets() {
     let validator = Validator::with_schema(nested_schema("ne_field: profile.email"));
 
     for data in [
@@ -445,14 +462,14 @@ fn schema_treats_missing_and_null_path_segments_as_missing_targets() {
         json!({ "profile": {}, "email": "user@example.com" }),
         json!({ "profile": { "email": null }, "email": "user@example.com" }),
     ] {
-        let fields = fields(validator.validate_map(&data).unwrap_err());
+        let fields = fields(validator.check_map(&data).await.unwrap_err());
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].rule(), "ne_field");
     }
 }
 
-#[test]
-fn schema_keeps_declared_terminal_kind_for_nested_targets() {
+#[tokio::test]
+async fn schema_keeps_declared_terminal_kind_for_nested_targets() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -470,7 +487,8 @@ fields:
     .unwrap();
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({ "profile": { "score": 7 }, "score": 7 }))
+            .check_map(&json!({ "profile": { "score": 7 }, "score": 7 }))
+            .await
             .unwrap_err(),
     );
 
@@ -478,14 +496,15 @@ fields:
     assert_eq!(fields[0].rule(), "eq_field");
 }
 
-#[test]
-fn schema_invalid_intermediate_data_reports_type_and_missing_target() {
+#[tokio::test]
+async fn schema_invalid_intermediate_data_reports_type_and_missing_target() {
     let fields = fields(
         Validator::with_schema(nested_schema("eq_field: profile.email"))
-            .validate_map(&json!({
+            .check_map(&json!({
                 "profile": "not-an-object",
                 "email": "user@example.com"
             }))
+            .await
             .unwrap_err(),
     );
     let mut rules = fields.iter().map(FieldError::rule).collect::<Vec<_>>();
@@ -494,23 +513,24 @@ fn schema_invalid_intermediate_data_reports_type_and_missing_target() {
     assert_eq!(rules, vec!["eq_field", "type"]);
 }
 
-#[test]
-fn schema_rejects_invalid_or_undeclared_paths() {
+#[tokio::test]
+async fn schema_rejects_invalid_or_undeclared_paths() {
     for target in ["profile.missing", "profile..email", "profile[0].email"] {
         let schema = nested_schema(&format!("eq_field: {target}"));
         let error = Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "profile": { "email": "user@example.com" },
                 "email": "user@example.com"
             }))
+            .await
             .unwrap_err();
 
         assert!(matches!(error, Error::InvalidSchema { .. }));
     }
 }
 
-#[test]
-fn schema_rejects_scalar_and_array_intermediate_segments() {
+#[tokio::test]
+async fn schema_rejects_scalar_and_array_intermediate_segments() {
     for ty in ["string", "array"] {
         let schema = Schema::from_yaml(format!(
             r#"
@@ -525,15 +545,16 @@ fields:
         ))
         .unwrap();
         let error = Validator::with_schema(schema)
-            .validate_map(&json!({ "email": "user@example.com" }))
+            .check_map(&json!({ "email": "user@example.com" }))
+            .await
             .unwrap_err();
 
         assert!(matches!(error, Error::InvalidSchema { .. }));
     }
 }
 
-#[test]
-fn schema_conditional_rules_keep_direct_field_targets() {
+#[tokio::test]
+async fn schema_conditional_rules_keep_direct_field_targets() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -550,7 +571,8 @@ fields:
     )
     .unwrap();
     let error = Validator::with_schema(schema)
-        .validate_map(&json!({ "profile": { "email": "user@example.com" } }))
+        .check_map(&json!({ "profile": { "email": "user@example.com" } }))
+        .await
         .unwrap_err();
 
     assert!(matches!(
@@ -560,8 +582,8 @@ fields:
     ));
 }
 
-#[test]
-fn schema_paths_are_relative_to_each_object_scope() {
+#[tokio::test]
+async fn schema_paths_are_relative_to_each_object_scope() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -594,7 +616,7 @@ fields:
     .unwrap();
 
     Validator::with_schema(schema)
-        .validate_map(&json!({
+        .check_map(&json!({
             "account": {
                 "profile": { "email": "account@example.com" },
                 "email": "account@example.com"
@@ -604,5 +626,6 @@ fields:
                 "email": "user@example.com"
             }]
         }))
+        .await
         .unwrap();
 }

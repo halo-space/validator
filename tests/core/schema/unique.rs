@@ -1,5 +1,5 @@
-#[test]
-fn schema_unique_field_validates_array_object_fields() {
+#[tokio::test]
+async fn schema_unique_field_validates_array_object_fields() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -19,21 +19,21 @@ fields:
     let validator = Validator::with_schema(schema);
 
     validator
-        .validate_map(&serde_json::json!({
+        .check_map(&serde_json::json!({
             "users": [
                 { "email": "first@example.com" },
                 { "email": "second@example.com" }
             ]
-        }))
+        })).await
         .unwrap();
 
     let fields = validator
-        .validate_map(&serde_json::json!({
+        .check_map(&serde_json::json!({
             "users": [
                 { "email": "same@example.com" },
                 { "email": "same@example.com" }
             ]
-        }))
+        })).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -43,8 +43,8 @@ fields:
     assert_eq!(param_list(&fields[0], "fields"), vec!["email"]);
 }
 
-#[test]
-fn schema_compound_unique_fields_compare_complete_nested_keys() {
+#[tokio::test]
+async fn schema_compound_unique_fields_compare_complete_nested_keys() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -66,22 +66,22 @@ fields:
     let validator = Validator::with_schema(schema);
 
     validator
-        .validate_map(&json!({
+        .check_map(&json!({
             "users": [
                 { "tenant_id": 1, "profile": { "email": "same@example.com" } },
                 { "tenant_id": 2, "profile": { "email": "same@example.com" } }
             ]
-        }))
+        })).await
         .unwrap();
 
     let fields = fields(
         validator
-            .validate_map(&json!({
+            .check_map(&json!({
                 "users": [
                     { "tenant_id": 1, "profile": { "email": "same@example.com" } },
                     { "tenant_id": 1, "profile": { "email": "same@example.com" } }
                 ]
-            }))
+            })).await
             .unwrap_err(),
     );
 
@@ -95,8 +95,8 @@ fields:
     assert_eq!(fields[0].params().text("field"), None);
 }
 
-#[test]
-fn schema_compound_unique_fields_preserve_none_and_malformed_data() {
+#[tokio::test]
+async fn schema_compound_unique_fields_preserve_none_and_malformed_data() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -118,22 +118,22 @@ fields:
     let validator = Validator::with_schema(schema);
 
     validator
-        .validate_map(&json!({
+        .check_map(&json!({
             "users": [
                 { "tenant_id": 1 },
                 { "tenant_id": 2, "profile": null }
             ]
-        }))
+        })).await
         .unwrap();
 
     let none = fields(
         validator
-            .validate_map(&json!({
+            .check_map(&json!({
                 "users": [
                     { "tenant_id": 1 },
                     { "tenant_id": 1, "profile": null }
                 ]
-            }))
+            })).await
             .unwrap_err(),
     );
     assert_eq!(none.len(), 1);
@@ -141,12 +141,12 @@ fields:
 
     let malformed = fields(
         validator
-            .validate_map(&json!({
+            .check_map(&json!({
                 "users": [
                     { "tenant_id": 1, "profile": "invalid" },
                     { "tenant_id": 1, "profile": "invalid" }
                 ]
-            }))
+            })).await
             .unwrap_err(),
     );
     assert_eq!(malformed.len(), 2);
@@ -155,8 +155,8 @@ fields:
     assert_eq!(malformed[1].namespace().as_str(), "users[1].profile");
 }
 
-#[test]
-fn schema_alias_preserves_unique_field_context() {
+#[tokio::test]
+async fn schema_alias_preserves_unique_field_context() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -174,12 +174,12 @@ fields:
         .unwrap();
 
     let fields = validator
-        .validate_map(&serde_json::json!({
+        .check_map(&serde_json::json!({
             "users": [
                 { "email": "same@example.com" },
                 { "email": "same@example.com" }
             ]
-        }))
+        })).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -191,8 +191,8 @@ fields:
     assert_eq!(param_list(&fields[0], "fields"), vec!["email"]);
 }
 
-#[test]
-fn schema_alias_preserves_compound_unique_field_context() {
+#[tokio::test]
+async fn schema_alias_preserves_compound_unique_field_context() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -216,12 +216,12 @@ fields:
 
     let fields = fields(
         validator
-            .validate_map(&json!({
+            .check_map(&json!({
                 "users": [
                     { "tenant_id": 1, "profile": { "email": "same@example.com" } },
                     { "tenant_id": 1, "profile": { "email": "same@example.com" } }
                 ]
-            }))
+            })).await
             .unwrap_err(),
     );
 
@@ -234,8 +234,8 @@ fields:
     );
 }
 
-#[test]
-fn schema_array_fields_report_indexed_child_errors() {
+#[tokio::test]
+async fn schema_array_fields_report_indexed_child_errors() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -249,12 +249,12 @@ fields:
     )
     .unwrap();
     let fields = Validator::with_schema(schema)
-        .validate_map(&serde_json::json!({
+        .check_map(&serde_json::json!({
             "users": [
                 { "email": "invalid" },
                 "not-an-object"
             ]
-        }))
+        })).await
         .unwrap_err()
         .into_fields()
         .unwrap();
@@ -267,8 +267,8 @@ fields:
     assert_eq!(fields[1].params().text("expected"), Some("object"));
 }
 
-#[test]
-fn schema_array_fields_reject_null_items_as_indexed_type_errors() {
+#[tokio::test]
+async fn schema_array_fields_reject_null_items_as_indexed_type_errors() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -282,7 +282,7 @@ fields:
     .unwrap();
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({ "users": [null] }))
+            .check_map(&json!({ "users": [null] })).await
             .unwrap_err(),
     );
 
@@ -293,8 +293,8 @@ fields:
     assert_eq!(fields[0].params().text("expected"), Some("object"));
 }
 
-#[test]
-fn schema_unique_field_leaves_invalid_values_to_child_type_validation() {
+#[tokio::test]
+async fn schema_unique_field_leaves_invalid_values_to_child_type_validation() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -310,12 +310,12 @@ fields:
     .unwrap();
     let fields = fields(
         Validator::with_schema(schema)
-            .validate_map(&json!({
+            .check_map(&json!({
                 "users": [
                     { "age": "invalid" },
                     { "age": 1 }
                 ]
-            }))
+            })).await
             .unwrap_err(),
     );
 
@@ -326,8 +326,8 @@ fields:
     assert_eq!(fields[0].params().text("expected"), Some("uint"));
 }
 
-#[test]
-fn schema_unique_field_rejects_invalid_configuration() {
+#[tokio::test]
+async fn schema_unique_field_rejects_invalid_configuration() {
     for yaml in [
         r#"
 fields:
@@ -391,14 +391,14 @@ fields:
     ] {
         let schema = Schema::from_yaml(yaml).unwrap();
         let error = Validator::with_schema(schema)
-            .validate_map(&serde_json::json!({ "users": [] }))
+            .check_map(&serde_json::json!({ "users": [] })).await
             .unwrap_err();
         assert!(matches!(error, Error::InvalidSchema { .. }));
     }
 }
 
-#[test]
-fn schema_unique_fields_reject_invalid_lists() {
+#[tokio::test]
+async fn schema_unique_fields_reject_invalid_lists() {
     let error = Schema::from_yaml(
         r#"
 fields:
@@ -428,13 +428,13 @@ fields:
     )
     .unwrap();
     let error = Validator::with_schema(schema)
-        .validate_map(&json!({ "users": [] }))
+        .check_map(&json!({ "users": [] })).await
         .unwrap_err();
     assert!(matches!(error, Error::InvalidRuleExpression { .. }));
 }
 
-#[test]
-fn schema_unique_field_distinguishes_absent_and_empty_fields() {
+#[tokio::test]
+async fn schema_unique_field_distinguishes_absent_and_empty_fields() {
     let without_fields = Schema::from_yaml(
         r#"
 fields:
@@ -446,7 +446,7 @@ fields:
     )
     .unwrap();
     let error = Validator::with_schema(without_fields)
-        .validate_map(&json!({ "users": [] }))
+        .check_map(&json!({ "users": [] })).await
         .unwrap_err();
     assert!(matches!(
         error,
@@ -466,7 +466,7 @@ fields:
     )
     .unwrap();
     let error = Validator::with_schema(empty_fields)
-        .validate_map(&json!({ "users": [] }))
+        .check_map(&json!({ "users": [] })).await
         .unwrap_err();
     assert!(matches!(
         error,
@@ -475,8 +475,8 @@ fields:
     ));
 }
 
-#[test]
-fn schema_unique_field_treats_missing_and_null_as_none() {
+#[tokio::test]
+async fn schema_unique_field_treats_missing_and_null_as_none() {
     let schema = Schema::from_yaml(
         r#"
 fields:
@@ -493,15 +493,15 @@ fields:
     let validator = Validator::with_schema(schema);
 
     validator
-        .validate_map(&serde_json::json!({
+        .check_map(&serde_json::json!({
             "users": [{}, { "nickname": "rust" }]
-        }))
+        })).await
         .unwrap();
 
     let fields = validator
-        .validate_map(&serde_json::json!({
+        .check_map(&serde_json::json!({
             "users": [{}, { "nickname": null }]
-        }))
+        })).await
         .unwrap_err()
         .into_fields()
         .unwrap();

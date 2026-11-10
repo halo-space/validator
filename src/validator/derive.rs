@@ -7,7 +7,7 @@ use super::Validator;
 
 impl Validator {
     #[doc(hidden)]
-    pub fn __validate_params<V, A>(
+    pub async fn __validate_params<V, A>(
         &self,
         target: FieldTarget<'_>,
         value: &V,
@@ -24,7 +24,7 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_type_params<V, A>(
+    pub async fn __validate_type_params<V, A>(
         &self,
         target: FieldTarget<'_>,
         spec: Spec,
@@ -40,7 +40,7 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_spec<V, A>(
+    pub async fn __validate_spec<V, A>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
@@ -56,11 +56,12 @@ impl Validator {
         let group = self.compile_spec(spec, false)?;
         group
             .execute_spec(errors, target, value, context, access)
+            .await
             .map(|flow| flow == Flow::Stop)
     }
 
     #[doc(hidden)]
-    pub fn __validate_item_params<A, I>(
+    pub async fn __validate_item_params<A, I>(
         &self,
         target: FieldTarget<'_>,
         spec: Spec,
@@ -77,7 +78,7 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_items<A, I>(
+    pub async fn __validate_items<A, I>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
@@ -93,6 +94,7 @@ impl Validator {
         let group = self.compile_spec(spec, true)?;
         group
             .execute_spec_with_items(errors, target, items, context, access, items)
+            .await
             .map(|flow| flow == Flow::Stop)
     }
 
@@ -120,7 +122,7 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_nested<T: Validate + Selective>(
+    pub async fn __validate_nested<T: Validate + Selective>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
@@ -128,7 +130,7 @@ impl Validator {
         context: &Context<'_>,
     ) -> Result<(), Error> {
         let child = context.child(target.struct_field_name.as_ref());
-        match value.__validate_with_context(self, &child) {
+        match value.__validate_with_context(self, &child).await {
             Ok(()) => {}
             Err(nested) if nested.is_failed() => push_nested_errors(errors, target, nested),
             Err(error) => return Err(error),
@@ -137,7 +139,7 @@ impl Validator {
     }
 
     #[doc(hidden)]
-    pub fn __validate_nested_option<T: Validate + Selective>(
+    pub async fn __validate_nested_option<T: Validate + Selective>(
         &self,
         errors: &mut Vec<FieldError>,
         target: FieldTarget<'_>,
@@ -145,7 +147,8 @@ impl Validator {
         context: &Context<'_>,
     ) -> Result<(), Error> {
         if let Some(value) = value {
-            self.__validate_nested(errors, target, value, context)?;
+            self.__validate_nested(errors, target, value, context)
+                .await?;
         }
         Ok(())
     }

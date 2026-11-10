@@ -14,7 +14,7 @@ cargo package --manifest-path derive/Cargo.toml --allow-dirty
 ```
 
 The benchmark suite uses equivalent derive and Schema models. It measures
-successful and failed derive, direct value, Schema map, and `validate_serde`
+successful and failed derive, direct value, Schema map, and `check_serde`
 execution; selective validation; warm and cold compilation paths; and
 collection dive and compound unique projection at 10, 100, and 1,000 elements.
 Use `cargo bench --bench validation -- --quick` for a short local verification

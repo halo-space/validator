@@ -14,8 +14,8 @@ struct EqualityRules {
     tags: Vec<String>,
 }
 
-#[test]
-fn equality_rules_pass() {
+#[tokio::test]
+async fn equality_rules_pass() {
     let value = EqualityRules {
         state: "published".to_owned(),
         score: 42,
@@ -23,11 +23,11 @@ fn equality_rules_pass() {
         tags: vec!["rust".to_owned(), "validator".to_owned()],
     };
 
-    Validator::new().validate(&value).unwrap();
+    Validator::new().validate(&value).await.unwrap();
 }
 
-#[test]
-fn equality_rules_fail() {
+#[tokio::test]
+async fn equality_rules_fail() {
     let value = EqualityRules {
         state: "draft".to_owned(),
         score: 0,
@@ -36,7 +36,7 @@ fn equality_rules_fail() {
     };
 
     let fields = Validator::new()
-        .validate(&value)
+        .validate(&value).await
         .unwrap_err()
         .into_fields()
         .unwrap();

@@ -252,12 +252,12 @@ impl Validator {
     }
 
     /// Validates a value through its [`Validate`] implementation.
-    pub fn validate<T: Validate>(&self, value: &T) -> Result<(), Error> {
-        value.validate(self)
+    pub async fn validate<T: Validate>(&self, value: &T) -> Result<(), Error> {
+        value.validate(self).await
     }
 
     /// Validates only the selected relative Rust field paths.
-    pub fn partial<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
+    pub async fn partial<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
     where
         T: Validate + Selective,
         I: IntoIterator<Item = S>,
@@ -265,13 +265,13 @@ impl Validator {
     {
         let fields = Fields::new(fields);
         let context = Context::partial(&fields);
-        let result = value.__validate_with_context(self, &context);
+        let result = value.__validate_with_context(self, &context).await;
         fields.verify()?;
         result
     }
 
     /// Validates every field except the selected relative Rust field paths.
-    pub fn except<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
+    pub async fn except<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
     where
         T: Validate + Selective,
         I: IntoIterator<Item = S>,
@@ -279,19 +279,19 @@ impl Validator {
     {
         let fields = Fields::new(fields);
         let context = Context::except(&fields);
-        let result = value.__validate_with_context(self, &context);
+        let result = value.__validate_with_context(self, &context).await;
         fields.verify()?;
         result
     }
 
     /// Validates fields for which the relative Namespace predicate returns true.
-    pub fn filter<T, F>(&self, value: &T, filter: F) -> Result<(), Error>
+    pub async fn filter<T, F>(&self, value: &T, filter: F) -> Result<(), Error>
     where
         T: Validate + Selective,
         F: Fn(&Namespace) -> bool,
     {
         let context = Context::filter(&filter);
-        value.__validate_with_context(self, &context)
+        value.__validate_with_context(self, &context).await
     }
 
     /// Registers a custom rule under the supplied name.
@@ -310,33 +310,12 @@ impl Validator {
     }
 
     /// Validates one value against a runtime rule expression.
-    pub fn value<V: Value>(&self, value: &V, rules: impl AsRef<str>) -> Result<(), Error> {
+    pub async fn value<V: Value>(&self, value: &V, rules: impl AsRef<str>) -> Result<(), Error> {
         let group = self.compile(rules.as_ref())?;
         let mut errors = Vec::new();
         let target = FieldTarget::value();
         let context = Context::new();
-        group.execute(&mut errors, target, value, &context)?;
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(Error::failed(errors))
-        }
-    }
-
-    /// Asynchronously validates one value against a runtime rule expression.
-    pub async fn value_async<V: Value>(
-        &self,
-        value: &V,
-        rules: impl AsRef<str>,
-    ) -> Result<(), Error> {
-        let group = self.compile(rules.as_ref())?;
-        let mut errors = Vec::new();
-        let target = FieldTarget::value();
-        let context = Context::new();
-        group
-            .execute_async(&mut errors, target, value, &context)
-            .await?;
+        group.execute(&mut errors, target, value, &context).await?;
 
         if errors.is_empty() {
             Ok(())
@@ -346,46 +325,29 @@ impl Validator {
     }
 
     /// Validates a JSON object against the configured schema.
-    pub fn validate_map(&self, value: &serde_json::Value) -> Result<(), Error> {
+    pub async fn check_map(&self, value: &serde_json::Value) -> Result<(), Error> {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
-        self.validate_map_with(schema, value)
-    }
-
-    /// Validates a JSON object against a schema supplied for this call.
-    pub fn validate_map_with(
-        &self,
-        schema: &Schema,
-        value: &serde_json::Value,
-    ) -> Result<(), Error> {
         let tree = self.schema_tree(schema)?;
-        self.validate_data(&tree, value)
+        self.validate_data(&tree, value).await
     }
 
     /// Serializes a value to JSON and validates it against the configured schema.
-    pub fn validate_serde<T>(&self, value: &T) -> Result<(), Error>
+    pub async fn check_serde<T>(&self, value: &T) -> Result<(), Error>
     where
         T: serde::Serialize + ?Sized,
     {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
-        self.validate_serde_with(schema, value)
-    }
-
-    /// Serializes a value to JSON and validates it against a schema supplied for this call.
-    pub fn validate_serde_with<T>(&self, schema: &Schema, value: &T) -> Result<(), Error>
-    where
-        T: serde::Serialize + ?Sized,
-    {
         let tree = self.schema_tree(schema)?;
         let data = serde_json::to_value(value).map_err(|error| Error::InvalidData {
             reason: error.to_string(),
         })?;
-        self.validate_data(&tree, &data)
+        self.validate_data(&tree, &data).await
     }
 
-    fn validate_data(&self, tree: &Tree, value: &serde_json::Value) -> Result<(), Error> {
+    async fn validate_data(&self, tree: &Tree, value: &serde_json::Value) -> Result<(), Error> {
         let mut errors = Vec::new();
         let context = Context::new();
-        tree.validate(&context, &mut errors, value)?;
+        tree.validate(&context, &mut errors, value).await?;
 
         if errors.is_empty() {
             Ok(())

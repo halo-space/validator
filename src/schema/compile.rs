@@ -27,7 +27,7 @@ impl Tree {
         Ok(tree)
     }
 
-    pub(crate) fn validate(
+    pub(crate) async fn validate(
         &self,
         context: &Context<'_>,
         errors: &mut Vec<FieldError>,
@@ -46,7 +46,7 @@ impl Tree {
             return Ok(());
         };
 
-        validate_fields(context, errors, "", &self.root, object)
+        validate_fields(context, errors, "", &self.root, object).await
     }
 }
 

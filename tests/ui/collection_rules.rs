@@ -25,10 +25,11 @@ struct Basket {
     items: Vec<Item>,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let basket = Basket {
         items: vec![Item { id: 1 }, Item { id: 2 }],
     };
 
-    Validator::new().validate(&basket).unwrap();
+    Validator::new().validate(&basket).await.unwrap();
 }

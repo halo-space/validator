@@ -2,8 +2,10 @@ use halo::validator::prelude::*;
 
 struct Slug;
 
+#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait(?Send)]
 impl Rule for Slug {
-    fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
+    async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field.value().string().is_some_and(|value| {
             value
                 .chars()
@@ -18,15 +20,18 @@ struct Post {
     slug: String,
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let validator = Validator::new()
         .rule("slug", Slug)?
         .alias("identifier", "required,slug")?;
 
-    validator.validate(&Post {
-        slug: "hello-rust".to_owned(),
-    })?;
-    validator.value(&"hello-rust", "identifier")?;
+    validator
+        .validate(&Post {
+            slug: "hello-rust".to_owned(),
+        })
+        .await?;
+    validator.value(&"hello-rust", "identifier").await?;
 
     Ok(())
 }
