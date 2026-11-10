@@ -94,6 +94,7 @@ impl ErrorBuilder<'_, '_> {
             field: self.field.clone(),
             struct_field: self.field,
             kind,
+            code: self.rule.clone(),
             rule: self.rule.clone(),
             reason: self.rule,
             params: self.params,

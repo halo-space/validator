@@ -12,6 +12,7 @@ pub struct FieldError {
     field: String,
     struct_field: String,
     kind: Kind,
+    code: String,
     rule: String,
     reason: String,
     params: Params,
@@ -23,6 +24,7 @@ pub(crate) struct FieldErrorParts {
     pub(crate) field: String,
     pub(crate) struct_field: String,
     pub(crate) kind: Kind,
+    pub(crate) code: String,
     pub(crate) rule: String,
     pub(crate) reason: String,
     pub(crate) params: Params,
@@ -36,6 +38,7 @@ impl FieldError {
             field: parts.field,
             struct_field: parts.struct_field,
             kind: parts.kind,
+            code: parts.code,
             rule: parts.rule,
             reason: parts.reason,
             params: parts.params,
@@ -65,6 +68,11 @@ impl FieldError {
     /// Returns the field's declared or runtime value kind.
     pub fn kind(&self) -> Kind {
         self.kind
+    }
+
+    /// Returns the stable machine-readable rule code for this failure.
+    pub fn code(&self) -> &str {
+        &self.code
     }
 
     /// Returns the displayed rule name, including an outer alias when present.

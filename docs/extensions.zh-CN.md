@@ -150,3 +150,17 @@ struct Pair {
 ```
 
 通过 `.rule("same_field", SameField)?` 注册。单值入口没有同级字段，会返回 `MissingFieldContext`；derive 和 Schema 会提供显式声明的目标字段。涉及多个字段的复杂自定义逻辑继续使用 struct-level `check`。
+
+自定义字段规则也可以使用显式语法，不依赖 `_field` 命名约定：
+
+```rust
+#[derive(Validate)]
+struct Pair {
+    left: String,
+    #[validate(field(name = "same", target = "left"))]
+    right: String,
+}
+```
+
+默认目标参数名是 `compare`；如果规则使用其他参数名，可以写
+`param = "other"`。

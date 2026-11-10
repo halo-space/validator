@@ -69,6 +69,11 @@ fn attribute_meta(meta: ParseNestedMeta<'_>, attributes: &mut Vec<RuleAttr>) -> 
         return Ok(());
     }
 
+    if meta.path.is_ident("field") {
+        attributes.push(field_rule(meta)?);
+        return Ok(());
+    }
+
     if let Some(name) = meta.path.get_ident().map(canonical)
         && (name.ends_with("_field") || matches!(name.as_str(), "fieldcontains" | "fieldexcludes"))
     {
@@ -159,6 +164,34 @@ fn unique_paths(meta: ParseNestedMeta<'_>) -> syn::Result<Vec<ItemPath>> {
     }
 
     Ok(paths)
+}
+
+fn field_rule(meta: ParseNestedMeta<'_>) -> syn::Result<RuleAttr> {
+    let mut name = None;
+    let mut parameter = None;
+    let mut target = None;
+
+    meta.parse_nested_meta(|nested| {
+        if nested.path.is_ident("name") {
+            name = Some(nested.value()?.parse::<LitStr>()?.value());
+        } else if nested.path.is_ident("param") {
+            parameter = Some(nested.value()?.parse::<LitStr>()?.value());
+        } else if nested.path.is_ident("target") {
+            target = Some(nested.value()?.parse::<LitStr>()?.value());
+        } else {
+            return Err(nested.error("field expects name, param, and target"));
+        }
+        Ok(())
+    })?;
+
+    let name = name.ok_or_else(|| meta.error("field requires name"))?;
+    let target = target.ok_or_else(|| meta.error("field requires target"))?;
+    let parameter = parameter.unwrap_or_else(|| "compare".to_owned());
+
+    Ok(RuleAttr::FieldRule {
+        name,
+        params: vec![ParamAttr::Named(parameter, target)],
+    })
 }
 
 fn unique_path(field: LitStr) -> syn::Result<ItemPath> {

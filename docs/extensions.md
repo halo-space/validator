@@ -176,3 +176,18 @@ struct Pair {
 Register it with `.rule("same_field", SameField)?`. Direct value validation
 returns `MissingFieldContext`; derive and Schema provide the declared sibling.
 For custom logic involving several fields, use a struct-level `check`.
+
+Custom field rules can also use explicit syntax without relying on a `_field`
+name suffix:
+
+```rust
+#[derive(Validate)]
+struct Pair {
+    left: String,
+    #[validate(field(name = "same", target = "left"))]
+    right: String,
+}
+```
+
+The target parameter defaults to `compare`; use `param = "other"` when the
+custom rule declares a different field parameter name.

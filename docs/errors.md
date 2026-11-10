@@ -12,6 +12,10 @@ Configuration preflight always completes before data-dependent rule flow, so
 invalid parameters are returned even for absent, empty, or otherwise skipped
 values.
 
+`FieldError::code()` returns the stable machine-readable rule code for API and
+logging adapters. `rule()` remains the display rule name, including an outer
+Alias when present.
+
 | Variant | Meaning |
 | --- | --- |
 | `Failed` | One or more fields failed validation. |

@@ -82,6 +82,13 @@ struct MatchingFields {
 }
 
 #[derive(Debug, Validate)]
+struct ExplicitMatchingFields {
+    left: String,
+    #[validate(field(name = "same", target = "left"))]
+    right: String,
+}
+
+#[derive(Debug, Validate)]
 struct AliasMatchingFields {
     #[allow(dead_code)]
     left: String,
@@ -635,5 +642,19 @@ fn provider_extends_config_before_validator_creation() {
         .validate(&Post {
             slug: "valid-slug".to_owned(),
         })
+        .unwrap();
+}
+
+#[test]
+fn explicit_field_rule_syntax_supports_custom_rule_names() {
+    let value = ExplicitMatchingFields {
+        left: "same".to_owned(),
+        right: "same".to_owned(),
+    };
+
+    Validator::new()
+        .rule("same", SameField)
+        .unwrap()
+        .validate(&value)
         .unwrap();
 }
