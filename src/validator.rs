@@ -211,18 +211,17 @@ impl Validator {
     /// Creates a validator with all built-in rules and aliases without
     /// panicking if the built-in registry configuration is invalid.
     pub fn try_new() -> Result<Self, Error> {
-        Self::try_from(Config::try_new()?)
+        Ok(Self::from(Config::try_new()?))
     }
 
     /// Creates a validator from a configured rule set.
     pub fn from(config: Config) -> Self {
-        Self::try_from(config).expect("configured validator must be valid")
+        Self::with_config(config)
     }
 
-    /// Creates a validator from a configured rule set without panicking.
-    pub fn try_from(config: Config) -> Result<Self, Error> {
+    fn with_config(config: Config) -> Self {
         let cache = config.cache;
-        Ok(Self {
+        Self {
             config,
             schema: None,
             expression_cache: RwLock::new(Cache::new(cache.expression)),
@@ -230,7 +229,7 @@ impl Validator {
             spec_cache: RwLock::new(Cache::new(cache.spec)),
             schema_cache: RwLock::new(Cache::new(cache.schema)),
             metrics: Metrics::default(),
-        })
+        }
     }
 
     /// Returns a snapshot of cache hits and misses.

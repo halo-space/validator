@@ -1,14 +1,14 @@
-mod noneof;
-mod noneofci;
-mod oneof;
-mod oneofci;
+mod none_of;
+mod none_of_ci;
+mod one_of;
+mod one_of_ci;
 
 use crate::{Field, Kind};
 
-pub(super) use noneof::NoneOf;
-pub(super) use noneofci::NoneOfCi;
-pub(super) use oneof::OneOf;
-pub(super) use oneofci::OneOfCi;
+pub(super) use none_of::NoneOf;
+pub(super) use none_of_ci::NoneOfCi;
+pub(super) use one_of::OneOf;
+pub(super) use one_of_ci::OneOfCi;
 
 fn validate(field: &Field<'_>, rule: &str) -> Result<(), crate::Error> {
     let candidates = field

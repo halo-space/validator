@@ -1,6 +1,6 @@
 [package]
 name = "halo-validator"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 description = "Rust 2024 validation library with derive macros, schema validation, and i18n messages."
 license = "MIT OR Apache-2.0"
@@ -25,7 +25,7 @@ serde_yaml_ng = "0.10"
 thiserror = "2"
 unicode-ident = "1"
 url = { version = "2", optional = true }
-validator-derive = { package = "halo-validator-derive", version = "0.1.6", path = "derive" }
+validator-derive = { package = "halo-validator-derive", version = "0.1.7", path = "derive" }
 
 [lib]
 name = "halo"

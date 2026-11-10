@@ -8,6 +8,8 @@
 - 规则扩展 trait 命名为 `Provider`，不使用 `RuleProvider`。
 - `Provider` 放在 `src/rule/provider.rs`，由 `src/rule.rs` 重导出。
 - `Validator` 和 `Config` 放在 `src/validator.rs`。
+- `rule.rs` 表示扩展接口，`rules.rs` 表示内置规则集合；两者不能混用。
+- 内部模块和文件使用 Rust snake_case；外部 DSL 规则名保持既有语义，例如 `base64rawurl`、`containsany` 不因内部重命名而改变。
 - Rust 文件名使用小写 snake_case；目录按领域组织，避免把类型名直接作为文件名。
 - 新增公共 API 时，优先选择短、稳定、按模块归属可理解的名称。
 - 自定义字段关联规则优先使用显式 `field(name = "...", target = "...")` 语法，避免依赖规则名称后缀推断。

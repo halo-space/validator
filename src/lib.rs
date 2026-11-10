@@ -8,8 +8,6 @@
 extern crate self as halo;
 
 mod core;
-#[path = "validator.rs"]
-mod engine;
 /// Localized rendering for validation failures.
 pub mod i18n;
 mod rule;
@@ -19,16 +17,18 @@ mod target;
 mod traits;
 /// Struct-level validation error builders used by `#[validate(check = "...")]`.
 pub mod valid;
+#[path = "validator.rs"]
+mod validator_impl;
 
 pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
     Signature, UintKind, Value,
 };
-pub use self::engine::{Config, Stats, Validator};
 pub use self::rule::Provider;
 pub use self::schema::Schema;
 pub(crate) use self::target::field_error;
 pub use self::traits::{Selective, Validate};
+pub use self::validator_impl::{Config, Stats, Validator};
 pub use validator_derive::Validate;
 
 #[doc(hidden)]
