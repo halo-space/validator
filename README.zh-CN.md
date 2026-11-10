@@ -17,7 +17,7 @@ Schema 校验和可扩展规则注册表实现。项目处于早期开发阶段�
 
 ```toml
 [dependencies]
-validator = { package = "halo-validator", version = "0.1" }
+halo = { package = "halo-validator", version = "0.1" }
 ```
 
 需要可复现构建时，请固定具体版本，并提交 `Cargo.lock`。

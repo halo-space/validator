@@ -6,14 +6,14 @@
 
 - `halo-validator` 和 `halo-validator-derive` 均允许发布到 crates.io。
 - 两个包保持版本一致。
-- package name 使用 `halo-validator` 和 `halo-validator-derive`，Rust 导入名保持 `validator`。
+- package name 使用 `halo-validator` 和 `halo-validator-derive`，Rust 导入名保持 `halo`。
 - 两个包均包含 `LICENSE-MIT` / `LICENSE-APACHE`。
 
 ## crates.io 用法
 
 ```toml
 [dependencies]
-validator = { package = "halo-validator", version = "0.1" }
+halo = { package = "halo-validator", version = "0.1" }
 ```
 
 业务项目需要可复现构建时，应固定具体版本并提交 `Cargo.lock`。
