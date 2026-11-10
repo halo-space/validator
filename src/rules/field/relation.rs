@@ -18,7 +18,6 @@ enum Relation {
 #[derive(Debug)]
 struct Compare(Relation);
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Compare {
     fn signature(&self) -> Signature {
         Signature::field("compare")

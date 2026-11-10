@@ -10,7 +10,6 @@ pub(crate) struct Bic;
 #[derive(Debug)]
 pub(crate) struct BicIso93622014;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Bic {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -20,7 +19,6 @@ impl Rule for Bic {
     }
 }
 
-#[async_trait::async_trait(?Send)]
 impl Rule for BicIso93622014 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

@@ -7,7 +7,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Ssn;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Ssn {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

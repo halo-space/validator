@@ -7,7 +7,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct AlphaUnicode;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for AlphaUnicode {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

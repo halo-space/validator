@@ -14,14 +14,12 @@ impl Provider for SlugProvider {
 
 struct AsyncPass;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for AsyncPass {
     async fn check(&self, _field: &Field<'_>) -> Result<bool, Error> {
         Ok(true)
     }
 }
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Slug {
     async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field.value().string().is_some_and(|value| {
@@ -42,7 +40,6 @@ struct Post {
 #[derive(Debug)]
 struct StartsWith;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for StartsWith {
     fn signature(&self) -> Signature {
         Signature::text("prefix")
@@ -74,7 +71,6 @@ struct InvalidLength {
 #[derive(Debug)]
 struct SameField;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for SameField {
     fn signature(&self) -> Signature {
         Signature::field("compare")
@@ -149,7 +145,6 @@ struct InvalidEmptyMapDive {
 #[derive(Debug)]
 struct RejectParams;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for RejectParams {
     fn validate_params(&self, _field: &Field<'_>) -> Result<(), Error> {
         Err(Error::InvalidRuleExpression {

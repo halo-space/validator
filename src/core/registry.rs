@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use super::spec::{Expr, parse_expression};
-use super::{Error, Rule};
+use super::{Error, Rule, Runner};
 
 #[derive(Clone)]
 pub(crate) enum Entry {
-    Rule(Arc<dyn Rule>),
+    Rule(Arc<dyn Runner>),
     Alias(Vec<Expr>),
 }
 

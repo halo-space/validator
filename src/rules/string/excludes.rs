@@ -3,7 +3,6 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Excludes;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Excludes {
     fn signature(&self) -> Signature {
         Signature::text("value")

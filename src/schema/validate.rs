@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use serde_json::Value as JsonValue;
 
 use crate::core::Context;
@@ -10,89 +13,91 @@ use super::items::Collection;
 use super::path::namespace;
 use super::{Fields, TYPE_FAILURE, Type};
 
-#[async_recursion::async_recursion(?Send)]
-pub(super) async fn validate_fields<'a>(
-    context: &Context<'_>,
-    errors: &mut Vec<FieldError>,
-    parent: &str,
+pub(super) fn validate_fields<'a>(
+    context: &'a Context<'a>,
+    errors: &'a mut Vec<FieldError>,
+    parent: &'a str,
     scope: &'a Scope,
     object: &'a serde_json::Map<String, JsonValue>,
-) -> Result<(), Error> {
-    let access = Object::new(scope, object);
-    for (name, field) in &scope.fields {
-        let target = FieldTarget::schema_field(parent, name);
-        let value = access
-            .get(name)
-            .expect("Schema access contains every declared field");
+) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
+    Box::pin(async move {
+        let access = Object::new(scope, object);
+        for (name, field) in &scope.fields {
+            let target = FieldTarget::schema_field(parent, name);
+            let value = access
+                .get(name)
+                .expect("Schema access contains every declared field");
 
-        if value.is_none() {
-            field
-                .group
-                .execute_with_fields(errors, target, value, context, &access)
-                .await?;
-            continue;
-        }
-
-        let raw = value.raw().expect("non-null Schema value has raw data");
-
-        if let Some(ty) = field.ty
-            && !ty.matches(raw)
-        {
-            let mut params = Params::new();
-            params.insert("expected", ty.name());
-            errors.push(field_error(
-                target,
-                raw.kind(),
-                TYPE_FAILURE,
-                TYPE_FAILURE,
-                params,
-            ));
-            continue;
-        }
-
-        if field.ty == Some(Type::Array) {
-            let values = raw
-                .as_array()
-                .expect("array type is checked before rule execution");
-            match &field.children {
-                Fields::Absent => {
-                    field
-                        .group
-                        .execute_with_fields(errors, target.clone(), value, context, &access)
-                        .await?;
-                }
-                Fields::Declared(children) => {
-                    let items = Collection::new(values, children);
-                    field
-                        .group
-                        .execute_with_fields_and_items(
-                            errors,
-                            target.clone(),
-                            value,
-                            context,
-                            &access,
-                            &items,
-                        )
-                        .await?;
-                    validate_array_fields(context, errors, parent, name, children, values).await?;
-                }
+            if value.is_none() {
+                field
+                    .group
+                    .execute_with_fields(errors, target, value, context, &access)
+                    .await?;
+                continue;
             }
-        } else {
-            field
-                .group
-                .execute_with_fields(errors, target.clone(), value, context, &access)
-                .await?;
 
-            if let Fields::Declared(children) = &field.children
-                && let Some(object) = raw.as_object()
+            let raw = value.raw().expect("non-null Schema value has raw data");
+
+            if let Some(ty) = field.ty
+                && !ty.matches(raw)
             {
-                let parent = namespace(parent, name);
-                validate_fields(context, errors, &parent, children, object).await?;
+                let mut params = Params::new();
+                params.insert("expected", ty.name());
+                errors.push(field_error(
+                    target,
+                    raw.kind(),
+                    TYPE_FAILURE,
+                    TYPE_FAILURE,
+                    params,
+                ));
+                continue;
+            }
+
+            if field.ty == Some(Type::Array) {
+                let values = raw
+                    .as_array()
+                    .expect("array type is checked before rule execution");
+                match &field.children {
+                    Fields::Absent => {
+                        field
+                            .group
+                            .execute_with_fields(errors, target.clone(), value, context, &access)
+                            .await?;
+                    }
+                    Fields::Declared(children) => {
+                        let items = Collection::new(values, children);
+                        field
+                            .group
+                            .execute_with_fields_and_items(
+                                errors,
+                                target.clone(),
+                                value,
+                                context,
+                                &access,
+                                &items,
+                            )
+                            .await?;
+                        validate_array_fields(context, errors, parent, name, children, values)
+                            .await?;
+                    }
+                }
+            } else {
+                field
+                    .group
+                    .execute_with_fields(errors, target.clone(), value, context, &access)
+                    .await?;
+
+                if let Fields::Declared(children) = &field.children
+                    && let Some(object) = raw.as_object()
+                {
+                    let parent = namespace(parent, name);
+                    validate_fields(context, errors, &parent, children, object).await?;
+                }
             }
         }
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 pub(super) fn preflight_fields(
@@ -120,32 +125,33 @@ pub(super) fn preflight_fields(
     Ok(())
 }
 
-#[async_recursion::async_recursion(?Send)]
-async fn validate_array_fields(
-    context: &Context<'_>,
-    errors: &mut Vec<FieldError>,
-    parent: &str,
-    name: &str,
-    scope: &Scope,
-    values: &[JsonValue],
-) -> Result<(), Error> {
-    let array = namespace(parent, name);
-    for (index, value) in values.iter().enumerate() {
-        let Some(object) = value.as_object() else {
-            let mut params = Params::new();
-            params.insert("expected", "object");
-            errors.push(field_error(
-                FieldTarget::schema(format!("{array}[{index}]")),
-                value.kind(),
-                TYPE_FAILURE,
-                TYPE_FAILURE,
-                params,
-            ));
-            continue;
-        };
+fn validate_array_fields<'a>(
+    context: &'a Context<'a>,
+    errors: &'a mut Vec<FieldError>,
+    parent: &'a str,
+    name: &'a str,
+    scope: &'a Scope,
+    values: &'a [JsonValue],
+) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
+    Box::pin(async move {
+        let array = namespace(parent, name);
+        for (index, value) in values.iter().enumerate() {
+            let Some(object) = value.as_object() else {
+                let mut params = Params::new();
+                params.insert("expected", "object");
+                errors.push(field_error(
+                    FieldTarget::schema(format!("{array}[{index}]")),
+                    value.kind(),
+                    TYPE_FAILURE,
+                    TYPE_FAILURE,
+                    params,
+                ));
+                continue;
+            };
 
-        validate_fields(context, errors, &format!("{array}[{index}]"), scope, object).await?;
-    }
+            validate_fields(context, errors, &format!("{array}[{index}]"), scope, object).await?;
+        }
 
-    Ok(())
+        Ok(())
+    })
 }

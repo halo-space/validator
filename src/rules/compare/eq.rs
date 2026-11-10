@@ -3,7 +3,6 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Eq;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Eq {
     fn signature(&self) -> Signature {
         Signature::optional_text("value")

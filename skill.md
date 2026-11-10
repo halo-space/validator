@@ -15,6 +15,7 @@
 - 自定义字段关联规则优先使用显式 `field(name = "...", target = "...")` 语法，避免依赖规则名称后缀推断。
 - 内置规则按 `format` 和 `network` feature 分组；默认开启，精简构建使用 `--no-default-features`。
 - 异步是默认执行模型；公共 API 和内部执行方法不得使用 `sync`、`async` 或拼写变体作为命名后缀。使用 `Rule::check`、`Validator::value`、`Validator::validate` 等简洁名称。
+- 异步 trait 分发和递归只使用 Rust 标准库，不引入 `async-trait`、`async-recursion` 或其他异步包装依赖。
 
 ## 架构约束
 

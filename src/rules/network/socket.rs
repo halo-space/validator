@@ -22,7 +22,6 @@ pub(crate) struct Udp;
 
 macro_rules! socket_rule {
     ($ty:ty, $check:expr) => {
-        #[async_trait::async_trait(?Send)]
         impl Rule for $ty {
             async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
                 Ok(field

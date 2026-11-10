@@ -3,7 +3,6 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Max;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Max {
     fn signature(&self) -> Signature {
         Signature::text("max")

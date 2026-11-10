@@ -5,7 +5,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Ip;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Ip {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -18,7 +17,6 @@ impl Rule for Ip {
 #[derive(Debug)]
 pub(crate) struct Ipv4;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Ipv4 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -31,7 +29,6 @@ impl Rule for Ipv4 {
 #[derive(Debug)]
 pub(crate) struct Ipv6;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Ipv6 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

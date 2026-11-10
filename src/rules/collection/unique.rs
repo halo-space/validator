@@ -5,7 +5,6 @@ use crate::{Error, Field, Kind, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Unique;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Unique {
     fn signature(&self) -> Signature {
         Signature::optional_field_list("fields")

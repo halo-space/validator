@@ -1,4 +1,5 @@
-use async_trait::async_trait;
+use std::future::Future;
+use std::pin::Pin;
 
 mod access;
 mod cache;
@@ -41,7 +42,6 @@ pub use spec::Spec;
 pub(crate) use spec::{Expr, parse_expression};
 
 /// A validation rule that can inspect one [`Field`] and its bound parameters.
-#[async_trait(?Send)]
 pub trait Rule: Send + Sync {
     /// Declares the parameters and field context accepted by this rule.
     fn signature(&self) -> Signature {
@@ -60,4 +60,32 @@ pub trait Rule: Send + Sync {
 
     /// Returns whether the field satisfies this rule.
     async fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
+}
+
+pub(crate) trait Runner: Send + Sync {
+    fn signature(&self) -> Signature;
+    fn validate_params(&self, field: &Field<'_>) -> Result<(), Error>;
+    fn validates_none(&self) -> bool;
+    fn check<'a>(
+        &'a self,
+        field: &'a Field<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>>;
+}
+
+impl<T: Rule> Runner for T {
+    fn signature(&self) -> Signature {
+        Rule::signature(self)
+    }
+    fn validate_params(&self, field: &Field<'_>) -> Result<(), Error> {
+        Rule::validate_params(self, field)
+    }
+    fn validates_none(&self) -> bool {
+        Rule::validates_none(self)
+    }
+    fn check<'a>(
+        &'a self,
+        field: &'a Field<'a>,
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>> {
+        Box::pin(Rule::check(self, field))
+    }
 }

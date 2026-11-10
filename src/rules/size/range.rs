@@ -3,7 +3,6 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct Range;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Range {
     fn signature(&self) -> Signature {
         Signature::named(&["min", "max"], &["min", "max"])

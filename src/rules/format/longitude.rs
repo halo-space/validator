@@ -7,7 +7,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Longitude;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Longitude {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(value(field).is_some_and(|value| pattern().is_match(&value)))

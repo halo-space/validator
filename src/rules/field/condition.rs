@@ -21,7 +21,6 @@ enum Condition {
 #[derive(Debug)]
 struct Check(Condition);
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Check {
     fn signature(&self) -> Signature {
         match self.0 {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::core::{Access, Context, Items, Kind, Namespace, Params, Rule, Value};
+use crate::core::{Access, Context, Items, Kind, Namespace, Params, Runner, Value};
 use crate::target::{FieldTarget, namespace_for};
 
 pub(super) struct Execution<'a, 'b, 'c> {
@@ -50,7 +50,7 @@ pub(super) enum Check {
     Rule {
         name: String,
         params: Params,
-        handler: Arc<dyn Rule>,
+        handler: Arc<dyn Runner>,
     },
     Alias {
         name: String,

@@ -3,7 +3,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Boolean;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Boolean {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         if field.value().boolean().is_some() {

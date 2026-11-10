@@ -5,7 +5,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Origin;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Origin {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

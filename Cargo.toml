@@ -1,6 +1,6 @@
 [package]
 name = "halo-validator"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "Rust 2024 validation library with derive macros, schema validation, and i18n messages."
 license = "MIT OR Apache-2.0"
@@ -17,8 +17,6 @@ format = []
 network = ["dep:http", "dep:url"]
 
 [dependencies]
-async-recursion = "1"
-async-trait = "0.1"
 http = { version = "1", optional = true }
 regex = "1"
 serde = { version = "1", features = ["derive"] }

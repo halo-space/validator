@@ -3,7 +3,6 @@ use crate::{Field, Rule, Signature};
 #[derive(Debug)]
 pub(crate) struct OneOf;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for OneOf {
     fn signature(&self) -> Signature {
         Signature::list("values")

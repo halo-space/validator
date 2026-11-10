@@ -267,7 +267,6 @@ async fn nested_target_keeps_strict_concrete_kind_matching() {
 #[derive(Debug)]
 struct SamePath;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for SamePath {
     fn signature(&self) -> Signature {
         Signature::field("compare")

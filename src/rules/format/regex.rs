@@ -18,7 +18,6 @@ impl Default for Regex {
     }
 }
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Regex {
     fn signature(&self) -> Signature {
         Signature::text("pattern")

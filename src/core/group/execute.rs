@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 use crate::core::{
-    Access, Context, Error, Field, FieldError, FieldParts, Items, Params, Rule, Value,
+    Access, Context, Error, Field, FieldError, FieldParts, Items, Params, Runner, Value,
 };
 use crate::field_error;
 use crate::target::FieldTarget;
@@ -268,7 +268,7 @@ impl Group {
         value: &V,
         context: &Context<'_>,
         params: &Params,
-        handler: &dyn Rule,
+        handler: &dyn Runner,
         scope: Scope<'_>,
     ) -> Result<bool, Error> {
         if value.is_none() && !handler.validates_none() {

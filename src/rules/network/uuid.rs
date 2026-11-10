@@ -3,7 +3,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Uuid;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Uuid {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -16,7 +15,6 @@ impl Rule for Uuid {
 #[derive(Debug)]
 pub(crate) struct Uuid3;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Uuid3 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -29,7 +27,6 @@ impl Rule for Uuid3 {
 #[derive(Debug)]
 pub(crate) struct Uuid4;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Uuid4 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -54,7 +51,6 @@ pub(crate) struct Uuid4Rfc4122;
 #[derive(Debug)]
 pub(crate) struct Uuid5Rfc4122;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Uuid5 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -64,7 +60,6 @@ impl Rule for Uuid5 {
     }
 }
 
-#[async_trait::async_trait(?Send)]
 impl Rule for UuidRfc4122 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -74,7 +69,6 @@ impl Rule for UuidRfc4122 {
     }
 }
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Uuid3Rfc4122 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -84,7 +78,6 @@ impl Rule for Uuid3Rfc4122 {
     }
 }
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Uuid4Rfc4122 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -94,7 +87,6 @@ impl Rule for Uuid4Rfc4122 {
     }
 }
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Uuid5Rfc4122 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

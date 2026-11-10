@@ -7,7 +7,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Base64RawUrl;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Base64RawUrl {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

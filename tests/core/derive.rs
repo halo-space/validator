@@ -1245,7 +1245,6 @@ struct SlugPost {
 
 struct Slug;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Slug {
     async fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field

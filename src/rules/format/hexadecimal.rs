@@ -7,7 +7,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Hexadecimal;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Hexadecimal {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field

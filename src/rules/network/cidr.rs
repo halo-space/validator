@@ -5,7 +5,6 @@ use crate::{Field, Rule};
 #[derive(Debug)]
 pub(crate) struct Cidr;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Cidr {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -18,7 +17,6 @@ impl Rule for Cidr {
 #[derive(Debug)]
 pub(crate) struct Cidrv4;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Cidrv4 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
@@ -31,7 +29,6 @@ impl Rule for Cidrv4 {
 #[derive(Debug)]
 pub(crate) struct Cidrv6;
 
-#[async_trait::async_trait(?Send)]
 impl Rule for Cidrv6 {
     async fn check(&self, field: &Field<'_>) -> Result<bool, crate::Error> {
         Ok(field
