@@ -18,10 +18,15 @@ The crate is available from crates.io:
 
 ```toml
 [dependencies]
-halo = { package = "halo-validator", version = "0.1" }
+halo = { package = "halo-validator", version = "0.3" }
 ```
 
 Pin an exact version and commit `Cargo.lock` when reproducible builds matter.
+
+Validation futures are `Send` and can run on a multithreaded executor. Values
+being validated must be `Sync`; custom rule and struct-level check futures must
+also be `Send`. The library uses Rust's native futures without async wrapper
+dependencies.
 
 ## Quick Start
 

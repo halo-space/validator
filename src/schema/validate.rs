@@ -19,7 +19,7 @@ pub(super) fn validate_fields<'a>(
     parent: &'a str,
     scope: &'a Scope,
     object: &'a serde_json::Map<String, JsonValue>,
-) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
+) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
     Box::pin(async move {
         let access = Object::new(scope, object);
         for (name, field) in &scope.fields {
@@ -132,7 +132,7 @@ fn validate_array_fields<'a>(
     name: &'a str,
     scope: &'a Scope,
     values: &'a [JsonValue],
-) -> Pin<Box<dyn Future<Output = Result<(), Error>> + 'a>> {
+) -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'a>> {
     Box::pin(async move {
         let array = namespace(parent, name);
         for (index, value) in values.iter().enumerate() {

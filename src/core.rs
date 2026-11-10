@@ -59,7 +59,7 @@ pub trait Rule: Send + Sync {
     }
 
     /// Returns whether the field satisfies this rule.
-    async fn check(&self, field: &Field<'_>) -> Result<bool, Error>;
+    fn check(&self, field: &Field<'_>) -> impl Future<Output = Result<bool, Error>> + Send;
 }
 
 pub(crate) trait Runner: Send + Sync {
@@ -69,7 +69,7 @@ pub(crate) trait Runner: Send + Sync {
     fn check<'a>(
         &'a self,
         field: &'a Field<'a>,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + 'a>>;
 }
 
 impl<T: Rule> Runner for T {
@@ -85,7 +85,7 @@ impl<T: Rule> Runner for T {
     fn check<'a>(
         &'a self,
         field: &'a Field<'a>,
-    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<bool, Error>> + Send + 'a>> {
         Box::pin(Rule::check(self, field))
     }
 }

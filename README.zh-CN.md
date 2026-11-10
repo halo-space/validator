@@ -17,10 +17,14 @@ Schema 校验和可扩展规则注册表实现。项目处于早期开发阶段�
 
 ```toml
 [dependencies]
-halo = { package = "halo-validator", version = "0.1" }
+halo = { package = "halo-validator", version = "0.3" }
 ```
 
 需要可复现构建时，请固定具体版本，并提交 `Cargo.lock`。
+
+校验 Future 支持 `Send`，可以在多线程执行器中运行。被校验的值需要实现 `Sync`，
+自定义规则和结构体级检查返回的 Future 需要支持 `Send`。实现使用 Rust 原生 Future，
+不依赖异步包装库。
 
 ## 快速开始
 

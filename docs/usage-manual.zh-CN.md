@@ -8,13 +8,13 @@
 
 ```toml
 [dependencies]
-halo = { package = "halo-validator", version = "0.1" }
+halo = { package = "halo-validator", version = "0.3" }
 ```
 
 也可以固定精确版本：
 
 ```toml
-halo = { package = "halo-validator", version = "=0.2.2" }
+halo = { package = "halo-validator", version = "=0.3.0" }
 ```
 
 要求 Rust edition 2024，最低 rustc 版本为 1.97。

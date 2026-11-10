@@ -37,7 +37,7 @@ impl Context<'_> {
         }
     }
 
-    pub fn filter(filter: &dyn Fn(&Namespace) -> bool) -> Context<'_> {
+    pub fn filter(filter: &(dyn Fn(&Namespace) -> bool + Sync)) -> Context<'_> {
         Context {
             now: SystemTime::now(),
             selection: Selection::Filter(filter),

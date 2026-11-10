@@ -21,7 +21,7 @@ impl<'a> FieldRef<'a> {
     }
 }
 
-pub trait Access {
+pub trait Access: Sync {
     fn field<'a>(&'a self, name: &'a str) -> Option<FieldRef<'a>>;
 }
 
@@ -58,7 +58,7 @@ impl<'a, T: ?Sized> Resolve<'a> for &Segment<'a, T> {
 }
 
 #[doc(hidden)]
-pub trait Items {
+pub trait Items: Sync {
     fn len(&self) -> usize;
 
     fn visit<'a>(&'a self, fields: &[String], visitor: &mut ItemVisitor<'a>) -> Result<(), Error>;
@@ -91,7 +91,7 @@ impl<'a, T> Projection<'a, T> {
     }
 }
 
-impl<T> Value for Projection<'_, T> {
+impl<T: Sync> Value for Projection<'_, T> {
     fn kind(&self) -> Kind {
         self.kind
     }
@@ -105,7 +105,7 @@ impl<T> Value for Projection<'_, T> {
     }
 }
 
-impl<T> Items for Projection<'_, T> {
+impl<T: Sync> Items for Projection<'_, T> {
     fn len(&self) -> usize {
         self.items.len()
     }

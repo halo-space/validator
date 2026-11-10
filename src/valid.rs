@@ -5,7 +5,7 @@ use crate::{Error, FieldError, Kind, Namespace, Params};
 pub struct Valid<'a> {
     type_name: &'a str,
     errors: &'a mut Vec<FieldError>,
-    kind: &'a dyn Fn(&str) -> Option<Kind>,
+    kind: &'a (dyn Fn(&str) -> Option<Kind> + Sync),
     invalid: Option<Error>,
 }
 
@@ -14,7 +14,7 @@ impl<'a> Valid<'a> {
     pub fn new(
         type_name: &'a str,
         errors: &'a mut Vec<FieldError>,
-        kind: &'a dyn Fn(&str) -> Option<Kind>,
+        kind: &'a (dyn Fn(&str) -> Option<Kind> + Sync),
     ) -> Self {
         Self {
             type_name,

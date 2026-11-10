@@ -106,7 +106,7 @@ impl Group {
         context: &'a Context<'a>,
         display_rule: Option<&'a str>,
         scope: Scope<'a>,
-    ) -> Pin<Box<dyn Future<Output = Result<Flow, Error>> + 'a>> {
+    ) -> Pin<Box<dyn Future<Output = Result<Flow, Error>> + Send + 'a>> {
         Box::pin(async move {
             let exec = Execution {
                 context,

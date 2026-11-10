@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{Error, Namespace};
 
@@ -8,7 +8,7 @@ pub(crate) struct Fields {
 
 struct Field {
     path: String,
-    matched: Cell<bool>,
+    matched: AtomicBool,
 }
 
 impl Fields {
@@ -22,14 +22,18 @@ impl Fields {
                 .into_iter()
                 .map(|field| Field {
                     path: field.as_ref().to_owned(),
-                    matched: Cell::new(false),
+                    matched: AtomicBool::new(false),
                 })
                 .collect(),
         }
     }
 
     pub(crate) fn verify(&self) -> Result<(), Error> {
-        match self.values.iter().find(|field| !field.matched.get()) {
+        match self
+            .values
+            .iter()
+            .find(|field| !field.matched.load(Ordering::Relaxed))
+        {
             Some(field) => Err(Error::UnknownField {
                 field: field.path.clone(),
             }),
@@ -68,7 +72,7 @@ impl Fields {
     fn visit(&self, path: &str) {
         for field in &self.values {
             if path == field.path || descendant(path, &field.path) {
-                field.matched.set(true);
+                field.matched.store(true, Ordering::Relaxed);
             }
         }
     }
@@ -79,7 +83,7 @@ pub(crate) enum Selection<'a> {
     Full,
     Partial(&'a Fields),
     Except(&'a Fields),
-    Filter(&'a dyn Fn(&Namespace) -> bool),
+    Filter(&'a (dyn Fn(&Namespace) -> bool + Sync)),
 }
 
 impl Selection<'_> {

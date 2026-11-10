@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 use halo::validator::prelude::*;
 
@@ -241,19 +241,24 @@ async fn filter_uses_positive_relative_namespace_semantics() {
             display_name: String::new(),
         },
     };
-    let visited = RefCell::new(Vec::new());
+    let visited = Mutex::new(Vec::new());
 
     let error = Validator::new()
         .filter(&value, |namespace| {
-            visited.borrow_mut().push(namespace.as_str().to_owned());
+            visited.lock().unwrap().push(namespace.as_str().to_owned());
             matches!(namespace.as_str(), "profile" | "profile.email")
         })
         .await
         .expect_err("retained email must fail");
 
     assert_eq!(namespaces(error), ["NestedUser.profile.email"]);
-    assert!(visited.borrow().contains(&"profile".to_owned()));
-    assert!(visited.borrow().contains(&"profile.email".to_owned()));
+    assert!(visited.lock().unwrap().contains(&"profile".to_owned()));
+    assert!(
+        visited
+            .lock()
+            .unwrap()
+            .contains(&"profile.email".to_owned())
+    );
 }
 
 #[tokio::test]

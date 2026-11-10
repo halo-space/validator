@@ -13,7 +13,7 @@
 
 ```toml
 [dependencies]
-halo = { package = "halo-validator", version = "0.1" }
+halo = { package = "halo-validator", version = "0.3" }
 ```
 
 业务项目需要可复现构建时，应固定具体版本并提交 `Cargo.lock`。

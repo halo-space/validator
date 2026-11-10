@@ -260,7 +260,7 @@ impl Validator {
     pub async fn partial<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
     where
         T: Validate + Selective,
-        I: IntoIterator<Item = S>,
+        I: IntoIterator<Item = S> + Send,
         S: AsRef<str>,
     {
         let fields = Fields::new(fields);
@@ -274,7 +274,7 @@ impl Validator {
     pub async fn except<T, I, S>(&self, value: &T, fields: I) -> Result<(), Error>
     where
         T: Validate + Selective,
-        I: IntoIterator<Item = S>,
+        I: IntoIterator<Item = S> + Send,
         S: AsRef<str>,
     {
         let fields = Fields::new(fields);
@@ -288,7 +288,7 @@ impl Validator {
     pub async fn filter<T, F>(&self, value: &T, filter: F) -> Result<(), Error>
     where
         T: Validate + Selective,
-        F: Fn(&Namespace) -> bool,
+        F: Fn(&Namespace) -> bool + Send + Sync,
     {
         let context = Context::filter(&filter);
         value.__validate_with_context(self, &context).await
@@ -310,7 +310,11 @@ impl Validator {
     }
 
     /// Validates one value against a runtime rule expression.
-    pub async fn value<V: Value>(&self, value: &V, rules: impl AsRef<str>) -> Result<(), Error> {
+    pub async fn value<V: Value>(
+        &self,
+        value: &V,
+        rules: impl AsRef<str> + Send,
+    ) -> Result<(), Error> {
         let group = self.compile(rules.as_ref())?;
         let mut errors = Vec::new();
         let target = FieldTarget::value();
@@ -334,7 +338,7 @@ impl Validator {
     /// Serializes a value to JSON and validates it against the configured schema.
     pub async fn check_serde<T>(&self, value: &T) -> Result<(), Error>
     where
-        T: serde::Serialize + ?Sized,
+        T: serde::Serialize + Sync + ?Sized,
     {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
         let tree = self.schema_tree(schema)?;

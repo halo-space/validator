@@ -87,7 +87,7 @@ impl<T: Value> Value for &[T] {
     }
 }
 
-impl<K, V: Value> Value for BTreeMap<K, V> {
+impl<K: Sync, V: Value> Value for BTreeMap<K, V> {
     fn kind(&self) -> Kind {
         Kind::Map
     }
@@ -109,7 +109,7 @@ impl<K, V: Value> Value for BTreeMap<K, V> {
     }
 }
 
-impl<K: Eq + Hash, V: Value> Value for HashMap<K, V> {
+impl<K: Eq + Hash + Sync, V: Value> Value for HashMap<K, V> {
     fn kind(&self) -> Kind {
         Kind::Map
     }

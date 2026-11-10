@@ -90,7 +90,7 @@ pub enum Number {
 }
 
 /// Adapts a Rust type to validator's typed rule-dispatch model.
-pub trait Value {
+pub trait Value: Sync {
     /// Returns the current value's kind.
     fn kind(&self) -> Kind;
 
