@@ -4,14 +4,62 @@ use crate::core::{CAPACITY, Cache, Context, Expr, Fields, Group, Registry};
 use crate::schema::{Schema, SchemaId, Tree};
 use crate::target::FieldTarget;
 use crate::traits::{Selective, Validate};
-use crate::{Error, Namespace, Rule, Value};
+use crate::{Error, Namespace, Provider, Rule, Value};
 
+#[path = "validator/cache.rs"]
 mod cache;
+#[path = "validator/derive.rs"]
 mod derive;
 
-/// Configures rules, aliases, schemas, and validation execution.
+/// Configures rules, aliases, and validation extensions.
+pub struct Config {
+    pub(crate) registry: Registry,
+}
+
+impl Config {
+    /// Creates a configuration with all built-in rules and aliases.
+    pub fn new() -> Self {
+        Self::try_new().expect("default validator rules must be valid")
+    }
+
+    /// Creates a configuration without panicking if built-in registration fails.
+    pub fn try_new() -> Result<Self, Error> {
+        let mut registry = Registry::new();
+        crate::rules::load(&mut registry)?;
+        crate::rules::load_aliases(&mut registry)?;
+        Ok(Self { registry })
+    }
+
+    /// Adds a custom rule to this configuration.
+    pub fn rule<R>(mut self, name: impl Into<String>, rule: R) -> Result<Self, Error>
+    where
+        R: Rule + Send + Sync + 'static,
+    {
+        self.registry.rule(name, rule)?;
+        Ok(self)
+    }
+
+    /// Adds an alias to this configuration.
+    pub fn alias(mut self, name: impl Into<String>, expr: impl AsRef<str>) -> Result<Self, Error> {
+        self.registry.alias(name, expr)?;
+        Ok(self)
+    }
+
+    /// Applies a reusable rule provider to this configuration.
+    pub fn provider<P: Provider>(self, provider: P) -> Result<Self, Error> {
+        provider.register(self)
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Executes validation with configured rules, aliases, schemas, and caches.
 pub struct Validator {
-    registry: Registry,
+    pub(crate) config: Config,
     schema: Option<Schema>,
     expression_cache: RwLock<Cache<String, Arc<Vec<Expr>>>>,
     compiled_cache: RwLock<Cache<String, Arc<Group>>>,
@@ -28,12 +76,18 @@ impl Validator {
     /// Creates a validator with all built-in rules and aliases without
     /// panicking if the built-in registry configuration is invalid.
     pub fn try_new() -> Result<Self, Error> {
-        let mut registry = Registry::new();
-        crate::rules::load(&mut registry)?;
-        crate::rules::load_aliases(&mut registry)?;
+        Self::try_from(Config::try_new()?)
+    }
 
+    /// Creates a validator from a configured rule set.
+    pub fn from(config: Config) -> Self {
+        Self::try_from(config).expect("configured validator must be valid")
+    }
+
+    /// Creates a validator from a configured rule set without panicking.
+    pub fn try_from(config: Config) -> Result<Self, Error> {
         Ok(Self {
-            registry,
+            config,
             schema: None,
             expression_cache: RwLock::new(Cache::new(CAPACITY)),
             compiled_cache: RwLock::new(Cache::new(CAPACITY)),
@@ -104,13 +158,13 @@ impl Validator {
     where
         R: Rule + Send + Sync + 'static,
     {
-        self.registry.rule(name, rule)?;
+        self.config.registry.rule(name, rule)?;
         Ok(self)
     }
 
     /// Registers an alias for a reusable rule expression.
     pub fn alias(mut self, name: impl Into<String>, expr: impl AsRef<str>) -> Result<Self, Error> {
-        self.registry.alias(name, expr)?;
+        self.config.registry.alias(name, expr)?;
         Ok(self)
     }
 
@@ -132,8 +186,16 @@ impl Validator {
     /// Validates a JSON object against the configured schema.
     pub fn validate_map(&self, value: &serde_json::Value) -> Result<(), Error> {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
-        let tree = self.schema_tree(schema)?;
+        self.validate_map_with(schema, value)
+    }
 
+    /// Validates a JSON object against a schema supplied for this call.
+    pub fn validate_map_with(
+        &self,
+        schema: &Schema,
+        value: &serde_json::Value,
+    ) -> Result<(), Error> {
+        let tree = self.schema_tree(schema)?;
         self.validate_data(&tree, value)
     }
 
@@ -143,11 +205,18 @@ impl Validator {
         T: serde::Serialize + ?Sized,
     {
         let schema = self.schema.as_ref().ok_or(Error::MissingSchema)?;
+        self.validate_serde_with(schema, value)
+    }
+
+    /// Serializes a value to JSON and validates it against a schema supplied for this call.
+    pub fn validate_serde_with<T>(&self, schema: &Schema, value: &T) -> Result<(), Error>
+    where
+        T: serde::Serialize + ?Sized,
+    {
         let tree = self.schema_tree(schema)?;
         let data = serde_json::to_value(value).map_err(|error| Error::InvalidData {
             reason: error.to_string(),
         })?;
-
         self.validate_data(&tree, &data)
     }
 

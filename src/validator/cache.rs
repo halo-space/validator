@@ -65,7 +65,7 @@ impl Validator {
         }
 
         let exprs = self.parse(expression)?;
-        let group = Arc::new(Group::compile(exprs.as_ref(), &self.registry)?);
+        let group = Arc::new(Group::compile(exprs.as_ref(), &self.config.registry)?);
         let mut cache = self.compiled_cache.write_unpoisoned();
         if let Some(group) = cache.get(expression).cloned() {
             return Ok(group);
@@ -84,7 +84,7 @@ impl Validator {
             return Ok(tree);
         }
 
-        let tree = Arc::new(schema.compile(&self.registry)?);
+        let tree = Arc::new(schema.compile(&self.config.registry)?);
         let mut cache = self.schema_cache.write_unpoisoned();
         if let Some(tree) = cache.get(&key).cloned() {
             return Ok(tree);
@@ -104,9 +104,9 @@ impl Validator {
         }
 
         let group = Arc::new(if items {
-            Group::compile_spec_with_items(&key.spec, &self.registry)?
+            Group::compile_spec_with_items(&key.spec, &self.config.registry)?
         } else {
-            Group::compile_spec(&key.spec, &self.registry)?
+            Group::compile_spec(&key.spec, &self.config.registry)?
         });
         let mut cache = self.spec_cache.write_unpoisoned();
         if let Some(group) = cache.get(&key).cloned() {

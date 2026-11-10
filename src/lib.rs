@@ -8,9 +8,11 @@
 extern crate self as halo;
 
 mod core;
+#[path = "validator.rs"]
 mod engine;
 /// Localized rendering for validation failures.
 pub mod i18n;
+mod rule;
 mod rules;
 mod schema;
 mod target;
@@ -22,7 +24,8 @@ pub use self::core::{
     Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
     Signature, UintKind, Value,
 };
-pub use self::engine::Validator;
+pub use self::engine::{Config, Validator};
+pub use self::rule::Provider;
 pub use self::schema::Schema;
 pub(crate) use self::target::field_error;
 pub use self::traits::{Selective, Validate};
@@ -40,8 +43,8 @@ pub mod __private {
 /// Common validator types and traits for glob imports.
 pub mod prelude {
     pub use crate::{
-        Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
-        Schema, Signature, UintKind, Validate, Validator, Value,
+        Config, Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param,
+        Params, Provider, Rule, Schema, Signature, UintKind, Validate, Validator, Value,
     };
 }
 
@@ -49,8 +52,8 @@ pub mod prelude {
 pub mod validator {
     pub use super::__private;
     pub use super::{
-        Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param, Params, Rule,
-        Schema, Signature, UintKind, Validate, Validator, Value,
+        Config, Error, Field, FieldError, FloatKind, IntKind, Kind, Namespace, Number, Param,
+        Params, Provider, Rule, Schema, Signature, UintKind, Validate, Validator, Value,
     };
     pub use super::{i18n, valid};
 

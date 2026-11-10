@@ -40,6 +40,25 @@ validation engine.
 
 ## Current Limits
 
+## Configuration and extension boundary
+
+`Validator` owns validation execution and runtime caches. `Config` owns rules,
+aliases, and providers. Reusable rule bundles implement `Provider`, which lives
+in `rule/provider.rs`; the public names stay short as `Config` and `Provider`.
+
+```rust
+use halo::validator::prelude::*;
+
+let config = Config::default()
+    .provider(MyProvider)?
+    .alias("username", "required,length(min=3)")?;
+let validator = Validator::from(config);
+```
+
+New extension points belong in their domain module. The derive macro only emits
+field access and execution calls; rule implementations, signatures, errors, and
+Schema execution remain in the shared core.
+
 These are intentional limits in the current API surface:
 
 - Parameterized `unique` supports single, compound, and nested element paths in

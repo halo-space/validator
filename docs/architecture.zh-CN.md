@@ -18,6 +18,24 @@ Go 版 validator 可以直接依赖语言级运行时反射来读取结构体字
 
 ## 当前边界
 
+## 配置与扩展边界
+
+`Validator` 负责执行校验和维护运行时缓存，`Config` 负责规则、Alias
+以及 Provider 配置。可复用的规则集合实现 `Provider`，定义在
+`rule/provider.rs`，不使用 `RuleProvider` 或 `ValidatorConfig` 这类重复命名。
+
+```rust
+use halo::validator::prelude::*;
+
+let config = Config::default()
+    .provider(MyProvider)?
+    .alias("username", "required,length(min=3)")?;
+let validator = Validator::from(config);
+```
+
+新的扩展应放入所属领域模块。derive 宏只生成字段访问和执行调用，规则
+实现、参数签名、错误模型和 Schema 执行继续由核心层统一负责。
+
 这些是当前 API 有意保留的边界：
 
 - 参数化 `unique` 支持 Vec、数组、切片引用和 Schema object arrays 的单字段、复合字段及嵌套元素路径；不支持 Map、原生 direct value，也不能写在 `dive(...)` 内。
