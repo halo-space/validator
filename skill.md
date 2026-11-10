@@ -15,6 +15,7 @@
 
 - `Validator` 负责执行和运行时缓存。
 - `Config` 负责规则、Alias 和扩展 Provider 配置。
+- `Config::cache(capacity)` 统一配置运行时缓存容量；不要在业务层直接接触内部缓存类型。
 - `Rule`、`Value`、`Signature` 和统一执行模型保持在核心层。
 - derive 宏只生成字段访问与校验调用，不复制规则执行逻辑。
 - Struct、单值和 Schema 校验继续复用同一套规则执行模型。

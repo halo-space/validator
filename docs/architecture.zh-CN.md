@@ -33,6 +33,9 @@ let config = Config::default()
 let validator = Validator::from(config);
 ```
 
+缓存容量通过 `Config::cache(capacity)` 配置，执行器内部的表达式、规则组、
+Spec 和 Schema 缓存使用同一容量策略。
+
 新的扩展应放入所属领域模块。derive 宏只生成字段访问和执行调用，规则
 实现、参数签名、错误模型和 Schema 执行继续由核心层统一负责。
 

@@ -4,6 +4,14 @@ use serde_json::json;
 #[derive(Debug)]
 struct Slug;
 
+struct SlugProvider;
+
+impl Provider for SlugProvider {
+    fn register(&self, config: Config) -> Result<Config, Error> {
+        config.rule("slug", Slug)
+    }
+}
+
 impl Rule for Slug {
     fn check(&self, field: &Field<'_>) -> Result<bool, Error> {
         Ok(field.value().string().is_some_and(|value| {
@@ -618,4 +626,14 @@ fn built_in_and_control_names_cannot_be_overridden() {
         };
         assert!(matches!(error, Error::DuplicateName { name: actual } if actual == name));
     }
+}
+
+#[test]
+fn provider_extends_config_before_validator_creation() {
+    let validator = Validator::from(Config::default().provider(SlugProvider).unwrap());
+    validator
+        .validate(&Post {
+            slug: "valid-slug".to_owned(),
+        })
+        .unwrap();
 }

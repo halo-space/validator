@@ -55,6 +55,9 @@ let config = Config::default()
 let validator = Validator::from(config);
 ```
 
+Use `Config::cache(capacity)` to configure the shared capacity for expression,
+group, spec, and Schema caches without exposing internal cache types.
+
 New extension points belong in their domain module. The derive macro only emits
 field access and execution calls; rule implementations, signatures, errors, and
 Schema execution remain in the shared core.

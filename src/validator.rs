@@ -14,6 +14,7 @@ mod derive;
 /// Configures rules, aliases, and validation extensions.
 pub struct Config {
     pub(crate) registry: Registry,
+    pub(crate) cache_capacity: usize,
 }
 
 impl Config {
@@ -27,7 +28,10 @@ impl Config {
         let mut registry = Registry::new();
         crate::rules::load(&mut registry)?;
         crate::rules::load_aliases(&mut registry)?;
-        Ok(Self { registry })
+        Ok(Self {
+            registry,
+            cache_capacity: CAPACITY,
+        })
     }
 
     /// Adds a custom rule to this configuration.
@@ -48,6 +52,12 @@ impl Config {
     /// Applies a reusable rule provider to this configuration.
     pub fn provider<P: Provider>(self, provider: P) -> Result<Self, Error> {
         provider.register(self)
+    }
+
+    /// Sets the capacity shared by expression, group, spec, and schema caches.
+    pub fn cache(mut self, capacity: usize) -> Self {
+        self.cache_capacity = capacity;
+        self
     }
 }
 
@@ -86,13 +96,14 @@ impl Validator {
 
     /// Creates a validator from a configured rule set without panicking.
     pub fn try_from(config: Config) -> Result<Self, Error> {
+        let capacity = config.cache_capacity;
         Ok(Self {
             config,
             schema: None,
-            expression_cache: RwLock::new(Cache::new(CAPACITY)),
-            compiled_cache: RwLock::new(Cache::new(CAPACITY)),
-            spec_cache: RwLock::new(Cache::new(CAPACITY)),
-            schema_cache: RwLock::new(Cache::new(CAPACITY)),
+            expression_cache: RwLock::new(Cache::new(capacity)),
+            compiled_cache: RwLock::new(Cache::new(capacity)),
+            spec_cache: RwLock::new(Cache::new(capacity)),
+            schema_cache: RwLock::new(Cache::new(capacity)),
         })
     }
 
